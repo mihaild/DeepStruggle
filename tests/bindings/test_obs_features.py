@@ -59,12 +59,13 @@ def test_widths_agree_between_engine_and_model() -> None:
 
 def test_unknown_bits_are_refused() -> None:
     st, p = _positions(1)[0]
+    unknown = 1 << int(ts.OBS_FEATURES_ALL).bit_length()       # the first bit no block or rule has taken
     with pytest.raises(ValueError):
-        ts.obs_size_for(1 << 7)
+        ts.obs_size_for(unknown)
     with pytest.raises(ValueError):
-        ts.extract_observation_features(st, p, 1 << 7)
+        ts.extract_observation_features(st, p, unknown)
     with pytest.raises(ValueError):
-        ts.VectorizedBatchRunner(2, 1).set_obs_features([1 << 7, 0], [0, 0])
+        ts.VectorizedBatchRunner(2, 1).set_obs_features([unknown, 0], [0, 0])
 
 
 def test_the_base_prefix_is_bit_identical() -> None:
@@ -160,7 +161,7 @@ R = int(ts.OBS_FEATURE_HEADLINE_REVEAL)
 
 
 def _box4_headline(seed: int) -> "ts.GameState":
-    """The US's headline choice with Man in Space its own: the USSR chose first."""
+    """The US's headline choice with Man in Earth Orbit its own: the USSR chose first."""
     st = ts.GameState()
     ts.Engine.init_game(st, seed)
     drain_chance(st)

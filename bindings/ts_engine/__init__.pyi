@@ -583,6 +583,16 @@ class GameState:
         Seat a model of feature set `features` at `player`: that seat plays the rule bits the set names and the pre-fix rule of each it lacks. Observation bits are ignored.
         """
 
+    def run_priority_wanted(self) -> bool:
+        """
+        P43 V3: whether the pending decision opens a CANONICAL_LEARNED run whose order has not been given.
+        """
+
+    def set_run_priority(self, ranks: Sequence[int]) -> None:
+        """
+        P43 V3: give the pending run its order -- ranks[c] is country c's rank (0 = highest priority).
+        """
+
     def seat_plays_rule(self, player: Player, rule: int) -> bool:
         """
         Whether the seat `player` plays rule bit `rule` (the fix) rather than the rule before it.
@@ -733,7 +743,7 @@ class MapData:
     @staticmethod
     def placement_rank(arg: int, /) -> int:
         """
-        P43: the rank a canonical placement run (CANONICAL_SETUP) follows, a permutation of 0..83, most important last.
+        P43: the important-last rank a canonical placement run follows (CANONICAL_LAST; CANONICAL_FIRST is 83 minus it), a permutation of 0..83.
         """
 
     @staticmethod
@@ -973,7 +983,7 @@ def determinize(state: GameState, me: Player, seed: int, keep_hand: bool = False
 
 def revealed_headline(state: GameState, me: Player) -> int:
     """
-    The opposing headline `me` has seen, else 0: with Man in Space (Space Race box 4) held by `me` alone the opponent chooses first and reveals it.
+    The opposing headline `me` has seen, else 0: with Man in Earth Orbit (Space Race box 4) held by `me` alone the opponent chooses first and reveals it.
     """
 
 def place_hand(state: GameState, me: Player, held: Annotated[NDArray[numpy.uint8], dict(shape=(None,), order='C', device='cpu', writable=False)]) -> GameState:
@@ -1163,13 +1173,21 @@ OBS_FEATURE_HEADLINE_REVEAL: int = 4
 
 OBS_FEATURE_OPP_EVENT_GATED: int = 8
 
-OBS_FEATURE_CANONICAL_SETUP: int = 16
+OBS_FEATURE_CANONICAL_FIRST: int = 16
 
-OBS_FEATURES_RULES: int = 24
+OBS_FEATURE_CANONICAL_LAST: int = 32
+
+OBS_FEATURE_CANONICAL_LEARNED: int = 64
+
+OBS_FEATURE_PLACEMENT_LEGAL: int = 128
+
+OBS_FEATURE_PLACEMENT_ORDER: int = 256
+
+OBS_FEATURES_RULES: int = 120
 
 OBS_FEATURES_PERSON_RULES: int = 8
 
-OBS_FEATURES_ALL: int = 30
+OBS_FEATURES_ALL: int = 510
 
 OBS_FLAG_STAGED_CARDS: int = 1
 
@@ -1338,6 +1356,16 @@ class VectorizedBatchRunner:
     def get_action_masks(self) -> Annotated[NDArray[numpy.uint8], dict(shape=(None, None))]: ...
 
     def get_decision_players(self) -> list[int]: ...
+
+    def priority_wanted(self) -> list[bool]:
+        """
+        P43 V3: per env, whether its decision opens a CANONICAL_LEARNED run whose order has not been given.
+        """
+
+    def set_run_priority(self, env_index: int, ranks: Sequence[int]) -> None:
+        """
+        P43 V3: give env `env_index`'s pending run its order (ranks[c]: country c's rank, 0 = highest).
+        """
 
     def get_terminals(self) -> list[bool]: ...
 

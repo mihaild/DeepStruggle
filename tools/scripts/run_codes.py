@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Architecture and recipe codes, derived from what each run recorded, and every run's name.
+"""Architecture, recipe and view codes, derived from what each run recorded, and every run's name.
 
-A run is named `E<n>-A<n>-R<n>-S<n>` plus the branch points that led to it
-(`research/method/run_nomenclature.md`). A and R are codes in `research/run_codes.json`, and a code
+A run is named `E<n>-A<n>-R<n>[-V<n>]-S<n>` plus the branch points that led to it
+(`research/method/run_nomenclature.md`). A, R and V are codes in `research/run_codes.json`, and a code
 *is* a set of `tools/train.py` flags: the architecture flags (the network's shape, its input and
-its heads) for A, every other training setting for R. Bookkeeping -- where files go, how often to
+its heads) for A, the view flags (how mechanically possible observations and actions are
+represented: an action view, a canonical placement order) for V -- V0, no view flag, is never
+written -- and every other training setting for R. Bookkeeping -- where files go, how often to
 snapshot, evals, the budget, the seeds -- is neither. Nothing is assigned by hand, so two runs
 with one code cannot quietly differ in a flag, which is how lineage-critical flags drifted four
 times on the E4 ladder (CLAUDE.md, invariant 15).
@@ -59,6 +61,11 @@ ARCH_FLAGS = frozenset({
     "arch", "identity_dim", "drop_static", "categorical_value", "obs_features", "self_transform",
     "graph_layers", "per_entity_heads", "attn_readout",
 })
+#: The view (owner, 2026-11-07): how mechanically possible observations and actions are represented, changing
+#: neither the network's shape nor any game that can be played -- P42's macro action view, and the view rule bits
+#: (`obs_view`: canonical_first / canonical_last, P43). `merged_influence` joins them for any run named in the current grammar; the
+#: one legacy run that used it keeps its engine minor version (E6.1 / E4.1, P23).
+VIEW_FLAGS = frozenset({"macro_influence", "obs_view"})
 #: Neither network nor training: where files go, cadence, evals, budget, seeds, other modes.
 #: `merged_influence` is the engine's minor version (E4.1, P23), not a recipe; so are `obs_rules`, the
 #: rule bits a network plays (E8.1 = E8 with opp_event_gated, ENG-9).
@@ -132,6 +139,8 @@ _SWA_STEP_RE = re.compile(r"swa_\d+-(\d+)M\.pt$")
 def category(dest: str) -> str:
     if dest in ARCH_FLAGS or dest.startswith("ladder_"):
         return "A"
+    if dest in VIEW_FLAGS:
+        return "V"
     return "B" if dest in BOOKKEEPING else "R"
 
 
@@ -295,6 +304,15 @@ def arch_sig(r: Run) -> Dict[str, Any]:
     return sig
 
 
+def view_sig(r: Run) -> Dict[str, Any]:
+    """The run's view flags; empty is V0, the default view. A merged-influence run named in the current grammar
+    counts it here; the legacy run that used it keeps it as its engine's minor version (Run.engine)."""
+    sig = {k: v for k, v in r.flags.items() if category(k) == "V" and v not in (None, [], False)}
+    if r.flags.get("merged_influence") and not LEGACY_RUN_NAME_RE.match(r.name0):
+        sig["merged_influence"] = True
+    return sig
+
+
 def _run_of(checkpoint: str) -> Optional[str]:
     """The run name of the directory a checkpoint sits in, or None."""
     m = _RUN_DIR_RE.match(os.path.basename(os.path.dirname(checkpoint)))
@@ -332,7 +350,7 @@ def _key(sig: Dict[str, Any]) -> str:
 
 def load_codes() -> Dict[str, Any]:
     if not os.path.exists(CODES_JSON):
-        return {"architectures": {}, "recipes": {}, "overrides": {}, "runs": {}}
+        return {"architectures": {}, "recipes": {}, "views": {}, "overrides": {}, "runs": {}}
     with open(CODES_JSON, encoding="utf-8") as f:
         return json.load(f)
 
@@ -369,9 +387,14 @@ def assign(runs: List[Run], codes: Dict[str, Any], update: bool) -> Tuple[Dict[s
         if r.void or overrides.get(r.dir, {}).get("void"):
             continue
         fields: Dict[str, str] = {"E": r.engine, "S": r.seed}
+        vsig = view_sig(r)
+        fields["V"] = "0"
         for key, table_name, sig, letter in (
                 ("A", "architectures", arch_sig(r), "A"),
-                ("R", "recipes", recipe_sig(r, overrides), "R")):
+                ("R", "recipes", recipe_sig(r, overrides), "R"),
+                ("V", "views", vsig, "V")):
+            if key == "V" and not sig:
+                continue                       # V0: the default view, no code to look up
             table = codes.setdefault(table_name, {})
             code = _lookup(table, sig)
             if code is None:
@@ -384,7 +407,7 @@ def assign(runs: List[Run], codes: Dict[str, Any], update: bool) -> Tuple[Dict[s
                     table[code] = {"description": "", "first": r.dir, "flags": sig}
             fields[key] = code[1:] if code != "?" else "0"
         if r.parent is None or r.parent.dir not in names:
-            root = tuple((k, fields[k]) for k in ("E", "A", "R", "S"))
+            root = tuple((k, fields[k]) for k in ("E", "A", "R", "V", "S") if not (k == "V" and fields[k] == "0"))
             names[r.dir] = RunPath(root)
         else:
             parent = names[r.parent.dir]
@@ -480,6 +503,8 @@ def write_codes_md(codes: Dict[str, Any], names: Dict[str, RunPath], runs: List[
             f = names[r.dir].fields()
             used.setdefault("A" + f["A"], []).append(r.name0)
             used.setdefault("R" + f["R"], []).append(r.name0)
+            if f.get("V", "0") != "0":
+                used.setdefault("V" + f["V"], []).append(r.name0)
     for d, name in (elsewhere or {}).items():
         try:
             f = parse_run_name(name).fields()
@@ -491,7 +516,7 @@ def write_codes_md(codes: Dict[str, Any], names: Dict[str, RunPath], runs: List[
     out = [
         "# Architectures and recipes",
         "",
-        "The A and R codes of the run names ([`method/run_nomenclature.md`](method/run_nomenclature.md)).",
+        "The A, R and V codes of the run names ([`method/run_nomenclature.md`](method/run_nomenclature.md)).",
         "A code is a set of `tools/train.py` flags, derived from the runs' own `metadata.json` by",
         "`tools/scripts/run_codes.py`, which also writes this file; the descriptions are kept in",
         "[`run_codes.json`](run_codes.json). An architecture is the network -- its shape, its input",
@@ -500,6 +525,9 @@ def write_codes_md(codes: Dict[str, Any], names: Dict[str, RunPath], runs: List[
         "A default that changed at an engine epoch is read as the run's own epoch had it: since E8 a",
         "network reads `headline_reveal` unless its code lists `--obs-features`, so an A code names",
         "the same flags on E7 and E8 and the E letter says which view it reads.",
+        "A view (V, owner 2026-11-07) is how mechanically possible observations and actions are represented --",
+        "an action view, a canonical placement order -- changing neither the network's shape nor any game that",
+        "can be played; V0, no view flag, is the default and is never written in a name.",
         "",
         "## Architectures",
         "",
@@ -518,6 +546,13 @@ def write_codes_md(codes: Dict[str, Any], names: Dict[str, RunPath], runs: List[
         runs_s = ", ".join(sorted(set(used.get(code, [])), key=lambda n: n))
         txt = _flags_text(e["flags"], None if code == "R1" else base_r)
         out.append(f"| **{code}** | {e['description']} | {txt} | {runs_s} |")
+    out += ["", "## Views", "", "| code | what it is | flags | runs (old names) |",
+            "|:---|:---|:---|:---|",
+            "| **V0** | the default view: the epoch's action view, free placement order | *(no view flag)* | "
+            "every run without a V |"]
+    for code, e in sorted(codes.get("views", {}).items(), key=lambda kv: int(kv[0][1:])):
+        runs_s = ", ".join(sorted(set(used.get(code, [])), key=lambda n: n))
+        out.append(f"| **{code}** | {e['description']} | {_flags_text(e['flags'])} | {runs_s} |")
     out.append("")
     with open(CODES_MD, "w", encoding="utf-8") as f:
         f.write("\n".join(out))

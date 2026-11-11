@@ -1,4 +1,6 @@
 #include "ts/observation.hpp"
+#include "ts/action_mask.hpp"
+#include "ts/canonical.hpp"
 #include "ts/map_data.hpp"
 #include "ts/card_data.hpp"
 #include "ts/scoring.hpp"
@@ -485,6 +487,39 @@ size_t extract_observation_features(const GameState& state, Player perspective, 
         out[at + 1] = ops_modifier(state, perspective);
         out[at + 2] = ops_modifier(state, get_opponent(perspective));
         at += obs_features::OPS_BUDGET_WIDTH;
+    }
+    if (features & obs_features::PLACEMENT_LEGAL) {
+        const auto& ctx = state.ctx();
+        if (ctx.decision_type == DecisionType::POINT_NODE && ctx.decision_player == perspective &&
+            (state.current_phase == Phase::SETUP || ctx.op_mode == OpMode::INFLUENCE)) {
+            uint8_t mask[FLAT_ACTION_SPACE_SIZE];
+            ActionMask::generate_flat_mask_212(state, mask);
+            for (uint8_t i = 0; i < 84; ++i) {
+                out[static_cast<size_t>(i) * V23_BOARD_FEATURES + obs_features::BOARD_MY_PLACEABLE] =
+                    mask[flat_slots::NODE + i] ? 1.0f : 0.0f;
+            }
+        }
+    }
+    if (features & obs_features::PLACEMENT_ORDER) {
+        // Only where a canonical run's floor is in force and has not been released for this choice (some legal target
+        // at or above it): a country with access below the floor reads 0.5.
+        const auto& ctx = state.ctx();
+        const uint32_t order = canonical::run_order(state);
+        const int floor = order != 0 ? canonical::floor_rank(state) : -1;
+        if (floor >= 0 && ctx.decision_player == perspective) {
+            uint8_t mask[FLAT_ACTION_SPACE_SIZE];
+            ActionMask::generate_flat_mask_212(state, mask);
+            bool released = true;
+            for (uint8_t i = 0; i < 84; ++i) {
+                if (mask[flat_slots::NODE + i] && canonical::rank_in(state, order, i) >= floor) released = false;
+            }
+            if (!released) {
+                for (uint8_t i = 0; i < 84; ++i) {
+                    float& slot = out[static_cast<size_t>(i) * V23_BOARD_FEATURES + obs_features::BOARD_MY_PLACEABLE];
+                    if (slot > 0.0f && canonical::rank_in(state, order, i) < floor) slot = obs_features::BOARD_BLOCKED_BY_ORDER;
+                }
+            }
+        }
     }
     if (features & obs_features::HEADLINE_REVEAL) {
         const uint8_t c = SpaceRace::revealed_headline(state, perspective);

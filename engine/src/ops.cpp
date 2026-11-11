@@ -346,12 +346,14 @@ CoupResult Operations::execute_coup(GameState& state, Player p, uint8_t country_
 
     int16_t mod_roll = roll;
 
-    // Latin American Death Squads
+    // Latin American Death Squads: each side's play is its own effect, so when both sides have
+    // played it this turn both apply and every coup there nets 0.
     bool in_latin_america = (c_info.region == Region::CENTRAL_AMERICA || c_info.region == Region::SOUTH_AMERICA);
     if (in_latin_america) {
         if (state.has_flag(effect_bits::DEATH_SQUADS_US)) {
             mod_roll += (p == Player::US ? 1 : -1);
-        } else if (state.has_flag(effect_bits::DEATH_SQUADS_USSR)) {
+        }
+        if (state.has_flag(effect_bits::DEATH_SQUADS_USSR)) {
             mod_roll += (p == Player::USSR ? 1 : -1);
         }
     }

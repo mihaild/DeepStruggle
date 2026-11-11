@@ -192,10 +192,12 @@ struct alignas(64) DecisionContext {
     // predates it, and then the ladder falls back to the card.
     uint8_t  ops_plain;
 
-    // P43 (obs_features::CANONICAL_SETUP): 1 + the placement rank of the last country placed in
-    // this setup run, 0 before its first point. Written only while the placing seat plays the bit,
-    // so it stays 0 in every game without it; reset where a setup run hands over to the next.
+    // P43 (ts/canonical.hpp): 1 + the rank, in the placing seat's order, of the last country placed in
+    // this run (0: none), the run it belongs to (canonical::run_tag) and the points it left. Written only
+    // while the placing seat plays a canonical bit, so all three stay 0 in every game without one.
     uint8_t  canon_floor;
+    uint8_t  canon_left;
+    uint16_t canon_tag;
 
     static constexpr uint8_t NODE_COUNT_MAX = 3;   // two bits; no card allows more than 2
 
@@ -376,6 +378,12 @@ struct alignas(64) GameState {
     // -------------------------------------------------------------------------
     // A clear bit is the rule from before it; zero (a bare state) is feature set 0's rules.
     uint32_t seat_rules[2] = {0u, 0u};
+
+    // P43 V3 (obs_features::CANONICAL_LEARNED): the pending run's order, each country's rank in the deciding
+    // network's priority (0 = highest), and the run it belongs to (canonical::run_tag; 0 = none). Given by the
+    // harness at the run's first decision and cleared when the run ends; zero in every game without the bit.
+    uint8_t  canon_prio[84] = {};
+    uint16_t canon_prio_tag = 0;
 
     // -------------------------------------------------------------------------
     // 5. Persistent Board Flags & Parametric Effects (64-bit bitfield)
@@ -591,15 +599,37 @@ namespace obs_features {
     // A rule bit (no width, owner 2026-11-06): an opponent's card offers its Event only where it can
     // fire (ENG-9). Clear, the pre-ENG-9 rule, where an unmet prerequisite fizzled into Ops.
     constexpr uint32_t OPP_EVENT_GATED = 1u << 3;
-    // A rule bit (no width, owner 2026-11-07, P43 phase A): each setup run (USSR 6; US 7; US 2) is
-    // placed in non-decreasing MapData::placement_rank, so every setup has exactly one action
-    // sequence. It constrains the order of the clicks, never the boards a setup can reach.
-    constexpr uint32_t CANONICAL_SETUP = 1u << 4;
+    // Rule bits of no width (owner 2026-11-07, P43): each placement run -- the setup's, an Ops
+    // influence play, the verified event runs (ts/canonical.hpp) -- is placed in non-decreasing rank
+    // of the seat's order, most important first or last, so every board has one action sequence.
+    // They order a model's clicks, never the boards a run can reach. At most one of the two.
+    constexpr uint32_t CANONICAL_FIRST = 1u << 4;
+    constexpr uint32_t CANONICAL_LAST  = 1u << 5;
+    // P43 V3 (owner, 2026-11-07): the run's order is the deciding network's own priority -- its logits
+    // over countries at the run's first decision, highest first -- given by the harness
+    // (GameState::canon_prio, canonical::set_run_priority) and fixed for the run.
+    constexpr uint32_t CANONICAL_LEARNED = 1u << 6;
+    constexpr uint32_t CANONICAL = CANONICAL_FIRST | CANONICAL_LAST | CANONICAL_LEARNED;
+    // No width (owner, 2026-11-07, with P43): during the perspective's own influence placement or removal
+    // decision -- the setup, an Ops influence play, an event's placement or removal run -- the board's
+    // "I can place here" slot (19) shows exactly the countries its legal mask allows (a canonical run's
+    // floor, cost and budget applied) instead of bare eligibility. Without it a network under a canonical
+    // order cannot see which countries its run has left behind. It edits a base slot, so only a model
+    // trained with the bit reads it so.
+    constexpr uint32_t PLACEMENT_LEGAL = 1u << 7;
+    // No width (owner, 2026-11-08): slot 19 keeps its meaning (access), and during the perspective's own placement
+    // decision in a canonical run the countries its order blocks now read 0.5 instead of 1 (0 no access, 1 access,
+    // 0.5 access but blocked by the order). PLACEMENT_LEGAL's mask-in-the-slot changed the slot at 71% of placement
+    // decisions and made V1 worse; this changes it only where the order blocks.
+    constexpr uint32_t PLACEMENT_ORDER = 1u << 8;
+    constexpr float BOARD_BLOCKED_BY_ORDER = 0.5f;
+    constexpr size_t BOARD_MY_PLACEABLE = 19;
     // The bits that change the rules a seat plays (GameState::seat_rules), not its observation.
-    constexpr uint32_t RULES       = OPP_EVENT_GATED | CANONICAL_SETUP;
+    constexpr uint32_t RULES       = OPP_EVENT_GATED | CANONICAL;
     // The rule bits a person plays (the page's current rules): game rules, not a model's action order.
     constexpr uint32_t PERSON_RULES = OPP_EVENT_GATED;
-    constexpr uint32_t ALL         = OPS_BUDGET | HEADLINE_REVEAL | OPP_EVENT_GATED | CANONICAL_SETUP;
+    constexpr uint32_t ALL         = OPS_BUDGET | HEADLINE_REVEAL | OPP_EVENT_GATED | CANONICAL | PLACEMENT_LEGAL |
+                                     PLACEMENT_ORDER;
 
     constexpr size_t OPS_BUDGET_WIDTH = 3;
 

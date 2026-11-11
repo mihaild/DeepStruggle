@@ -1,4 +1,4 @@
-"""The run-name grammar: engine, architecture, recipe and seed, and the path a run took.
+"""The run-name grammar: engine, architecture, recipe, view and seed, and the path a run took.
 
 `research/method/run_nomenclature.md` is the specification; this module is its one parser. A run
 is named by where it started and every change made to it since:
@@ -8,10 +8,13 @@ is named by where it started and every change made to it since:
     E7-A4-R1-S44@4390M+A7-R10          ... with architecture 7 and recipe 10 from 4,390M
     E7-A4-R1-S44-2                     a same-seed replicate of the first
     E7-A4-R1-S44-2@4390M+R10           a branch of that replicate (its index stays with the root)
+    E8-A35-R102-V1-S44                 view 1 (V: how observations and actions are represented); V0, the
+                                       default view, is never written
+
 
 `@<n>M` is always an **absolute** step on the lineage's own clock, never a length. In a run's
 name every `@` is a branch point; a continuation that changes nothing keeps the name. A field in a
-change list restates only what changed, in the order E, A, R, S.
+change list restates only what changed, in the order E, A, R, V, S.
 
 A *label* names a model, so it adds a selector -- one snapshot or a range averaged into an SWA --
 and may put a group of alternatives after the last branch point, which is a soup:
@@ -41,9 +44,12 @@ from typing import Dict, Final, List, Optional, Tuple
 LEGACY_RUN_NAME_RE: Final = re.compile(
     r"^E\d+(?:\.\d+)?-\d{2}-\d{2}(?:-\d+)?(?:-\d+M\.\d{2})*$")
 
-#: The four fields, in the order a name and a change list give them.
-FIELDS: Final = ("E", "A", "R", "S")
-_FIELD_RE: Final = re.compile(r"^(E)(\d+(?:\.\d+)?)$|^([ARS])(\d+)$")
+#: The fields, in the order a name and a change list give them. V (the view, owner 2026-11-07) is optional:
+#: a name without it is V0, the default view, and V0 is never written in a root.
+FIELDS: Final = ("E", "A", "R", "V", "S")
+_FIELD_RE: Final = re.compile(r"^(E)(\d+(?:\.\d+)?)$|^([ARVS])(\d+)$")
+#: A field's value when a name does not give it.
+_DEFAULTS: Final = {"V": "0"}
 _STEP_RE: Final = re.compile(r"^(\d+)([Mk])$")
 
 
@@ -54,7 +60,7 @@ class RunNameError(ValueError):
 def _field(tok: str) -> Tuple[str, str]:
     m = _FIELD_RE.match(tok)
     if not m:
-        raise RunNameError(f"{tok!r} is not a field (E<n>[.<m>], A<n>, R<n> or S<n>)")
+        raise RunNameError(f"{tok!r} is not a field (E<n>[.<m>], A<n>, R<n>, V<n> or S<n>)")
     return (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
 
 
@@ -79,7 +85,7 @@ class Segment:
 @dataclass(frozen=True)
 class RunPath:
     """A run: a from-scratch root and the branch points that led to it."""
-    root: Tuple[Tuple[str, str], ...]          # (("E","7"),("A","4"),("R","1"),("S","44"))
+    root: Tuple[Tuple[str, str], ...]          # (("E","7"),("A","4"),("R","1"),("S","44")); V only when not 0
     segments: Tuple[Segment, ...] = ()
     index: Optional[int] = None                # same-seed replicate (or league generation)
     #: The root's own replicate index when the run branches from a replicate (`E8-A8-R1-S44-2@10010M+R87`):
@@ -92,8 +98,9 @@ class RunPath:
         return s + (f"-{self.index}" if self.index is not None else "")
 
     def fields(self) -> Dict[str, str]:
-        """E, A, R and S as they stand at the end of the path."""
-        cur = dict(self.root)
+        """E, A, R, V and S as they stand at the end of the path (V "0" where no name gave it)."""
+        cur = dict(_DEFAULTS)
+        cur.update(dict(self.root))
         for seg in self.segments:
             cur.update(dict(seg.changes))
         return cur
@@ -174,20 +181,22 @@ def _changes(text: str, prev_letter: Optional[str] = None) -> Tuple[Tuple[Tuple[
     if len(set(keys)) != len(keys):
         raise RunNameError(f"{text!r} changes a field twice")
     if keys != sorted(keys, key=FIELDS.index):
-        raise RunNameError(f"{text!r} is not in E, A, R, S order")
+        raise RunNameError(f"{text!r} is not in E, A, R, V, S order")
     return pairs, index
 
 
 def _root(text: str) -> RunPath:
     toks = text.split("-")
     index = None
-    if len(toks) == 5 and toks[-1].isdigit():
+    if len(toks) in (5, 6) and toks[-1].isdigit():
         index = int(toks.pop())
-    if len(toks) != 4:
-        raise RunNameError(f"{text!r} is not E<n>-A<n>-R<n>-S<n>[-<replicate>]")
+    if len(toks) not in (4, 5):
+        raise RunNameError(f"{text!r} is not E<n>-A<n>-R<n>[-V<n>]-S<n>[-<replicate>]")
     pairs = tuple(_field(t) for t in toks)
-    if tuple(k for k, _ in pairs) != FIELDS:
-        raise RunNameError(f"{text!r}: a root names E, A, R and S, in that order")
+    if tuple(k for k, _ in pairs) not in (("E", "A", "R", "S"), FIELDS):
+        raise RunNameError(f"{text!r}: a root names E, A, R, V (optional) and S, in that order")
+    if dict(pairs).get("V") == "0":
+        raise RunNameError(f"{text!r}: V0 is the default view and is not written")
     return RunPath(pairs, (), index)
 
 
@@ -324,7 +333,8 @@ def _check_soup(lab: Label, text: str) -> None:
     if len(set(names)) != len(names):
         raise RunNameError(f"{text!r} lists an ingredient twice")
     for key, why in (("A", "weights of different architectures cannot be averaged"),
-                     ("E", "a soup across engines plays no one game")):
+                     ("E", "a soup across engines plays no one game"),
+                     ("V", "a soup across views decides in no one view")):
         vals = {r.fields()[key] for r in lab.ingredients}
         if len(vals) > 1:
             raise RunNameError(f"{text!r} mixes {key}{sorted(vals)}: {why}")

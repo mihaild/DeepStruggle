@@ -98,6 +98,23 @@ def test_an_inert_setting_does_not_split_a_recipe(tmp_path: Any) -> None:
     assert sorted(p.text() for p in names.values()) == ["E9-A1-R1-S44", "E9-A1-R1-S45"]
 
 
+def test_a_view_is_its_own_code_and_moves_nothing_else(tmp_path: Any) -> None:
+    """The view (V, owner 2026-11-07): a canonical setup order or an action view gets a V code, leaving A and R as
+    they were; no view flag is V0 and is not written. The legacy merged-influence run keeps its engine minor
+    version instead."""
+    root = str(tmp_path)
+    a = _run(root, "E8-A1-R1-S44", steps=400_000_000, obs_features=["headline_reveal"])
+    _run(root, "E8-A1-R1-S44@300M+V1", parent=a, resume="resume_300000000steps.pt",
+         obs_features=["headline_reveal", "canonical_first"])
+    _run(root, "E8-A1-R1-V2-S45", seed=45, obs_features=["headline_reveal"], macro_influence=True)
+    _run(root, "E6-09-44", merged_influence=True)
+    runs = rc.load_runs(root)
+    names, missing = rc.assign(runs, {"architectures": {}, "recipes": {}, "views": {}, "overrides": {}}, True)
+    assert not missing
+    got = sorted(p.text() for p in names.values())
+    assert got == ["E6.1-A1-R1-S44", "E8-A1-R1-S44", "E8-A1-R1-S44@300M+V1", "E8-A1-R1-V2-S45"], got
+
+
 @pytest.fixture(scope="module")
 def codes() -> Dict[str, Any]:
     with open(rc.CODES_JSON, encoding="utf-8") as f:
@@ -108,7 +125,7 @@ class TestTheCommittedRegistry:
     """research/run_codes.json is what names mean; it must be complete and self-consistent."""
 
     def test_every_code_is_described_and_distinct(self, codes: Dict[str, Any]) -> None:
-        for table in ("architectures", "recipes"):
+        for table in ("architectures", "recipes", "views"):
             keys = [json.dumps(e["flags"], sort_keys=True) for e in codes[table].values()]
             assert len(set(keys)) == len(keys), f"two {table} share their flags"
             assert all(e["description"] for e in codes[table].values())
@@ -118,6 +135,7 @@ class TestTheCommittedRegistry:
             f = parse_run_name(name).fields()
             assert "A" + f["A"] in codes["architectures"], d
             assert "R" + f["R"] in codes["recipes"], d
+            assert f["V"] == "0" or "V" + f["V"] in codes["views"], d
 
     def test_the_best_soup_is_expressible(self, codes: Dict[str, Any]) -> None:
         """The 4,800M soup's three ingredients are exactly the three mapped runs."""

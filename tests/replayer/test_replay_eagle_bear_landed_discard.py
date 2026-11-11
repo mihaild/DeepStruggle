@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Dict, List, cast
 
-from tools.lib.ts_replayer_convert import _space_walk_discard
+from tools.lib.ts_replayer_convert import _eagle_bear_landed_discard
 from tools.lib.ts_replayer_parse import parse_entry
 from tests.replay_corpus import ReplayCorpus
 
@@ -25,7 +25,7 @@ def test_the_discard_is_read_off_the_cleanup_copy(corpus: ReplayCorpus) -> None:
     entry = parse_entry(raws[index])
     assert not entry.discards, "the entry itself records the play and nothing else"
     assert parse_entry(raws[index + 1]).discards == [("USSR", "Colonial Rear Guards")]
-    assert _space_walk_discard(raws, index, entry) == _COLONIAL_REAR_GUARDS
+    assert _eagle_bear_landed_discard(raws, index, entry) == _COLONIAL_REAR_GUARDS
 
 
 def test_an_ordinary_entry_names_no_such_discard(corpus: ReplayCorpus) -> None:
@@ -33,7 +33,7 @@ def test_an_ordinary_entry_names_no_such_discard(corpus: ReplayCorpus) -> None:
     index = next(i for i, r in enumerate(raws)
                  if (parse_entry(r).turn, parse_entry(r).phase, parse_entry(r).player)
                  == (9, "AR6", "US"))
-    assert _space_walk_discard(raws, index, parse_entry(raws[index])) is None
+    assert _eagle_bear_landed_discard(raws, index, parse_entry(raws[index])) is None
 
 
 def test_replay_56_converts_in_full(corpus: ReplayCorpus) -> None:

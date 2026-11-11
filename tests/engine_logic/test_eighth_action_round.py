@@ -41,7 +41,7 @@ def _ar8_plays(seed: int) -> List[Tuple[int, str, bool]]:
             continue
         # resolving_card == 0 is what separates a fresh action-round card choice from a
         # card prompt raised while the turn is being wound up. end_turn leaves
-        # action_round at 8 and the phase at ACTION_ROUND while it runs, so the Space Walk
+        # action_round at 8 and the phase at ACTION_ROUND while it runs, so the Eagle/Bear Has Landed
         # held-card discard looks identical without this guard.
         if (int(st.action_round) == 8
                 and st.current_phase == ts.Phase.ACTION_ROUND

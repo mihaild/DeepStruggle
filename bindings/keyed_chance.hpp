@@ -88,7 +88,7 @@ inline void force_deal(GameState& s, uint64_t world_key) noexcept {
             ++n;
         }
     }
-    // One card more than each hand lacks, as a reserve: the Space Walk privilege may discard a card
+    // One card more than each hand lacks, as a reserve: the Eagle/Bear Has Landed privilege may discard a card
     // after this, before the deal, and that hand then takes one more -- from its own reserve, never
     // from a card meant for the other hand. An unused reserve stays in the deck.
     const int target = next <= 3 ? 8 : 9;

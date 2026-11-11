@@ -62,8 +62,13 @@ are cited from elsewhere; keep them.
     keeps the sets across `reset_all`, and `ts_env.model_obs_features(model)` reads a model's set
     from its weights.
   - **Rule bits** ([`engine/AGENTS.md`](../engine/AGENTS.md) §19): an `obs_features` bit in
-    `OBS_FEATURES_RULES` (`OBS_FEATURE_OPP_EVENT_GATED`, ENG-9; `OBS_FEATURE_CANONICAL_SETUP`, P43 phase
-    A, §21 -- each setup run in non-decreasing `MapData.placement_rank`) is the rule a seat plays, held
+    `OBS_FEATURES_RULES` (`OBS_FEATURE_OPP_EVENT_GATED`, ENG-9; `OBS_FEATURE_CANONICAL_FIRST` /
+    `OBS_FEATURE_CANONICAL_LAST`, `OBS_FEATURE_CANONICAL_LEARNED`, P43, §21 -- every placement run in
+    non-decreasing country rank; for LEARNED the rank is the deciding network's own priority, which the harness
+    gives at each run's first decision: `GameState.run_priority_wanted()` / `set_run_priority(ranks)`, and per
+    env `VectorizedBatchRunner.priority_wanted()` / `set_run_priority(env, ranks)`; `ts_env.give_run_priorities`,
+    `give_state_priority` and `TsVectorizedEnv.give_run_priorities` do it from logits, and the trainer, the match
+    runner and `NeuralAgent` call them; searches, ONNX agents and the page refuse a LEARNED network for now) is the rule a seat plays, held
     per seat in the state (`GameState.seat_obs_features(player, features)`, `seat_plays_rule`); an
     unseated side plays the rule from before every bit. **A seat plays the rule bits of the feature
     set it is observed in**: the runner seats both sides of an env from its per-side sets
@@ -75,7 +80,7 @@ are cited from elsewhere; keep them.
     `ts_env.seat_tree`; `seat_decider` seats the real position's decider. `(seed, actions)` datasets
     record `us_obs_features` / `ussr_obs_features`, which `WarmupDataset` seats (absent: 0). The wasm
     build exports `ts_seat_obs_features`, `ts_seat_rules` and `ts_obs_features_rules`, the rules a
-    person plays: `OBS_FEATURES_PERSON_RULES`, every rule bit but `CANONICAL_SETUP`.
+    person plays: `OBS_FEATURES_PERSON_RULES`, every rule bit but the canonical orders.
   - **`BatchedSearch`** ([`batched_search.hpp`](batched_search.hpp)): the C++ tree behind
     `ai/search/batched_mcts.py` (`backend="cpp"`), Python-only. Up to `capacity` PUCT searches in
     lockstep, split into `num_groups` evaluation groups: `reset(roots, simulations, rng_state,
@@ -176,7 +181,7 @@ are cited from elsewhere; keep them.
   that stops for a choice added boundaries and one that resolved at once did not -- at a headline
   choice the candidate itself decided how far its playout read. `Config::box4` (Python `box4=True`, the
   page's eleventh argument, `:box4`, `box4=true`; off by default) keeps the opponent's headline in every
-  world at the headline choice of the side holding Man in Space alone (Space Race box 4: the opponent
+  world at the headline choice of the side holding Man in Earth Orbit alone (Space Race box 4: the opponent
   chose first and revealed it; `revealed_headline`, `determinize(..., keep_revealed)`), the rest of the
   hand redealt around it; off, the world forgets it and asks it again. The belief tracker's `reveal`
   (`BeliefTracker(..., reveal=True)`, `ts_belief_reset`'s fifth argument) draws every hand holding it.
@@ -230,7 +235,7 @@ are cited from elsewhere; keep them.
   its target and roller, steps left, resolving card -- so a world's candidates draw the same dice and
   event cards wherever they reach the same situation; at the turn's end the next deal is forced
   (the engine's forced-deal slots) from one card priority order per world, with one card in reserve
-  per hand for the Space Walk discard. A single continuation plays the same game distribution; only
+  per hand for the Eagle/Bear Has Landed discard. A single continuation plays the same game distribution; only
   the coupling between continuations changes. Measured on P34's sibling slice: two candidates'
   results in one world correlate at 0.39 keyed against 0.22 with the shared stream.
   **Two packings.** `keyed` widens the player fields as signed bytes: USSR is -1, so it sets every

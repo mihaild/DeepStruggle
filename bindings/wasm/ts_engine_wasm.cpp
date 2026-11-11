@@ -245,7 +245,7 @@ TS_API const char* ts_action_layout_json() {
     TS_CARD_ID(ALDRICH_AMES);
     TS_CARD_ID(WARGAMES);
     TS_CARD_ID(OUR_MAN_IN_TEHRAN);
-    TS_CARD_ID(SPACE_WALK_DISCARD);
+    TS_CARD_ID(EAGLE_BEAR_LANDED_DISCARD);
 #undef TS_CARD_ID
     v.set("card_ids", std::move(ids));
     // The rollout root's stop rules and leaf sides by name, in enum order: ts_rollout_reset takes
@@ -631,7 +631,7 @@ TS_API int ts_seat_rules(int player) {
 }
 
 // The current rules, which a person plays: every game rule bit, not a model's action order
-// (obs_features::PERSON_RULES leaves out P43's CANONICAL_SETUP).
+// (obs_features::PERSON_RULES leaves out P43's CANONICAL_FIRST / CANONICAL_LAST).
 TS_API uint32_t ts_obs_features_rules() { return ts::obs_features::PERSON_RULES; }
 
 // The observation in a model's own view: the base layout as the bits `features` edit and extend it

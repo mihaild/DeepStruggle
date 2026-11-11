@@ -33,8 +33,8 @@
     "vp": "[DEBUG] Set VP -> {{value}}"
   },
   "action": {
-    "spaceWalkPass": "{{side}} passes Eagle / Bear Has Landed (Box 6) turn-end discard opportunity.",
-    "spaceWalkDiscard": "{{side}} discards {{card}} (#{{id}}) via Eagle / Bear Has Landed (Box 6 privilege).",
+    "eagleBearLandedPass": "{{side}} passes Eagle / Bear Has Landed (Box 6) turn-end discard opportunity.",
+    "eagleBearLandedDiscard": "{{side}} discards {{card}} (#{{id}}) via Eagle / Bear Has Landed (Box 6 privilege).",
     "headlineCommit": "{{side}} commits Headline Card: {{card}} (#{{id}})",
     "headlineFaceDown": "{{side}} commits a Headline Card (face down until both are revealed)",
     "plays": "{{side}} plays Card: {{card}} (#{{id}})",
@@ -138,8 +138,8 @@
     "warFailed": "Roll Failed ({{total}} < {{threshold}} target)",
     "olympics": "Olympic Games Competition: Sponsor ({{sponsor}}) rolls {{sponsorRoll}} (+2 = {{sponsorTotal}}), Opponent ({{opponent}}) rolls {{opponentRoll}} -> {{result}}",
     "olympicsSponsor": "Sponsor {{side}} wins by +{{by}} (+2 VP)",
-    "olympicsOpponent": "Opponent {{side}} wins",
-    "olympicsTie": "Tie (No VP)",
+    "olympicsOpponent": "Opponent {{side}} wins (+2 VP)",
+    "olympicsTie": "Tie (shouldn't happen: a tie is re-rolled)",
     "summit": "Summit Rolls: US rolls {{usRoll}} (+{{usMod}} Dom = {{usTotal}}), USSR rolls {{ussrRoll}} (+{{ussrMod}} Dom = {{ussrTotal}}) -> {{result}}",
     "summitUs": "US wins Summit by +{{by}}",
     "summitUssr": "USSR wins Summit by +{{by}}",

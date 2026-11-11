@@ -339,7 +339,7 @@ web/ui/
    - **...and its rules**: each side plays the rule bits (`engine/AGENTS.md` §19) of whoever plays
      it -- `TSApp.seatSides()`, on every refresh and when the model or the auto-play side changes: the
      auto-play side its model's `obsFeatures`, a person's side every game rule bit
-     (`WasmEngine.currentRules`, the engine's `PERSON_RULES`: not P43's `CANONICAL_SETUP`, which
+     (`WasmEngine.currentRules`, the engine's `PERSON_RULES`: not P43's canonical orders, which
      orders a model's setup clicks, `engine/AGENTS.md` §21). So nothing a person is offered or suggested, readout and search
      included, is an Event that cannot fire, while an older model on the auto-play side keeps the
      rule it was trained with. `WasmEngine.mask(merged)` reads the seats and changes nothing.
@@ -656,6 +656,7 @@ PYTHONPATH=.:build/release .venv/bin/python -m pytest -q tests/web
 | `test_web_workbench.py` | the bundled rules metadata, the page's DOM, replay snapshots |
 | `test_game_stats.py` | `game/record.ts` and the stats Worker under node: two games played in the page's `GameSession` (a clean one, one with every mark) re-drive in the Python engine to the submitted final position, the page's summary is Python's, the log is under 7 bytes a step, a stored record plays back as a reload does, and the Worker keeps a game once, refuses another origin, a game without a login and the fourth an hour |
 | `test_i18n.py` | the language catalogs: every translation is of an English id with its parameters and the language's own plural forms, card/country/region names keyed by the rules' ids, every `data-i18n*` key in the two pages English and the markup reading as it |
+| `test_effects_panel.py` | the "in effect" panel covers every effect flag the display state exports (`bindings/state_json.cpp`), each in `EFFECT_INFO_MAP` with its words in `effects.json`; the flags that are no effect (how a game ended, Space Race attempts) are listed |
 | `test_e2e_game_stats.py` | in Chromium: a finished game opens the result dialog once with its notes (download only without an endpoint), Escape closes it without a take-back, the Result button reopens it; a forced die goes back to Auto once it has rolled; a reload plays the stored game back (same id, steps and undo) |
 
 The TypeScript under test in node (`tests/web/js/*.ts`) is bundled with the esbuild that ships

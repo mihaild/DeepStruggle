@@ -183,6 +183,18 @@ export const EFFECT_INFO_MAP: Record<string, EffectInfo> = {
     side: "US",
     duration: "PERMANENT"
   },
+  IRON_LADY_PLAYED: {
+    cardId: 83,
+    cardName: "The Iron Lady",
+    side: "US",
+    duration: "PERMANENT"
+  },
+  NORTH_SEA_OIL_PLAYED: {
+    cardId: 86,
+    cardName: "North Sea Oil",
+    side: "US",
+    duration: "PERMANENT"
+  },
   NORTH_SEA_OIL_ACTIVE: {
     cardId: 86,
     cardName: "North Sea Oil",

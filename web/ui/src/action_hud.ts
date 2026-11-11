@@ -68,7 +68,7 @@ function cardChoicePrompt(key: string, who: string): string | null {
     case "GRAIN_SALES_TO_SOVIETS": return t("hud:cardChoice.grainSales", { who });
     case "ASK_NOT_WHAT_YOUR_COUNTRY_CAN_DO_FOR_YOU": return t("hud:cardChoice.askNot", { who });
     case "TERRORISM": return t("hud:cardChoice.terrorism", { who });
-    case "SPACE_WALK_DISCARD": return t("hud:cardChoice.spaceWalk", { who });
+    case "EAGLE_BEAR_LANDED_DISCARD": return t("hud:cardChoice.eagleBearLanded", { who });
     default: return null;
   }
 }

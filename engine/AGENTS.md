@@ -245,7 +245,7 @@ and is mirrored in `ai/models/ladder_net.OBS_FEATURE_WIDTHS` (a test compares th
 | bit | name | width | contents |
 |:---|:---|---:|:---|
 | 1<<1 | `OPS_BUDGET` | 3 | at SELECT_PLAY_MODE, `Operations::grant_ops_for_card(pending_op_card, decider)/5`, else 0; my per-card Ops modifier; the opponent's (Containment/Brezhnev +1, Red Scare/Purge −1, summed) |
-| 1<<2 | `HEADLINE_REVEAL` | 0 | **no block: edits the base's card rows** (owner, 2026-10-20). While the side holding Man in Space alone chooses its headline, the opponent's -- chosen first and revealed (`SpaceRace::revealed_headline`) -- shows as `KNOWN_OPPONENT_HAND` with `ACTIVE_CARD` = `ACTIVE_NEXT`, as the second headline does while the first resolves; the base layout leaves it hidden. The one bit that changes base slots, so a model reads it only if trained with it and every other model's view is unchanged. A new network reads it by default since E8 (`tools/train.py --obs-features`) |
+| 1<<2 | `HEADLINE_REVEAL` | 0 | **no block: edits the base's card rows** (owner, 2026-10-20). While the side holding Man in Earth Orbit alone chooses its headline, the opponent's -- chosen first and revealed (`SpaceRace::revealed_headline`) -- shows as `KNOWN_OPPONENT_HAND` with `ACTIVE_CARD` = `ACTIVE_NEXT`, as the second headline does while the first resolves; the base layout leaves it hidden. The one bit that changes base slots, so a model reads it only if trained with it and every other model's view is unchanged. A new network reads it by default since E8 (`tools/train.py --obs-features`) |
 
 **The extractor computes each country's control once** (2026-10-06) and reads it everywhere —
 control features, realignment neighbour counts (from a list of the 112 borders), regional scoring
@@ -518,7 +518,7 @@ the same test the base frame uses. `finish_play_without_ops` unwinds the Event a
 depth guards on the base frame's owed Event stay: a pushed frame starts zeroed, which reads as
 OPS_FIRST. Tests: `PushedFrame.*` in `engine/tests/test_rules_audit.cpp`.
 
-## 17. Space Walk may not discard a scoring card (ENG-7, E8 in place, 2026-11-04)
+## 17. Eagle/Bear Has Landed may not discard a scoring card (ENG-7, E8 in place, 2026-11-04)
 
 Space Race box 6 lets its holder discard a held card at the end of the turn, and the discard runs
 before the held-card check (`end_turn`, then `finish_end_turn`). Its mask offered every card in the
@@ -527,7 +527,7 @@ E8's top network had learned to: holding a scoring card at that decision, it dis
 (4,000 sampled self-play games, 0.73% of them; none after the fix). Scoring cards may never be
 held (rules.md, the held-card invariant), so the mask now leaves them out; holding only a scoring card,
 the pass is all there is, and the check then ends the game. The step refuses one too, since the mask
-decides legality. Tests: `SpaceRace_Box6_SpaceWalk_*` in `engine/tests/test_card_edge_cases.cpp`.
+decides legality. Tests: `SpaceRace_Box6_EagleBearHasLanded_*` in `engine/tests/test_card_edge_cases.cpp`.
 
 ## 18. An event-first Event opens nothing to the Ops after it (ENG-8, E8 in place, 2026-11-06)
 
@@ -590,30 +590,48 @@ every influence and realignment target: a target is offered only if the Ops alre
 cost (its Influence cost, or 1 for a roll) fit the budget spending there keeps. 19 of 2,000 seeded
 random games play differently. Tests: `RegionBonusBudget.*` in `engine/tests/test_bugs_regression.cpp`.
 
-## 21. Canonical setup order -- a rule bit (P43 phase A, owner 2026-11-07)
+## 21. Canonical placement order -- two rule bits (P43, owner 2026-11-07)
 
 A run of one side's placements reaches the same board in many orders, so a per-step policy has no
-pressure on order (`research/plans/P43_canonical_placement_order.md`). `obs_features::CANONICAL_SETUP`
-(bit 4, no width, in `obs_features::RULES`) makes a seat place each **setup** run -- USSR 6; US 7; US
-2 -- in non-decreasing `MapData::placement_rank`, so every setup board has exactly one action sequence.
+pressure on order (`research/plans/P43_canonical_placement_order.md`). `obs_features::CANONICAL_FIRST`
+and `CANONICAL_LAST` (bits 4 and 5, no width, in `obs_features::RULES`, at most one per seat) make a
+seat place every **placement run** in non-decreasing rank of its order, so every board a run can reach
+has one action sequence. The helpers are `ts/canonical.hpp`.
 
-* **The order** (`MapData::placement_rank`, a permutation of 0..83): most important last, so a run that
-  strays past a country loses the least -- regions from least to most scoring weight (Africa, South
-  America, Central America, Asia, the Middle East, Europe), non-battlegrounds before battlegrounds within
-  each, Europe's battlegrounds last as Italy, France, West Germany, East Germany, Poland; ties by id.
-* **The floor** is `DecisionContext::canon_floor` (1 + the rank of the last country placed in the run,
-  0 before its first point). It is written only while the placing seat plays the bit, so it stays 0 in
-  every game without it (the behaviour digest is unchanged), and is reset where a setup run hands over to
-  the next. The setup mask drops countries below it; the setup step refuses them. A save writes it only
-  when set.
-* **No dead ends**: a setup run has no cap per country and no cost, so the last country placed stays
-  legal. Once the run reaches a country with nothing legal above it (Poland for the USSR), the rest is
-  forced and auto-advance plays it.
-* **Not in-game runs.** Ops runs pay 2 into an opponent-controlled country, so a canonical order can strand
-  an odd point that free order would spend lower down; that needs an exact completion check (phase B).
-  Event placements with a cap per country (Marshall Plan, one each) can dead-end outright (phase C).
-* **A person does not play it**: it orders a model's clicks, not the game, so the page's current rules
-  are `obs_features::PERSON_RULES` (every rule bit but this one).
+* **The runs** (`canonical::run_order`): the setup's three (USSR 6; US 7; US 2), every Ops influence
+  play (`DecisionContext::is_ops_influence_play`), and the event runs of `canonical::EVENT_CARDS` --
+  placement and removal runs each verified to reach exactly free order's boards. Coups, realignments
+  and every other event stay in free order.
+* **The order** (`MapData::placement_rank`, the important-last rank, a permutation of 0..83): regions
+  from least to most scoring weight (Africa, South America, Central America, Asia, the Middle East,
+  Europe), non-battlegrounds before battlegrounds within each, Europe's battlegrounds last as Italy,
+  France, West Germany, East Germany, Poland; ties by id. CANONICAL_FIRST is its reverse (83 - rank).
+* **The floor** (`DecisionContext::canon_floor`, `canon_tag`, `canon_left`): 1 + the rank of the last
+  country placed, the run it belongs to (`canonical::run_tag`, constant through a run) and the points it
+  left. `StateMachine::step` (around `step_impl`) writes them after a placement in a covered run and
+  clears them after anything else in the frame; only for a seat playing a canonical bit, so every game
+  without one is unchanged (the behaviour digest did not move). A save writes them only when set.
+* **The dead-end release** (owner): where a run has points left and free order has a target but none is
+  at or above the floor -- an Ops point that would cost 2, a capped event run that jumped too high --
+  the mask offers free order's targets for that choice, and the run goes on canonically from the
+  country chosen. So a run reaches exactly free order's boards, never more and never fewer; a board
+  reached through a release may also have a canonical sequence (uniqueness is lost only there).
+  CONFIRM_DONE still follows free order.
+* **V3, a learned order** (`obs_features::CANONICAL_LEARNED`, bit 6, owner 2026-11-07): the run's order is
+  the deciding network's own priority, its logits over the 84 countries at the run's first decision,
+  highest first. The engine cannot compute it, so the harness gives it: `canonical::priority_wanted` says a
+  LEARNED run is opening without its order, `canonical::set_run_priority` stores the ranks in
+  `GameState::canon_prio` (tagged with the run, cleared when it ends; saved only when set). A placement in a
+  LEARNED run without its order is **refused** unless it is forced (one legal target), so a harness that forgets
+  fails loudly instead of playing some order nobody gave.
+* **Seeing the run's order** (owner): `obs_features::PLACEMENT_LEGAL` (bit 7) puts the decider's legal mask in
+  slot 19 during its placement decisions -- correct, but it changes the slot at 71% of them and made V1 worse at
+  400M. `PLACEMENT_ORDER` (bit 8, 2026-11-08) keeps slot 19 as access and marks only the countries the run's order
+  blocks now as 0.5 (0 no access, 1 access), while a floor is in force and not released. Both edit a base slot at no
+  width, so only a model trained with the bit reads them so.
+* **A person plays none of them** (`obs_features::PERSON_RULES` for the page's current rules).
 
-Tests: `CanonicalSetup.*` in `engine/tests/test_canonical_setup.cpp` (every USSR and US setup board
-reached by exactly one sequence, exhaustively); `tests/bindings/test_canonical_setup.py`.
+Tests: `CanonicalPlacement.*` in `engine/tests/test_canonical_placement.cpp` -- every setup board reached
+by exactly one sequence, exhaustively, for both orders; and on Ops plays and covered event runs from 120
+random games, the boards a canonical seat reaches equal free order's, exhaustively per run, for both
+orders. `tests/bindings/test_canonical_placement.py`.

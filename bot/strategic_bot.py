@@ -86,9 +86,9 @@ class StrategicBot(BaseBot):
         if d_type == 1:
             res_card = ctx.get("resolving_card", 0)
 
-            # Event sub-decisions (e.g. Blockade discard, Space Walk)
+            # Event sub-decisions (e.g. Blockade discard, Eagle/Bear Has Landed)
             if res_card > 0:
-                if res_card == 250:  # Space Walk (Box 6) turn-end discard
+                if res_card == 250:  # Eagle/Bear Has Landed (Box 6) turn-end discard
                     opp_cards = [
                         cid
                         for cid in valid_ids
@@ -97,11 +97,11 @@ class StrategicBot(BaseBot):
                     if opp_cards:
                         chosen = opp_cards[0]
                         c_name = ts_engine.CardData.get_card_name(chosen)
-                        strat = f"Space Walk Privilege (Box 6): Discarding enemy card #{chosen} '{c_name}' at turn end."
-                        comm = f"Utilizing our Space Walk advantage to safely discard enemy card '{c_name}'."
+                        strat = f"Eagle/Bear Has Landed Privilege (Box 6): Discarding enemy card #{chosen} '{c_name}' at turn end."
+                        comm = f"Utilizing our Eagle/Bear Has Landed advantage to safely discard enemy card '{c_name}'."
                         return {"decision_type": d_type, "primary_id": chosen, "secondary_id": 0, "flags": 0}, strat, comm
                     elif allow_early_stop:
-                        strat = "Space Walk Privilege (Box 6): Retaining current hand (passing discard)."
+                        strat = "Eagle/Bear Has Landed Privilege (Box 6): Retaining current hand (passing discard)."
                         comm = "Our hand is strategically solid; no discard necessary."
                         return {"decision_type": d_type, "primary_id": 0, "secondary_id": 0, "flags": 128}, strat, comm
 

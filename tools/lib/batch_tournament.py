@@ -16,7 +16,7 @@ from tools.lib.game_step import IllegalActionError
 from tools.lib.leaderboard import _Binomial, _newton
 from tools.lib.openings import ScriptedSetupOverride
 from tools.lib.scripted_rules import SCRIPTS
-from bindings.ts_env import agent_view
+from bindings.ts_env import CANONICAL_LEARNED, agent_view, give_run_priorities, refuse_learned_order
 from tools.lib.player_agent import BatchActor, BatchSelector, NeuralAgent, PlayerAgent, resolve_device
 from ai.game_length import ply as game_ply
 from ai.search.turn_pricing import Candidate, price, priceable
@@ -204,14 +204,22 @@ def _choose_actions(
         with torch.no_grad():
             act_t, _, _, _, _ = agent.model.sample_action(obs_t, mask_t, temperature=temperature,
                                                           deterministic=greedy)
+            if agent.obs_features & CANONICAL_LEARNED:
+                # P43 V3: the runs opening here take their order from this network's own logits.
+                logits_t, _, _ = agent.model(obs_t, mask_t)
+                full = np.zeros((len(actions), logits_t.shape[1]), dtype=np.float32)
+                full[indices] = logits_t.float().cpu().numpy()
+                give_run_priorities(runner, full, rows=indices)
         actions[indices] = act_t.cpu().numpy()
     elif isinstance(agent, BatchActor):
+        refuse_learned_order(getattr(agent, "obs_features", 0), "an ONNX agent")
         # A network outside torch (OnnxAgent): the same observations and masks, one call.
         sel_obs = np.asarray(obs[indices])
         _assert_width(agent, sel_obs)
         actions[indices] = agent.act_batch(sel_obs[:, :agent.obs_size], masks[indices],
                                            temperature, greedy)
     elif isinstance(agent, BatchSelector):
+        refuse_learned_order(getattr(agent, "obs_features", 0), "a searcher")
         # A searcher pays for batching: one call over every game waiting on it,
         # rather than one call per game. Measured at 64 simulations, a batch of
         # 256 roots runs at 103 decisions/s against roughly 0.4/s one at a time.
@@ -957,9 +965,16 @@ class BatchMatchRunner:
                         _assert_width(agent, np.asarray(obs[rows[:1]]))
                     rows_t = torch.from_numpy(rows).to(dev)
                     with torch.no_grad():
+                        sel_obs = obs_dev.index_select(0, rows_t)[:, :want]
+                        sel_mask = mask_dev.index_select(0, rows_t)
                         act_t, _, _, _, _ = agent.model.sample_action(
-                            obs_dev.index_select(0, rows_t)[:, :want], mask_dev.index_select(0, rows_t),
-                            temperature=t_ag, deterministic=g_ag)
+                            sel_obs, sel_mask, temperature=t_ag, deterministic=g_ag)
+                        if agent.obs_features & CANONICAL_LEARNED:
+                            # P43 V3: the runs opening here take their order from this network's own logits.
+                            logits_t, _, _ = agent.model(sel_obs, sel_mask)
+                            full = np.zeros((n, logits_t.shape[1]), dtype=np.float32)
+                            full[rows] = logits_t.float().cpu().numpy()
+                            give_run_priorities(runner, full, rows=rows)
                     act_dev.index_copy_(0, rows_t, act_t.long())
                 else:
                     _choose_actions(agent, rows, obs, masks, d_players, runner, t_ag, g_ag, dev,

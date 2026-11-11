@@ -416,6 +416,311 @@ next run is one branch from 800M with both** (lr 1.5e-4 and the setup-scoped ter
 question, and attribution is a second branch only if the first works. If the US has come back on its
 own, the rate alone is the remedy question, as decided.
 
+**J5's 800M read (2026-11-06, from [`../runs.md`](../runs.md)): 33.1% ± 1.1 against A13+R48's SWA (US 28.1 /
+USSR 37.1) against J1's 30.4% -- +9.7 over 400–800M (J1 +14.4), ~3 ahead at matched steps on the SWA read, and the
+US seat recovered (18.0 → 28.1) without West Germany** (US France 3, Canada 2, Italy 2, Iran 1, Philippines 1 in
+66%; USSR Poland 6 in 100%; P(WG) at the US setup still 0.4% per placement, 1.5% of T=1 setups). Raw, the lead
+is gone: 24.6% against J1's raw 25.6% at 800M, and **head to head J1 400M beats J5 400M 58.4% (J5's US without
+West Germany loses 71% to J1's USSR) while 800M against 800M is level, 49.6%.** So J5's lead over J1 is against
+the reference only, and the slowdown read at 400M did not need the branch: the US seat came back on its own,
+and neither the rate branch nor the setup-scoped term was launched. **Paused at 930M (owner, 2026-11-06) and
+branched as `E8-A35-R102-S44@930M+R119`** -- R119 is pure win/loss (`--reward-scheme terminal
+--no-blunder-window`, no held-scoring or DEFCON-1 blunder treatment), the owner's default target from
+`37da536`, after R118 (`--no-held-scoring-blunder`) cost nothing on J1's line (60.6% at 14,400M against 60.4%)
+and halved T=1 held-scoring losses, and R119's branch read level (59.3%); the from-scratch A8 reads are R118 16.9%
+and R119 17.3% at 400M against J1's 16.0%. The 2,000M gate is read on this branch (~22:00 UTC, 2026-11-08).
+Meanwhile the owner's canonical placement order is built as [P43](P43_canonical_placement_order.md) (rule bits
+V1 `canonical_first` / V2 `canonical_last`, the V code for views; the free-order DAG correction assessed there),
+and P42's build is merged as a view beside it.
+
+**1,200M (2026-11-07, on the R119 continuation; stopped at 1,130M for main's ENG-9/ENG-10 rebase and resumed in
+place): 36.4% ± 1.1 against A13+R48's SWA (US 33.8 / USSR 38.1)** against J1's 33.5 (29.3 / 36.8) and J1′
+(`E8-A8-R103-S44`) 35.8 (30.4 / 40.2) at 1,200M. Raw head to head, 2,000 greedy games: **J5 beats J1 53.1%** (as US
+56.7, as USSR 48.1), J5 against J1′ 50.4%, J1 against J1′ 44.2%; the matched-step series (400 / 800 / 1,200M): J1
+against J5 58.6 / 50.3 / 46.9, J5 against J1′ 40.0 / 46.2 / 50.4 -- **J1′ led early, J5 caught up by 1,200M, J1 is the
+slowest** (`data/reports/j1_j5_j1p_{400,800,1200}M.json`). Setups at 1,200M (T=1): J5's US never controls West
+Germany (any WG 25.5%, WG ≥ 4 0%); J1 at 1,200M 100% WG (89.9% ≥ 4) but J1 at 13,600M also drops it (11.0% any,
+0% ≥ 4); J1′ keeps it (99.9%) and puts Yugoslavia in 99.2% of USSR setups. Next reads 1,600M (~04:30 UTC) and the
+2,000M gate (~22:00 UTC, 2026-11-08). P43 is built for every placement run; its launch waits on the owner's GPU and
+order decision.
+
+**J5 through the 2,000M gate and past it (2026-11-08/09, [`../runs.md`](../runs.md)), against A13+R48's SWA, J1 and
+J1′ at matched steps:**
+
+| step | J5 (A35 3×128) | J1 (A8, R102) | J1′ (A8, R103) | J5 vs J1 head to head |
+|---:|---:|---:|---:|---:|
+| 200M | 21.1 | 11.8 | | |
+| 400M | 23.4 | 16.0 | | 41.4 |
+| 800M | 33.1 | 30.4 | | 49.7 |
+| 1,200M | 36.4 | 33.5 | 35.8 | 53.1 |
+| 1,600M | 30.8 | 35.5 | 39.2 | 46.7 |
+| 2,000M | 38.7 | 38.6 | 40.1 | 54.2 |
+| 2,400M | 36.4 | 41.0 | 41.4 | 45.7 |
+
+(J5 on R119, pure win/loss, from 930M; J1 continues 44.8 → 48.5% over 4,400–7,600M.) A 10M sweep shows J5 flat
+against the reference from ~1,200M and slipping from ~1,450M, no discontinuity at any resume; its DEFCON-1 endings
+in training rose 12.7 → 16.6% over 1,200–1,600M; its openings keep churning (US back to West Germany 2 at 2,000M;
+USSR Poland/Romania → Bulgaria/Poland). **Reading (2026-11-10): the gate is passed by the letter (level at 2,000M)
+and failed in substance** -- J5 learns the early game about twice as fast as A8 and has made no net progress since
+1,200M, swinging 5–8 points between reads where J1's reads are monotone; by 2,400M it is 5 behind both A8 lines
+and loses head to head. Two readings fit, and they are told apart cheaply, so **not saturation at the current
+settings** (10,000M ≈ 18 days at 6.5k steps/s): (i) the step size -- per-update KL was 2.3× J1's at 400M and
+rising, never lowered; non-monotone reads and opening churn are its signature; the fix is the branch deferred at
+400M, `E8-A35-R102-S44@930M+R119@2000M+lr1.5e-4` from the 38.7 state, read at +400M / +800M against J5's own
+continuation (36.4 at 2,400M) and J1's 41.0 / ~44; (ii) capacity at 3×128 -- a plateau at ~36–39 where A8 keeps
+climbing, in which case the lower rate stabilises but does not climb and the question becomes 3×192 or more
+layers (J5 was always meant to be sized by the gate). Also open: the recipe confound -- J5 switched to R119 at
+930M and stalled ~300M later with DEFCON-1 endings rising; the A8 R119 control stopped at 410M, so there is no
+matched A8 read on R119 past that, and J5's own curve cannot separate the recipe from the architecture. Before the
+branch, three numbers the running session can pull without training: J5's per-update KL and clip fraction over
+1,200–2,400M beside J1's; DEFCON-1 endings per 100M beside J1's and the A8-R119 run's; parameter counts for A35
+3×128 against A8, so "capacity" has a number. What we already understand: the token transformer is the faster
+learner at matched steps to ~1,200M and the human US opening is reachable for it unprompted; whether it has a
+higher ceiling is unanswered, and the current run cannot answer it.
+
+**The three numbers (running session, 2026-11-10; `training_metrics.jsonl`, the 2,400M weights):**
+
+1. *Step size: still ~2× J1, no longer rising.* Per-update KL ×10⁻³, J5 / J1: 2.52 / 1.03 at 1,200–1,300M, 2.13 /
+   0.97 at 1,600M, 1.84 / 0.92 at 2,000M, 1.81 / 0.89 at 2,300–2,400M; clip fraction 19.2 / 15.5% → 17.5 / 14.4%;
+   KL to π_ref 7.1 / 3.3 → 5.2 / 2.9. The ratio peaked at ~400M (3.13 / 1.42) and J5's own KL has fallen steadily
+   since 1,200M -- the stall began as the step was shrinking, so the rate is not the whole story, though J5 still
+   takes twice J1's step with three more points clipped.
+2. *Self-inflicted DEFCON-1 endings: J5's excess is architectural and predates R119.* Per 100M, J5 / J1: 12.7 / 11.1
+   at 1,200M, peaking 16.7 / 10.4 at 1,500M, 13.5 / 8.8 at 2,300M -- J1 falls steadily from 11 to 9, J5 sits at
+   13.5–14.5. At 300–400M, all three runs on their first recipe: J5 (R102) 16.2, J1 (R102) 11.1, A8 on R119 12.5;
+   R119 costs an A8 about +1.4 at 400M. Provoked DEFCON-1 is also ~2 points above J1 (12.1 vs 10.5). **The recipe
+   confound is cleared: the excess was there on R102 from the start.**
+3. *Parameters are equal:* A35 1,619k (token transformer 792k + fusion 186k = 978k trunk) against A8 1,485k (914k
+   trunk), ~9% more overall; the heads are the same size. The difference is compute (~16× per step) and inductive
+   bias, not parameter count -- so "capacity" cannot mean parameters; if it means anything it means **width per
+   token** (128, spread over per-type MLPs) against A8's wide fused representation.
+
+**Revised reading.** Three candidates, in the order to test them. (a) *The DEFCON-1 excess, 5 points above J1 from
+the first recipe on, is the one concrete architectural defect, and its mechanism is not yet known.* My first guess --
+the global token not reaching the per-country decision -- is wrong on the weights (running session, 2,400M): both
+models run `head_context`, so every per-country logit reads a 64-wide projection of the trunk hidden, which in J5
+is built from the global token's output and the per-type means, and the choice to coup at all goes through the
+branch and play-mode heads, which read the trunk directly in both. What can still differ is the width of the path
+(DEFCON squeezed through a 64-d context beside a 128-d token, where J1's whole trunk is the global mix) or the
+trunk summary itself (global output + type means) losing what a DEFCON-2 coup needs. **A no-training probe first:**
+on identical positions at matched steps, P(coup in a battleground | DEFCON 2) and P(any DEFCON-suicide action | it
+is legal), J5 against J1, and whether J5's excess sits in those positions; only then an A code -- the candidates are
+a wider head context, or the global DEFCON float broadcast into every country token's input MLP (a network-side
+routing of a float the observation already holds, not a layout change) -- read from scratch at 3×128 against J5's
+own 23.4% at 400M (17 h). **The probe is requested (owner, 2026-11-10), as P41b:** one shared position set drawn
+half from each lineage's games, both networks scored on it at 2,400M (400M and 1,200M if cheap); the suicide mass
+split by kind (battleground coup, DEFCON-lowering event, opponent card for Ops) and the coup split by stage -- the
+play-mode head's mass on a coup at all (reads the trunk directly) against the per-country head's mass on
+battlegrounds given a coup (reads the 64-d context) -- with the critic's value at the same positions. An excess in
+the first stage points at the trunk summary, in the second at the context path, in events at the card tokens, and
+none on shared positions means J5 reaches these states more often rather than misplaying them. (b) *Width:* 3×192 as planned, ~2× slower, from scratch, the same
+400M read. (c) *The rate:* the lr 1.5e-4 branch from 2,000M, read at +400M against J5's 36.4 -- cheapest, but the
+KL trajectory now says it stabilises at best. Not saturation under any of them until one of the three moves the
+400M or the +400M read.
+
+**P41b, the result (running session, 2026-11-10; `data/reports/p41b_defcon.md`): candidate (a) is closed as an
+architecture defect -- J5 plays a DEFCON-2 position as safely as J1 does and loses more by being in more of them,
+and in more dangerous ones.** 200 T=1 self-play games per lineage at 2,400M, every action-round card choice at
+DEFCON 2 by the phasing player where some completion of the card play loses by DEFCON 1 (90% of all DEFCON-2 card
+choices): 28,654 positions, 15,341 from J5's games and 13,313 from J1's, both networks scored on all of them.
+
+| suicide mass per position, % | J5 | J1 | paired difference |
+|---|---:|---:|---:|
+| all positions | 0.23 | 0.21 | +0.02 ± 0.01 |
+| positions from J5's games | 0.26 | 0.26 | 0.00 ± 0.02 |
+| positions from J1's games | 0.20 | 0.17 | +0.04 ± 0.02 |
+| decider US / USSR | 0.25 / 0.21 | 0.20 / 0.23 | +0.05 / −0.01 (± 0.02) |
+
+* *Per decision, nothing to fix.* On J5's own distribution the two networks are level; ± 0.02 points of mass over
+  J5's 77 such positions a game bounds the per-decision share at about ± 1.5 points of games, against the excess
+  below. The trend has no stable sign either (scored on the same 2,400M positions: +0.04 at 400M, **−0.17** at
+  1,200M when J1 was the worse one, +0.02 at 2,400M).
+* *By stage, a real but small tilt.* J5 chooses a coup more often when a safe target exists (17.2 against 13.3% of
+  card plays; +4 to +6 at 400M and 2,400M, both seats) and sends more of those coups to a battleground (1.17
+  against 0.70%); where only battleground targets remain it is the *safer* one (from the tables, about 0.3 against
+  0.5–0.6% of card plays). The context path does leak twice J1's rate, but the product is hundredths of a point of
+  mass: neither the 64-d head context nor the trunk summary accounts for the ending gap. **The wider-context and
+  DEFCON-broadcast A codes lose their reason and are dropped.**
+* *The critic sees the loss:* after a coup that its own head sends to a battleground, v = −0.915 (J5), −0.903 (J1).
+  The policy is not blind and the value is not missing it. (Aside: on the same positions J5's critic rates the USSR
+  seat 5.7 points higher than J1's does, 8.4 at 1,200M and 10.5 at 400M -- a seat-balance disagreement between the
+  two critics, not a DEFCON matter; calibrating each on its own games' outcomes would say who is right.)
+* *The excess is exposure.* DEFCON-2 card choices a game: J5 85.1, J1 73.7 (+15%). Danger per position, under one
+  network (J1's): 0.26 on J5's positions against 0.17 on J1's (×1.5). Expected suicides a game, positions × mass on
+  its own games: 0.20 against 0.11, **×1.8, the observed ratio** (own-decision DEFCON-1 losses 11.0 against 6.5% of
+  these games; training's 13.5 against 8.8) -- about ×1.15 from more DEFCON-2 decisions, ×1.5 from more dangerous
+  ones, ×1.0–1.2 from J5's own play. One visible part of "more dangerous": of the card plays that could coup a
+  battleground, 33% have no safe coup target on J5's boards against 25% on J1's.
+* *Not located:* the opponent-decided endings (32 against 16 of 200 here; training's far larger sample says 12.1
+  against 10.5, so most of that doubling may be the 200 games). The mass on an opponent's card whose event fires
+  predicts about 12 such endings in J5's games, not 32, so they sit mostly outside these positions (headline, DEFCON
+  3, or the branches the bounded search left unsettled and counted safe).
+* Caveats as given: the bounded lethality search, and the 400M / 1,200M pairs scored on 2,400M positions.
+
+**What this changes.** The DEFCON-1 excess is a property of the game J5 plays -- longer at DEFCON 2, with fewer
+safe coup targets, and readier to coup -- not a routing fault a flag would fix, so no architecture run follows from
+it. It also stops being evidence about the stall: a self-play ending rate does not say J5 loses its *reads* that
+way. **The number that does, from games already on disk and nothing new played:** the endings of the 2,400M read
+games, J5's against J1's -- if J5's 4.6-point deficit (36.4 against 41.0) is DEFCON-1 losses, exposure is the stall
+and the question is why J5 lives at DEFCON 2; if the DEFCON-1 losses are level there, the stall is elsewhere and
+only (b) and (c) are left. Beside it, from the same 400 probe games: whether the +15% is longer games or a larger
+share of each turn at DEFCON 2 (and who takes it there, in which action round), the safe coup targets per position,
+and the opponent-decided endings by phase, DEFCON level and card. Of the training candidates, (c) the lr 1.5e-4
+branch from 2,000M is now first (two days, no new code) and (b) 3×192 from scratch second; both are the owner's
+to start.
+
+**The endings of the reads (running session, 2026-11-10; the stored `recipe_*_vs_a13.json`, nothing new played):
+DEFCON is not the deficit -- it is the USSR seat, on points.** DEFCON-1 losses in 2,000 read games at 2,400M: own
+decision J5 15, J1 15, J1′ 9; opponent's decision 79, 66, 57 -- and 12 / 14 / 10 and 82 / 79 / 68 at 2,000M, where
+the three were level. Of J5's 94 extra losses against J1 at 2,400M, 0 are own-decision DEFCON-1, 13
+opponent-decided, and 81 everything else, nearly all as USSR (574 against 481: 20 VP +39, final scoring +37,
+Wargames +14). **The self-play DEFCON excess does not carry into the reads; candidate (a) is closed in its exposure
+form too.** The exposure split and the opponent-decided endings of the probe games were not kept (the games lived
+in memory); not worth a rerun now. The probe's expected counts, for the record: 39.8 lethal card plays in J5's 200
+games (coup 24.1, opponent's card 11.8) against 22.3 in J1's (coup 11.8, opponent's card 4.6).
+
+Per seat, every gate read (score %, 1,000 deals a seat, so ± 1.5 on a cell and ± 2.2 on a difference):
+
+| step | US: J5 | J1 | J1′ | USSR: J5 | J1 | J1′ |
+|---|---:|---:|---:|---:|---:|---:|
+| 200M | 19.5 | 10.9 | | 22.8 | 12.8 | |
+| 400M | 18.2 | 14.6 | 13.8 | 28.4 | 17.4 | 18.4 |
+| 800M | 28.6 | 26.7 | 27.9 | 37.6 | 34.0 | 35.3 |
+| 1,200M | 34.2 | 29.7 | 31.1 | 38.7 | 37.4 | 40.6 |
+| 1,600M | 29.6 | 33.8 | 38.9 | 32.0 | 37.2 | 39.6 |
+| 2,000M | 38.9 | 36.8 | 38.6 | 38.5 | 40.5 | 41.5 |
+| 2,400M | 36.1 | 35.5 | 38.5 | 36.6 | 46.5 | 44.2 |
+| 2,800M | 33.6 | 38.6 | 44.1 | 37.5 | 48.0 | 49.0 |
+| 3,200M | | 39.5 | 45.4 | | 50.6 | 48.2 |
+
+* **J5's US seat is not behind**: at or above J1's at six of seven gates, level at 2,400M (36.1 / 35.5), 2.4 under
+  J1′, inside the noise.
+* **J5's USSR seat has not moved since 800M** (37.6, 38.7, 32.0, 38.5, 36.6) and was level with A8's through
+  2,000M (2–3 behind, noise). **The whole 2,400M deficit is the A8 lines' USSR gain between 2,000M and 2,400M**
+  (J1 40.5 → 46.5, J1′ 41.5 → 44.2), which they kept (48–50 by 2,800–3,200M) and J5 has not made. J1's own USSR sat
+  at 37 from 1,200M to 1,600M before it moved.
+* The USSR losses are on points -- 20 VP and final scoring, no one ending -- and J5's swing between snapshots
+  (final-scoring losses as USSR 175, 180, 136, 196 at the last four gates; the same 2,400M snapshot loses 213 that
+  way to J1 against 129 at 2,000M) is as large as the gap. Head to head at 2,400M is no seat story: 46.2 as US,
+  45.2 as USSR.
+
+**So "flat since 1,200M and 5 behind" was too coarse: one seat is level with A8, the other is one read interval
+behind an A8 gain.** Two readings, and a read already on its way tells them apart at no cost: J5 is running (2,620M
+at 10:56 UTC, 2,800M about eight hours later). **At 2,800M, J5's USSR seat against A8's 48–49:** still under ~40
+makes it a 2,000M-long plateau in one seat while the same recipe moves the other architecture -- then the lr 1.5e-4
+branch (c), judged on the USSR seat; at 43 or more it is late, not stuck, and the run simply continues. No branch
+before that read. What the A8 USSR learned between 2,000M and 2,400M (the behaviour reports of J1 at the two steps,
+USSR seat, against J5's 2,400M) is the no-training question behind it.
+
+**The behaviour reports, read (2026-11-10; nothing run).** No report exists at 2,400M for either line, so this is
+J5 at 2,000M beside J1 at 2,000M, 4,000M and 13,600M and the reads' opponent (its lineage's report at 12,000M),
+all greedy self-play. Setups are one placement per seat unless a share is given; the last four columns are how
+often the USSR events its own card (H = as headline).
+
+| | USSR setup | US setup | De Gaulle | Suez | Blockade | Quagmire |
+|:---|:---|:---|---:|---:|---:|---:|
+| reference, 12,000M | Poland +3, Yugoslavia +3 | West Germany +4, Italy +3, Iran +1, Panama +1 | 18% | 34% | 50% | 90% |
+| J1, 2,000M | Czechoslovakia +3, Poland +3 | West Germany +4, Greece +2, Italy +2, Iran +1 | 14% (H 7) | 21% (H 8) | 58% | 87% |
+| J1, 4,000M | Poland +3, Yugoslavia +3 | West Germany +4, Italy +2, Spain/Portugal +2, Iran +1 (61%) | 10% (H 1) | 19% (H 9) | 53% | 87% |
+| J1, 13,600M | Finland +3, Poland +3 | France +3, Italy +3, Canada +2, Iran +1 (57%; France +3 or +4 in all) | 57% (H 36) | 67% (H 48) | 24% | 70% |
+| **J5, 2,000M** | Bulgaria +3, Poland +3 | France +3, Italy +3, West Germany +2, Iran +1 (98%) | 77% (H 43) | 69% (H 30) | 26% | 28% |
+
+* **J5 at 2,000M plays the Europe J1 has only by 13,600M, not the one J1 and the reference play at this stage.**
+  Its US holds France from the setup and leaves West Germany at +2; its USSR spends De Gaulle and Suez as events
+  (three times in four, often as the headline) and Blockade as Ops. J1 at 2,000M and 4,000M is the reference's
+  family: West Germany +4, France empty, the two France events played for Ops four times in five. The France
+  Europe is no defect in itself -- J1 reads 63.1 / 64.0 against the reference from it at 13,600M.
+* **The seat split exists only against the reference.** The same seats against three opponents (greedy; the
+  self-play rows are the 2,000M reports, the others the 2,400M matches, so read the pattern and not the last
+  point):
+
+  | USSR seat, against the US of | J1 | J5 | J5 - J1 | | US seat, against the USSR of | J1 | J5 | J5 - J1 |
+  |:---|---:|---:|---:|---|:---|---:|---:|---:|
+  | J5 (holds France) | 53.8 | 51.4 | -2 | | J5 | 54.8 | 47.7 | -7 |
+  | J1 (France empty) | 49.4 | 45.2 | -4 | | J1 | 49.1 | 46.2 | -3 |
+  | the reference (France empty) | 46.5 | 36.6 | -10 | | the reference | 35.5 | 36.1 | +1 |
+
+  Head to head J1 leads by about four in each seat (54.8 as US, 53.8 as USSR at 2,400M). Against the reference the
+  same eight points fall as zero on the US seat and ten on the USSR seat. So the USSR deficit of the last block is
+  a fact about J5's USSR *against this opponent's US*, not about J5's USSR.
+* **A candidate reason, not tested:** J1's USSR meets the reference's US Europe in every game of its own self-play
+  at this stage, and J5's USSR never does -- its training opponent holds France +3 from the first placement, and
+  the cards it has learned to spend as events are the two that act on a held France. The reads store outcomes
+  only (no setups, no card plays), so the stored games cannot say what J5's USSR does when France is empty; a
+  behaviour census of J5 as USSR against the reference would. Not requested: it explains a number, it does not
+  change what is run.
+* **J5's snapshots swing together on both yardsticks:** against the reference 36.5, 30.8, 38.7, 36.4 (both seats,
+  1,200M to 2,400M) and head to head against the same-step J1 46.7, 54.2, 45.7 (1,600M to 2,400M) -- low, high,
+  low on both, about four points either way, while J1 climbs two a gate. J5 was ahead of J1 head to head at
+  2,000M. One gate cannot order the two lines closer than that swing.
+
+**What this does to the 2,800M rule.** The reference's USSR-seat number alone can call a match-up a plateau, so it
+is read beside the head to head against J1 at 2,800M (the match already played at each gate), per seat. A plateau
+is both: the USSR seat still under ~40 against the reference *and* J5 under 50 in both seats head to head, a
+second low gate running. Head to head back at 50 with the reference's USSR seat still low is the reference's
+Europe, not J5's training, and no reason for the lr branch. Level or ahead on both is late, not stuck. Either way
+the run continues through the read; a branch waits for the owner.
+
+**The 2,800M gate (2026-11-10, 19:00 UTC): a plateau by the rule, on both yardsticks.** Numbers from the stored
+JSON (`recipe_*_2800M_vs_a13.json`, `j5_vs_j1_2800.json`), 1,000 deals a seat, greedy.
+
+| 2,800M | J5 | J1 | J1′ |
+|:---|---:|---:|---:|
+| against the reference, both seats | 35.5 | 43.4 | 46.6 |
+| as US | 33.6 | 38.6 | 44.1 |
+| as USSR | 37.5 | 48.0 | 49.0 |
+| J5 head to head against J1 at the same step | 44.1 as US, 44.4 as USSR | | |
+
+* **Against the reference J5 has read 36.5, 30.8, 38.7, 36.4, 35.5 from 1,200M to 2,800M** -- no net movement in
+  1,600M steps (68 hours of the GPU) -- while J1 on the same recipe went 33.5 → 43.4 and J1′ 35.8 → 46.6. The
+  deficit is now in both seats (US -5.0, USSR -10.5 against J1); the US seat, level at 2,400M, fell 2.5.
+* **Head to head it is the second low gate running:** J5's score against the same-step J1 is 49.6, 53.1, 46.7,
+  54.2, 45.7, 44.2 from 800M, under 50 in both seats at 2,400M and at 2,800M. A J5 standing still against a J1
+  that gains ten points on the reference would fall from 53 to about 43, which is what it did. So the match-up
+  reading of the last block does not rescue the number: the reference's Europe may cost J5's USSR a few points
+  more, and J5 is behind J1 without it.
+* **The endings do not move:** DEFCON-1 losses 24 own and 66 opponent's of 1,278 (J1 16 and 60 of 1,119), as at
+  the last two gates. The extra losses are on points in both seats (20 VP 730 against J1's 608; Wargames 157
+  against 121).
+
+**So the answer to "run to saturation?" is no, not at these settings.** A 3×128 token transformer under
+R102 → R119 at lr 3e-4 learns the first 1,200M about twice as fast as A8 and then stops, and 10,000M of it would be
+18 days for a curve that has been flat for the last 1,600M. What is not known is which of three things stops it,
+and they point at different runs:
+
+1. *It no longer learns at all* (too large a step for this trunk, the policy circling: the reads swing four points
+   and the openings churn). Fix: the lr 1.5e-4 branch (c).
+2. *It learns, but only to beat itself* -- a private meta (the France Europe is one sign) that outside yardsticks
+   do not reward. Fix: neither the rate nor the width; the pool.
+3. *It is at the capacity of 128-wide tokens.* Fix: 3×192 from scratch (b), 400M in ~28 h, 1,200M in 3.5 days.
+
+**One match separates 2 from 1 and 3 before any training: J5 at 2,800M against J5 at 1,200M** (stored pool
+snapshots, 2,000 games, about half a minute). Near 50% it has learned nothing in 1,600M by its own measure either
+(1 or 3); at 58% or more it has kept learning against itself while standing still against J1 and the reference
+(2). Requested from the running session with the gate.
+
+**The self-match (2026-11-10, `j5_2800_vs_j5_1200.json`): 53.6% ± 1.1 for the 2,800M snapshot** (raw snapshots,
+1,000 deals a seat, greedy; 49.6 as US and 57.6 as USSR, the split not corrected for the USSR seat's self-play
+edge, so only the total is read). That is between the two marks: about +25 Elo by its own measure in 1,600M
+steps, over which J1 gained ten points on the reference (roughly +70). **Reading 2 is out** -- J5 is not
+learning a private game that the outside yardsticks miss; what little it gains against its older self is all it
+gains. It is not a full stop either: slow learning, a third of A8's pace or less, with a four-point swing on top.
+Readings 1 and 3 stand, the recommendation below is unchanged, and the pool is not the lever.
+
+**J5 stopped (owner, 2026-11-10 ~20:00 UTC)** at ~2,853M; resumable in place, latest snapshot 2,850M. The GPU is
+free. No branch is launched: the lr 1.5e-4 + entropy-0 branch (from the 2,800M snapshot, the state the gate
+read) and 3×192 from scratch both wait on the owner.
+
+**Recommended next run, the owner's to start:** stop J5's main line at its next snapshot and give the GPU to one
+branch from the 2,800M state, `...@2800M+lr1.5e-4`, with `--entropy-coef 0` beside it (R103's form: J1′ is ahead of
+or level with J1 at every gate but one from 1,200M to 8,000M, and P41 already reserved it for J5's next branch), read at +400M and
++800M (17 and 34 hours) against the plateau's band of 31–39. Two changes in one branch is deliberate: if it does
+not leave the band both are cleared in a day and a half and the question is width; if it does, one further
+branch says which. The main line needs no continuation beside it as a control -- five flat gates are the
+control, and a second trainer would halve both. 3×192 from scratch waits on that read: it needs 3.5 days to reach the
+step where the plateau began, against 17 hours to the branch's first read. The recipe confound stays open and unpriced: J5 moved to R119
+(pure win/loss) at 930M and stalled about 300M later, and no A8 run on R119 from scratch exists past 410M.
+
 ## The until-control macro (proposed by the owner from J5's hole; assessed 2026-11-06, nothing built)
 
 **Now specified as [P42](P42_until_control_macro.md)** (owner's go, 2026-11-06; spec only, the engine work still
@@ -509,6 +814,77 @@ proposal -- the country softmax as now plus a per-country Bernoulli amount, P(c,
    a warm start, and D6/D7 is the record on those; a from-scratch 400M is 17 h. Naming by precedent:
    a view was an engine sub-version (E4.1), so **E8.1**, and the run `E8.1-A35-R<n>-S44` (owner to
    confirm the code).
+
+## The regularisers in decided states (owner's question, 2026-11-08)
+
+Should the entropy bonus be scaled by outcome uncertainty, so that where P(win) is near 0 or 1 -- advantages
+near zero -- the loss is not the regularisers alone? The diagnosis is right: with γ = 1 and a terminal reward,
+every action in a decided state has the same return, the policy-gradient term vanishes and only the
+regularisers move the policy there. But the two regularisers behave differently. **The entropy bonus flattens**
+(gradient on every action, toward uniform, nothing opposing it in a decided state; the visible symptom is a won
+position played loosely -- forced wins taken 34–52% by J1 -- because "take the win now" has only the small
+advantage the critic's risk estimate gives it, and the bonus swamps it). **The zero-avoiding term is a floor**
+(gradient ≈ c/(n·π_a), on near-zero actions only): it holds every legal move at ~0.1–0.3% and does nothing to the
+top of the distribution, so it cannot flatten a decided state. **The fix is already running: J1′ (R103) is R102
+with the bonus off and the floor kept, and it is ahead of J1 at matched steps** (35.8 against 33.5 on the
+reference at 1,200M; J1 44.2% head to head). That is the standard in the game-AI line too (AlphaZero, DeepNash
+and Jaxcalibur run no entropy bonus; Jaxcalibur uses the zero-avoiding term in exactly this role; SAC's automatic
+temperature is a global target, not per state). **So: drop the bonus rather than scale it** -- J5's recipe
+(R102 → R119) still carries it at 0.01, and its next branch should take R103's `--entropy-coef 0` (owner's call,
+nothing launched). Scaling the *floor* by uncertainty is not recommended: it costs little where it stands, and
+weighting it by V(1−V) would remove exploration exactly where the critic is confident, including where it is
+confidently wrong -- a sampled off-policy action that changes the result is the only signal that a "decided"
+state was not. **A no-training read first**, on J1, J1′ and J5 at matched steps, decisions binned by |V|: policy
+entropy per bin (J1 against J1′ at |V| > 0.9 shows the bonus's flattening directly), the advantage scale per bin,
+forced wins taken per recipe, and the swindle rate (eventual winner with V < −0.8 at some point). If J1′'s
+decided-state play is sharp and swindles are rare, nothing beyond R103 is warranted; the uncertainty-scaled bonus
+is an arm only if J1′ still plays flat there.
+
+## Targeted exploiters: by win condition (owner's question, 2026-11-09)
+
+**The idea.** The exploiters so far (R106–R109: a seat-locked learner, warm-started from the main's own weights,
+against the frozen greedy main, the floor on setup only) found +4 to +5.5 per seat and told us *where* only by
+inspection (post-setup play, Europe uncontested). A **condition-targeted exploiter** is the same recipe with a
+restricted payoff: +1 for a win by condition X, 0 for any other win, −1 for a loss. Its margin against the main's
+own self-play rate of X-wins in that seat is the main's exploitability *along X*, and the set over conditions --
+Europe control, the VP track (±20), Wargames, final scoring, an induced DEFCON loss, an induced held-scoring loss --
+is a **strategic exploitability profile**, the ending-type analogue of the searched-leak census. The dual, a
+**defender**, is the zero-sum payoff plus an extra −1 for losing by X: an opponent that still plays to win but
+denies X; added to the main's pool it suppresses the main's X-wins and forces the other routes.
+
+**Antecedents.** Nothing uses win conditions as the target, but each half has a name. A restricted payoff
+best response is Johanson et al.'s restricted Nash response (NIPS 2007: a counter-strategy to a fixed model,
+exploitation traded against exploitability by a parameter p; data-biased responses after it). Diversifying
+best responses by a behavioural descriptor is the behavioural-diversity PSRO line (Perez-Nieves et al. ICML 2021;
+Liu et al. 2021 unifying behavioural and response diversity; PSD-PSRO 2023) -- here the descriptor would be the
+ending type, chosen by hand. AlphaStar's league is the training use: main exploiters find the main agent's
+weaknesses, league exploiters the league's, and the main agents are conditioned on a strategy statistic z with a
+pseudo-reward for following it, which is a hand-defined target keeping the league diverse. Rectified Nash
+(Balduzzi et al. ICML 2019) trains responses only against opponents one beats, the "target weaknesses" variant.
+The caution is the adversarial-Go line: a general exploiter found the cyclic attack (Wang et al. 2023, >97%
+against KataGo), and iterated adversarial training made the victim robust to each adversary it had seen and to
+no new one (Tseng et al. 2024) -- a defender in the pool fixes exactly X, and the profile has to be re-taken after.
+
+**Assessment.** Worth doing as a *diagnostic* now, as *training* only on what the profile shows.
+
+* The profile is cheap and interpretable: A8 warm starts of ~300M (R104 stopped at +310M) are under an hour each
+  on an idle GPU, so six conditions in both seats are a day; each margin is read against the control's own
+  self-play rate of X in that seat (the per-seat rule), beside the general exploiter's +5.5 so the restricted
+  payoff's overstatement is visible (a targeted exploiter sacrifices every other route, so its X-margin is an
+  upper bound on what a real opponent takes through X).
+* Rare conditions are reachable from the warm start (Europe control is 1–7% of the main's own wins; −1 for a loss
+  keeps the exploiter from throwing games to chase X), so no shaped progress reward is needed -- the exploiter is a
+  probe, not the product, and its payoff is the only engineering.
+* The induced-loss conditions (DEFCON, held scoring) are the robustness probes in the Go sense: an opponent that
+  learns to make the main blunder, found by training, which the leak census cannot see.
+* Training on it is B2's league with condition-targeted members, deferred by the owner's order; the profile is
+  what would justify it: a condition with a margin well above the general exploiter's share tells the main what
+  it cannot defend, and the defender for that condition is the pool member to add.
+
+**First profile:** the frozen target is J5's 2,000M gate checkpoint (or J1′ at matched steps, whichever the gate
+chooses); Europe control and Wargames first (the endings where J5 and J1 differ most: 7.5 vs 0.9% Wargames, 1.3 vs
+7.0% Europe at 180M), both seats, then the induced DEFCON loss; read beside R108's general margin. Nothing launched;
+the owner's call after the gate.
 
 ## Not in this plan
 

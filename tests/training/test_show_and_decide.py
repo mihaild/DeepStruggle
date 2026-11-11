@@ -31,6 +31,9 @@ SHALLOW: dict[str, Any] = dict(
 
 def _trainer(buffer: int = 16, envs: int = 8, opp_legal: bool = False, **kw: Any) -> NashPGTrainer:
     torch.manual_seed(0)
+    # the env draws new games' seeds from numpy's global RNG (as in _random_play_with below): a
+    # rollout that resets games would otherwise play whatever deals earlier tests left
+    np.random.seed(0)
     dev = torch.device("cpu")
     model = create_ladder_net(dev, **SHALLOW, opp_legal_aux=opp_legal)
     env = TsVectorizedEnv(num_envs=envs, base_seed=123)

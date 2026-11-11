@@ -315,52 +315,52 @@
     },
     {
       "box_index": 3,
-      "box_name": "Man in Orbit",
+      "box_name": "Man in Space",
       "min_ops": 2,
-      "success_range": [1, 2, 3, 4],
+      "success_range": [1, 2, 3],
       "vp_first": 2,
       "vp_second": 0,
       "special_ability": null
     },
     {
       "box_index": 4,
-      "box_name": "Man in Space",
+      "box_name": "Man in Earth Orbit",
       "min_ops": 2,
-      "success_range": [1, 2, 3],
+      "success_range": [1, 2, 3, 4],
       "vp_first": 0,
       "vp_second": 0,
       "special_ability": "Opponent must select and reveal Headline Event before this player selects Headline."
     },
     {
       "box_index": 5,
-      "box_name": "Lunar Probe",
+      "box_name": "Lunar Orbit",
       "min_ops": 3,
-      "success_range": [1, 2, 3, 4],
+      "success_range": [1, 2, 3],
       "vp_first": 3,
       "vp_second": 1,
       "special_ability": null
     },
     {
       "box_index": 6,
-      "box_name": "Space Walk",
+      "box_name": "Eagle / Bear Has Landed",
       "min_ops": 3,
-      "success_range": [1, 2, 3],
+      "success_range": [1, 2, 3, 4],
       "vp_first": 0,
       "vp_second": 0,
       "special_ability": "May discard held card at end of turn (Phase::DISCARD)."
     },
     {
       "box_index": 7,
-      "box_name": "Space Station",
+      "box_name": "Space Shuttle",
       "min_ops": 3,
-      "success_range": [1, 2, 3, 4],
+      "success_range": [1, 2, 3],
       "vp_first": 4,
       "vp_second": 2,
       "special_ability": null
     },
     {
       "box_index": 8,
-      "box_name": "Eagle / Bear has Landed",
+      "box_name": "Space Station",
       "min_ops": 4,
       "success_range": [1, 2],
       "vp_first": 2,

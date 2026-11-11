@@ -167,10 +167,61 @@ def seat_decider(state: "ts.GameState", features: int) -> None:
         state.seat_obs_features(p, int(features))
 
 
+#: P43 V3: a network whose placement runs follow its own priority (CANONICAL_LEARNED). Whoever lets it decide owes
+#: each run its order at the run's first decision (`give_run_priorities` / `give_state_priority`).
+CANONICAL_LEARNED = int(ts.OBS_FEATURE_CANONICAL_LEARNED)
+
+
+def priority_ranks(country_logits: Any) -> np.ndarray:
+    """Rows of 84 country logits -> each country's rank in that row's priority (0 = highest logit; ties by country
+    id), as an (n, 84) int array -- the order a V3 run follows."""
+    x = (country_logits.detach().float().cpu().numpy() if hasattr(country_logits, "detach")
+         else np.asarray(country_logits, dtype=np.float64))
+    order = np.argsort(-x, axis=1, kind="stable")
+    ranks = np.empty_like(order)
+    np.put_along_axis(ranks, order, np.arange(x.shape[1])[None, :].repeat(x.shape[0], 0), axis=1)
+    return ranks
+
+
+def give_run_priorities(runner: Any, logits: Any, rows: Optional[np.ndarray] = None) -> int:
+    """P43 V3: for every env of `runner` whose decision opens a CANONICAL_LEARNED run without its order, give the
+    order from that env's logits (`logits[i]`, the full flat row of the network deciding env i). `rows` limits
+    it to those envs (a match runner asking per agent). Returns how many runs were given an order."""
+    wanted = np.flatnonzero(np.asarray(runner.priority_wanted(), dtype=bool))
+    if rows is not None:
+        wanted = np.intersect1d(wanted, rows)
+    if wanted.size == 0:
+        return 0
+    sel = logits[wanted]
+    ranks = priority_ranks(sel[:, ts.FLAT_NODE:ts.FLAT_NODE + 84])
+    for k, i in enumerate(wanted):
+        runner.set_run_priority(int(i), [int(r) for r in ranks[k]])
+    return int(wanted.size)
+
+
+def give_state_priority(state: "ts.GameState", logits_row: Any) -> bool:
+    """P43 V3: the same for one state -- if its decision opens a CANONICAL_LEARNED run without its order, give it
+    from `logits_row` (the deciding network's flat logits here). True if an order was given."""
+    if not state.run_priority_wanted():
+        return False
+    row = logits_row.reshape(1, -1) if hasattr(logits_row, "reshape") else np.asarray(logits_row)[None, :]
+    ranks = priority_ranks(row[:, ts.FLAT_NODE:ts.FLAT_NODE + 84])
+    state.set_run_priority([int(r) for r in ranks[0]])
+    return True
+
+
+def refuse_learned_order(features: int, where: str) -> None:
+    """Harnesses that cannot yet give a V3 network its run orders refuse it, loudly, rather than let the engine
+    refuse its placements mid-game."""
+    if int(features) & CANONICAL_LEARNED:
+        raise NotImplementedError(f"{where} does not give CANONICAL_LEARNED (P43 V3) networks their run orders yet")
+
+
 def seat_tree(state: "ts.GameState", features: int) -> None:
     """Seat both sides of a search's own copy of a position with its network's rule bits: the
     network models both players, so its tree plays both under its rules, whatever the real opponent
     plays (the C++ BatchedSearch and RolloutBatch do the same to the roots they are given)."""
+    refuse_learned_order(features, "a search tree")
     for p in (ts.Player.US, ts.Player.USSR):
         state.seat_obs_features(p, int(features))
 
@@ -295,6 +346,19 @@ class TsVectorizedEnv:
         `reset_all(base_seed)`, which a direct `runner.set_capture_predeal` call does not."""
         self.capture_predeal = bool(on)
         self.runner.set_capture_predeal(self.capture_predeal)
+
+    def give_run_priorities(self, logits: Any) -> int:
+        """P43 V3: before a step, give every CANONICAL_LEARNED run opening now its order from the logits of the
+        network deciding it (`logits[i]` for env i). Nothing to do, and nothing asked of the runner, unless some
+        seat plays the bit."""
+        if not self.any_learned_order:
+            return 0
+        return give_run_priorities(self.runner, logits)
+
+    @property
+    def any_learned_order(self) -> bool:
+        """Whether some env's seat plays CANONICAL_LEARNED (P43 V3)."""
+        return bool(((np.asarray(self.obs_features_us) | np.asarray(self.obs_features_ussr)) & CANONICAL_LEARNED).any())
 
     def set_obs_features(self, us: np.ndarray | int, ussr: np.ndarray | int) -> None:
         """Every env's per-side observation feature set (an int applies to all envs). Each row of

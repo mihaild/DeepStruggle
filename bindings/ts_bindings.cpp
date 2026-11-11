@@ -24,6 +24,7 @@
 #include "ts/space_race.hpp"
 #include "ts/ops.hpp"
 #include "ts/action_mask.hpp"
+#include "ts/canonical.hpp"
 #include "ts/state_machine.hpp"
 #include "ts/serialization.hpp"
 #include "ts/engine.hpp"
@@ -458,6 +459,22 @@ NB_MODULE(ts_engine, m) {
         }, nb::arg("player"), nb::arg("features"),
            "Seat a model of feature set `features` at `player`: that seat plays the rule bits the set "
            "names and the pre-fix rule of each it lacks. Observation bits are ignored.")
+        // P43 V3 (CANONICAL_LEARNED): the run-priority handshake. A harness that lets a V3 network decide asks
+        // at every decision and, where the run wants its order, gives the network's own priority (its logits over
+        // the 84 countries, ranked highest first) before stepping.
+        .def("run_priority_wanted", [](const ts::GameState& s) { return ts::canonical::priority_wanted(s); },
+             "P43 V3: whether the pending decision opens a CANONICAL_LEARNED run whose order has not been given.")
+        .def("set_run_priority", [](ts::GameState& s, const std::vector<int>& ranks) {
+            if (ranks.size() != 84) throw std::invalid_argument("set_run_priority: 84 ranks, one per country");
+            uint8_t r[84];
+            for (int c = 0; c < 84; ++c) {
+                if (ranks[c] < 0 || ranks[c] > 83) throw std::invalid_argument("set_run_priority: ranks are 0..83");
+                r[c] = static_cast<uint8_t>(ranks[c]);
+            }
+            if (!ts::canonical::set_run_priority(s, r))
+                throw std::invalid_argument("set_run_priority: no CANONICAL_LEARNED run pending, or not a permutation");
+        }, nb::arg("ranks"),
+           "P43 V3: give the pending run its order -- ranks[c] is country c's rank (0 = highest priority).")
         .def("seat_plays_rule", [](const ts::GameState& s, ts::Player player, uint32_t rule) {
             return ts::seat_plays_rule(s, player, rule);
         }, nb::arg("player"), nb::arg("rule"),
@@ -635,8 +652,8 @@ NB_MODULE(ts_engine, m) {
         .def_static("placement_rank", [](uint8_t id) {
             if (id >= 84) throw std::out_of_range("Country ID must be 0..83");
             return ts::MapData::placement_rank(id);
-        }, "P43: the rank a canonical placement run (CANONICAL_SETUP) follows, a permutation of 0..83, "
-           "most important last.")
+        }, "P43: the important-last rank a canonical placement run follows (CANONICAL_LAST; CANONICAL_FIRST "
+           "is 83 minus it), a permutation of 0..83.")
         .def_static("get_country_info", [](uint8_t id) {
             if (id >= 84) throw std::out_of_range("Country ID must be 0..83");
             const auto& c = ts::MapData::get_country(id);
@@ -1049,7 +1066,7 @@ NB_MODULE(ts_engine, m) {
           "an opposing headline `me` has seen under Space Race box 4 (revealed_headline), chosen and in the hand.");
     m.def("revealed_headline", [](const ts::GameState& s, ts::Player me) { return ts::SpaceRace::revealed_headline(s, me); },
           nb::arg("state"), nb::arg("me"),
-          "The opposing headline `me` has seen, else 0: with Man in Space (Space Race box 4) held by `me` alone "
+          "The opposing headline `me` has seen, else 0: with Man in Earth Orbit (Space Race box 4) held by `me` alone "
           "the opponent chooses first and reveals it.");
     using Hands = nb::ndarray<const uint8_t, nb::ndim<2>, nb::c_contig, nb::device::cpu>;
     m.def("place_hand", [](const ts::GameState& s, ts::Player me, nb::ndarray<const uint8_t, nb::ndim<1>, nb::c_contig, nb::device::cpu> held) {
@@ -1484,7 +1501,11 @@ NB_MODULE(ts_engine, m) {
     m.attr("OBS_FEATURE_OPS_BUDGET") = static_cast<uint32_t>(ts::obs_features::OPS_BUDGET);
     m.attr("OBS_FEATURE_HEADLINE_REVEAL") = static_cast<uint32_t>(ts::obs_features::HEADLINE_REVEAL);
     m.attr("OBS_FEATURE_OPP_EVENT_GATED") = static_cast<uint32_t>(ts::obs_features::OPP_EVENT_GATED);
-    m.attr("OBS_FEATURE_CANONICAL_SETUP") = static_cast<uint32_t>(ts::obs_features::CANONICAL_SETUP);
+    m.attr("OBS_FEATURE_CANONICAL_FIRST") = static_cast<uint32_t>(ts::obs_features::CANONICAL_FIRST);
+    m.attr("OBS_FEATURE_CANONICAL_LAST") = static_cast<uint32_t>(ts::obs_features::CANONICAL_LAST);
+    m.attr("OBS_FEATURE_CANONICAL_LEARNED") = static_cast<uint32_t>(ts::obs_features::CANONICAL_LEARNED);
+    m.attr("OBS_FEATURE_PLACEMENT_LEGAL") = static_cast<uint32_t>(ts::obs_features::PLACEMENT_LEGAL);
+    m.attr("OBS_FEATURE_PLACEMENT_ORDER") = static_cast<uint32_t>(ts::obs_features::PLACEMENT_ORDER);
     m.attr("OBS_FEATURES_RULES") = static_cast<uint32_t>(ts::obs_features::RULES);
     m.attr("OBS_FEATURES_PERSON_RULES") = static_cast<uint32_t>(ts::obs_features::PERSON_RULES);
     m.attr("OBS_FEATURES_ALL") = static_cast<uint32_t>(ts::obs_features::ALL);
@@ -1786,6 +1807,27 @@ NB_MODULE(ts_engine, m) {
             return nb::ndarray<nb::numpy, uint8_t, nb::ndim<2>>(mask_buffer.data(), 2, shape);
         }
 
+        // P43 V3: which envs' pending decisions open a CANONICAL_LEARNED run whose order has not been given.
+        std::vector<bool> priority_wanted() const {
+            std::vector<bool> res(num_envs);
+            for (size_t i = 0; i < num_envs; ++i) res[i] = ts::canonical::priority_wanted(st(i));
+            return res;
+        }
+
+        // P43 V3: give env `idx`'s pending run its order (ranks[c]: country c's rank, 0 = highest priority).
+        void set_run_priority(size_t idx, const std::vector<int>& ranks) {
+            if (idx >= num_envs) throw std::out_of_range("set_run_priority: env index");
+            if (ranks.size() != 84) throw std::invalid_argument("set_run_priority: 84 ranks, one per country");
+            uint8_t r[84];
+            for (int c = 0; c < 84; ++c) {
+                if (ranks[c] < 0 || ranks[c] > 83) throw std::invalid_argument("set_run_priority: ranks are 0..83");
+                r[c] = static_cast<uint8_t>(ranks[c]);
+            }
+            bool ok = false;
+            slots[idx].modify([&](ts::GameState& g) { ok = ts::canonical::set_run_priority(g, r); });
+            if (!ok) throw std::invalid_argument("set_run_priority: no CANONICAL_LEARNED run pending, or not a permutation");
+        }
+
         std::vector<int8_t> get_decision_players() const {
             std::vector<int8_t> res(num_envs);
             for (size_t i = 0; i < num_envs; ++i) {
@@ -1983,6 +2025,10 @@ NB_MODULE(ts_engine, m) {
         .def("get_observations", &VectorizedBatchRunner::get_observations, nb::rv_policy::reference_internal)
         .def("get_action_masks", &VectorizedBatchRunner::get_action_masks, nb::rv_policy::reference_internal)
         .def("get_decision_players", &VectorizedBatchRunner::get_decision_players)
+        .def("priority_wanted", &VectorizedBatchRunner::priority_wanted,
+             "P43 V3: per env, whether its decision opens a CANONICAL_LEARNED run whose order has not been given.")
+        .def("set_run_priority", &VectorizedBatchRunner::set_run_priority, nb::arg("env_index"), nb::arg("ranks"),
+             "P43 V3: give env `env_index`'s pending run its order (ranks[c]: country c's rank, 0 = highest).")
         .def("get_terminals", &VectorizedBatchRunner::get_terminals)
         .def("get_terminal_utilities", &VectorizedBatchRunner::get_terminal_utilities)
         .def("get_victory_points", &VectorizedBatchRunner::get_victory_points)

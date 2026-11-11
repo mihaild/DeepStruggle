@@ -30,7 +30,7 @@ if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
 from ai.training.run_name import LEGACY_RUN_NAME_RE, is_run_name, parse_run_name  # noqa: E402
-from ai.training.generic_trainer import RULE_FEATURES  # noqa: E402
+from ai.training.generic_trainer import RULE_FEATURES, VIEW_RULE_FEATURES  # noqa: E402
 from ai.training.train import build_parser  # noqa: E402
 
 #: metadata keys that describe the outcome rather than the request, so they are never flags.
@@ -41,16 +41,18 @@ _NOT_FLAGS = {
 
 
 #: Settings derived from another one's recorded value rather than recorded themselves.
-_DERIVED = {"obs_rules": "obs_features"}
+_DERIVED = {"obs_rules": "obs_features", "obs_view": "obs_features"}
 
 
 def _split_rules(flags: dict) -> dict:
-    """Move the rule bits of `obs_features` to `obs_rules`: they are the engine's minor version (E8.1),
-    not an observation the A code names, so earlier runs keep their codes."""
+    """Move the rule bits of `obs_features` out of it: `obs_rules`, the engine's minor version (E8.1), and
+    `obs_view`, the view bits (canonical_first / canonical_last), which the V code names. Neither is an observation the A code
+    names, so earlier runs keep their codes."""
     if "obs_features" in flags and flags["obs_features"] is not None:
         names = list(flags["obs_features"])
         flags["obs_features"] = [n for n in names if n not in RULE_FEATURES]
-        flags["obs_rules"] = [n for n in names if n in RULE_FEATURES]
+        flags["obs_rules"] = [n for n in names if n in RULE_FEATURES and n not in VIEW_RULE_FEATURES]
+        flags["obs_view"] = [n for n in names if n in VIEW_RULE_FEATURES]
     return flags
 
 
@@ -336,6 +338,10 @@ def as_flags(settings: dict) -> list:
     parts = []
     for k in sorted(settings):
         v = settings[k]
+        if k in _DERIVED and isinstance(v, (list, tuple)):
+            # Recorded apart from the flag they come from (the rule and view bits of --obs-features).
+            parts.append(f"--{_DERIVED[k].replace('_', '-')} ... " + " ".join(str(x) for x in v))
+            continue
         flag = "--" + k.replace("_", "-")
         if isinstance(v, bool):
             parts.append(flag if v else f"--no-{k.replace('_', '-')}")

@@ -10,7 +10,7 @@
  * - those unseen cards and the draw deck share one location, `UNSEEN` -- "the draw deck or the
  *   other hand" -- which is all a player can know about any of them;
  * - a headline the other side has chosen but not yet revealed is not shown (unless this side
- *   holds the space race's Man in Space perk, which makes the other side reveal first);
+ *   holds the space race's Man in Earth Orbit perk, which makes the other side reveal first);
  * - while the other side is deciding, its legal actions are withheld (they are its hand, for a
  *   card choice) and `view_hidden_decision` is set;
  * - the action log drops the lines that move a card into the other side's unseen hand (a card
@@ -107,7 +107,7 @@ export function redactState(s: GameState, view: ViewMode): GameState {
   r.unseen_count = (s.draw_deck_count || 0) + hidden;
 
   // A headline chosen but still in the hand is face down -- unless this side holds the space
-  // race's Man in Space perk (box 4, the other side not there), which makes the other side
+  // race's Man in Earth Orbit perk (box 4, the other side not there), which makes the other side
   // reveal its headline first.
   const hlKey = opp === "US" ? "headline_us_card" : "headline_ussr_card";
   const hl = s[hlKey];

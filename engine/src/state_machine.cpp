@@ -8,6 +8,7 @@
 #include "ts/ops.hpp"
 #include "ts/prng.hpp"
 #include "ts/action_mask.hpp"
+#include "ts/canonical.hpp"
 #include <algorithm>
 #include <cstring>
 #include "ts/victory_points.hpp"
@@ -228,8 +229,8 @@ void StateMachine::start_turn(GameState& state) noexcept {
     state.headline_second_owner = Player::NONE;
 
     // Space 4 Priority check
-    bool us_space4 = SpaceRace::has_man_in_space(state, Player::US);
-    bool ussr_space4 = SpaceRace::has_man_in_space(state, Player::USSR);
+    bool us_space4 = SpaceRace::has_man_in_earth_orbit(state, Player::US);
+    bool ussr_space4 = SpaceRace::has_man_in_earth_orbit(state, Player::USSR);
 
     if (us_space4 && !ussr_space4) {
         state.ctx().decision_player = Player::USSR; // USSR reveals first
@@ -700,24 +701,24 @@ void StateMachine::end_turn(GameState& state) noexcept {
     Scoring::evaluate_military_ops(state);
     if (state.current_phase == Phase::GAME_OVER) return;
 
-    // Check Space Walk (Box 6) Privilege
-    bool us_sw = SpaceRace::has_space_walk(state, Player::US);
-    bool ussr_sw = SpaceRace::has_space_walk(state, Player::USSR);
-    Player sw_player = us_sw ? Player::US : (ussr_sw ? Player::USSR : Player::NONE);
+    // Check Eagle/Bear Has Landed (Box 6) Privilege
+    bool us_landed = SpaceRace::has_eagle_bear_landed(state, Player::US);
+    bool ussr_landed = SpaceRace::has_eagle_bear_landed(state, Player::USSR);
+    Player landed_player = us_landed ? Player::US : (ussr_landed ? Player::USSR : Player::NONE);
 
-    if (sw_player != Player::NONE) {
+    if (landed_player != Player::NONE) {
         bool has_cards = false;
         for (uint8_t i = 1; i <= 110; ++i) {
-            if (in_hand_of(state.card_locations[i], sw_player)) {
+            if (in_hand_of(state.card_locations[i], landed_player)) {
                 has_cards = true;
                 break;
             }
         }
         if (has_cards) {
             state.ctx() = DecisionContext{};
-            state.ctx().decision_player = sw_player;
+            state.ctx().decision_player = landed_player;
             state.ctx().decision_type = DecisionType::SELECT_CARD;
-            state.ctx().resolving_card = card_ids::SPACE_WALK_DISCARD;
+            state.ctx().resolving_card = card_ids::EAGLE_BEAR_LANDED_DISCARD;
             state.ctx().allow_early_stop = 1;
             return;
         }
@@ -837,22 +838,6 @@ static bool commit_card_to_ops(GameState& state, Player p, uint8_t card) noexcep
 
 // Open the POINT_NODE that spends the Ops. `pending_ops_value` must already be set.
 //
-// P43 (obs_features::CANONICAL_SETUP): a seat playing the bit places each setup run in
-// non-decreasing MapData::placement_rank. The step refuses what the mask does not offer, so a caller
-// stepping past the mask cannot place out of order.
-static bool canonical_setup_allows(const GameState& state, Player p, uint8_t cid) noexcept {
-    return state.ctx().canon_floor == 0 || !seat_plays_rule(state, p, obs_features::CANONICAL_SETUP) ||
-           MapData::placement_rank(cid) + 1 >= state.ctx().canon_floor;
-}
-
-// The run's floor moves to the country just placed -- only for a seat playing the bit, so a game
-// without it never writes the field.
-static void note_canonical_setup(GameState& state, Player p, uint8_t cid) noexcept {
-    if (seat_plays_rule(state, p, obs_features::CANONICAL_SETUP)) {
-        state.ctx().canon_floor = static_cast<uint8_t>(MapData::placement_rank(cid) + 1);
-    }
-}
-
 // Realignment is repeatable and keeps its stop; a coup is a single action and does not. Influence
 // has no stop either: every point must be placed, and CONFIRM_DONE is offered only once the board
 // has no legal target left (DecisionContext::is_ops_influence_play, read by the mask). The merged
@@ -895,7 +880,47 @@ bool StateMachine::step(GameState& state, const MicroAction& action) noexcept {
     return step(state, action, nullptr);
 }
 
+// P43 (ts/canonical.hpp): a placement in a covered run moves the run's floor to the country placed,
+// in the placing seat's order. Written only for a seat playing a canonical bit, so a game without one
+// never touches the fields; anything else that happens in the frame clears a floor it left. The step
+// itself is validated against the flat mask, which applies the floor, so a caller cannot place below it.
 bool StateMachine::step(GameState& state, const MicroAction& action, const uint8_t* legal) noexcept {
+    uint32_t order = canonical::run_order(state);
+    const uint16_t tag = order != 0 ? canonical::run_tag(state) : 0;
+    const uint8_t depth = state.ctx_stack_depth;
+    const bool placing = action.decision_type == DecisionType::POINT_NODE && action.primary_id < 84;
+    if (order == obs_features::CANONICAL_LEARNED && placing && !canonical::priority_given(state)) {
+        // V3: the harness owes this run its priority before the first choice. Only a forced choice (one legal
+        // target) may go without it, and then sets no floor; anything else is refused, loudly, rather than
+        // played in some order nobody gave.
+        uint8_t mask[FLAT_ACTION_SPACE_SIZE];
+        ActionMask::generate_flat_mask_212(state, mask);
+        int targets = 0;
+        for (int i = 0; i < 84; ++i) targets += mask[flat_slots::NODE + i] ? 1 : 0;
+        if (targets != 1) return false;
+        order = 0;
+    }
+    if (!step_impl(state, action, legal)) return false;
+    if (state.ctx_stack_depth != depth) return true;
+    DecisionContext& c = state.ctx();
+    if (order != 0 && placing) {
+        c.canon_floor = static_cast<uint8_t>(canonical::rank_in(state, order, action.primary_id) + 1);
+        c.canon_tag = tag;
+        c.canon_left = c.remaining_steps;
+    } else if (c.canon_floor != 0) {
+        c.canon_floor = 0;
+        c.canon_tag = 0;
+        c.canon_left = 0;
+    }
+    // A run's given priority ends with the run.
+    if (state.canon_prio_tag != 0 && state.canon_prio_tag != canonical::run_tag(state)) {
+        state.canon_prio_tag = 0;
+        for (uint8_t& r : state.canon_prio) r = 0;
+    }
+    return true;
+}
+
+bool StateMachine::step_impl(GameState& state, const MicroAction& action, const uint8_t* legal) noexcept {
     // Reset ephemeral die roll record for the current step
     state.last_roll = DieRollRecord{};
     state.last_die_roll = 0;
@@ -973,15 +998,12 @@ bool StateMachine::step(GameState& state, const MicroAction& action, const uint8
         if (state.ctx().decision_player == Player::USSR) {
             uint8_t cid = action.primary_id;
             if (cid < 84 && MapData::get_country(cid).in_eastern_europe) {
-                if (!canonical_setup_allows(state, Player::USSR, cid)) return false;
                 state.countries[cid].add_influence(Player::USSR, 1);
                 state.ctx().remaining_steps--;
-                note_canonical_setup(state, Player::USSR, cid);
                 if (state.ctx().remaining_steps == 0) {
                     // Transition to US placing 7 in Western Europe
                     state.ctx().decision_player = Player::US;
                     state.ctx().remaining_steps = 7;
-                    state.ctx().canon_floor = 0;
                 }
                 return true;
             }
@@ -991,15 +1013,12 @@ bool StateMachine::step(GameState& state, const MicroAction& action, const uint8
             if (state.ctx().pending_ops_value == 0) {
                 // Stage 0: 7 points in Western Europe
                 if (cid < 84 && MapData::get_country(cid).in_western_europe) {
-                    if (!canonical_setup_allows(state, Player::US, cid)) return false;
                     state.countries[cid].add_influence(Player::US, 1);
                     state.ctx().remaining_steps--;
-                    note_canonical_setup(state, Player::US, cid);
                     if (state.ctx().remaining_steps == 0) {
                         // Transition to US placing 2 bonus influence in countries with existing US presence
                         state.ctx().pending_ops_value = 1; // Stage 1: Bonus placement
                         state.ctx().remaining_steps = 2;
-                        state.ctx().canon_floor = 0;
                     }
                     return true;
                 }
@@ -1007,12 +1026,9 @@ bool StateMachine::step(GameState& state, const MicroAction& action, const uint8
             } else {
                 // Stage 1: 2 bonus influence in any country with existing US influence
                 if (cid < 84 && state.countries[cid].us_influence > 0) {
-                    if (!canonical_setup_allows(state, Player::US, cid)) return false;
                     state.countries[cid].add_influence(Player::US, 1);
                     state.ctx().remaining_steps--;
-                    note_canonical_setup(state, Player::US, cid);
                     if (state.ctx().remaining_steps == 0) {
-                        state.ctx().canon_floor = 0;
                         // Setup complete -> start Turn 1
                         start_turn(state);
                     }
@@ -1127,7 +1143,7 @@ bool StateMachine::step(GameState& state, const MicroAction& action, const uint8
 
         // If resolving active event sub-decision
         if (state.ctx().resolving_card != 0) {
-            if (state.ctx().resolving_card == card_ids::SPACE_WALK_DISCARD) {
+            if (state.ctx().resolving_card == card_ids::EAGLE_BEAR_LANDED_DISCARD) {
                 uint8_t card = action.primary_id;
                 if (card >= 1 && card <= 110 && !action.is_confirm_done()) {
                     state.card_locations[card] = CardLocation::DISCARD_PILE;

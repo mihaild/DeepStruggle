@@ -56,7 +56,7 @@ struct Job {
 
 class Tracker {
 public:
-    // `reveal` (the rollout root's box4): at the headline choice of the side holding Man in Space
+    // `reveal` (the rollout root's box4): at the headline choice of the side holding Man in Earth Orbit
     // alone, every hand holds the opponent's revealed headline (rollout::revealed_headline) and the rest
     // of it is drawn around that card.
     Tracker(uint32_t particles, bool all_decisions, uint64_t seed, bool reveal = false) noexcept

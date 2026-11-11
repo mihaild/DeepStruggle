@@ -78,7 +78,8 @@ The owner (2026-11-06): in-place growth has worked, so grow from J5 rather than 
 * Identity test before launch: on positions from J5 self-play, base-slot log-probs equal J5's to float tolerance and
   the macro slots' total probability is < 1e-4.
 * Name: a view was an engine sub-version (E4.1); the run-name grammar takes it as a change field, so the branch is
-  `E8-A35-R102-S44@<step>M+E8.1` (`E8.1-A35-…@…` is refused for a branch); the owner confirms the name and the R
+  `E8-A35-R102-S44@<step>M+V<n>` -- a view is a V code since 2026-11-07 (owner; E8.1 is now ENG-9's rule bit);
+  `run_codes --update` registers it; the owner confirms the name and the R
   code at launch (`run_codes --update` / `--run`).
 * Reads at +200 / +400 / +800M against J5 proper's continuation at matched steps; the 60M-style checks against J5's
   own numbers (per-update KL, entropy, head rank).

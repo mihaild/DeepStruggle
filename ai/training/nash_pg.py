@@ -48,6 +48,7 @@ from ai.search.rollout_root import ContinuationValues, RolloutConfig, RolloutTea
 from .search_workers import SearchWorkers  # noqa: E402
 from .searched_games import SearchedGames  # noqa: E402
 from .forced_openings import OpeningSeeder  # noqa: E402
+from .head_l2 import head_init_params, head_l2_to_init, head_pairs  # noqa: E402
 from .critic_tracker import CriticTracker
 from .graphed_forward import GraphCache
 
@@ -515,6 +516,7 @@ class BaseNashPGTrainer:
         logit_gap: float = 7.0,
         zero_avoid_coef: float = 0.0,   # P41 J1: coef * KL(uniform || pi) over the legal moves, learner rows
         zero_avoid_scope: str = "all",  # 'setup': only the learner's setup placements (P41 exploiters)
+        head_l2_init_coef: float = 0.0,  # P44: coef * sum ||theta - theta_0||^2 over the policy and value heads
         setup_block_lambda: bool = False,
         block_lambda: str = "off",
         phase_lock_path: Optional[str] = None,
@@ -1110,6 +1112,14 @@ class BaseNashPGTrainer:
         #: 'setup' keeps the floor on the opening placements only, so an opening the policy rarely plays stays
         #: reachable while every later decision trains without it (P41's exploiters of J1, owner 2026-11-03).
         self.zero_avoid_scope = str(zero_avoid_scope)
+        # P44 step 1's arm: L2 toward the initial weights on the policy and value heads (ai/training/head_l2.py).
+        # theta_0 is the network as constructed here; a resume replaces it with the run's own (set_head_init).
+        if head_l2_init_coef < 0.0:
+            raise ValueError(f"head_l2_init_coef must be >= 0, got {head_l2_init_coef}")
+        self.head_l2_init_coef = float(head_l2_init_coef)
+        self.head_init: Dict[str, torch.Tensor] = (head_init_params(self.active_net)
+                                                   if self.head_l2_init_coef > 0.0 else {})
+        self._head_l2_pairs = head_pairs(self.active_net, self.head_init) if self.head_init else []
         self._compiled_nets: Dict[int, nn.Module] = {}
         self._compiled_methods: Dict[Tuple[int, str], Tuple[nn.Module, Callable[..., Any]]] = {}
         #: --wolf-seat-weight. Each seat's PPO surrogate is scaled by `wolf_seat_weights`, driven by
@@ -1186,6 +1196,17 @@ class BaseNashPGTrainer:
         # Frozen entropy probe, filled from the very first rollout and never resampled.
         self.entropy_probe = FixedEntropyProbe(size=ENTROPY_PROBE_SIZE)
         self.entropy_probe_interval = ENTROPY_PROBE_INTERVAL
+
+    def set_head_init(self, init: Dict[str, torch.Tensor]) -> None:
+        """Pull the heads toward a resumed run's own initial weights instead of this process's construction (the
+        initial head weights travel in the resume state, so a continuation or a branch keeps its run's theta_0)."""
+        if self.head_l2_init_coef <= 0.0:
+            return
+        if set(init) != set(self.head_init):
+            raise ValueError("the resume state's initial head weights cover other parameters than this network's heads")
+        head_pairs(self.active_net, init)                      # names and shapes match the network
+        for name, p0 in init.items():                          # in place: the loss's pairs hold these tensors
+            self.head_init[name].copy_(p0.to(self.head_init[name].device))
 
     def set_reward_calculator(self, reward_calc: Any) -> None:
         self.env.reward_calc = reward_calc
@@ -1925,6 +1946,9 @@ class BaseNashPGTrainer:
                 self._predeal_on = True
                 print(f"[pre-deal] the critic on both sides at the turn-end park, coef "
                       f"{self.predeal_value_coef}", flush=True)
+            # P43 V3: a CANONICAL_LEARNED run opening now takes its order from the logits of whoever decides it
+            # (learner or pool member, as `logits` holds) before the step. Nothing happens without the bit.
+            self.env.give_run_priorities(logits)
             if _hold is not None:
                 next_obs_np, next_masks_np, rewards_np, self._dones_np, self._info = self.env.step(
                     actions_np, hold=_hold)
@@ -2709,6 +2733,7 @@ class NashPGTrainer(BaseNashPGTrainer):
         lse_sum_t, lse_absmax_t, z_loss_t = _z(), _z(), _z()
         gap_loss_t, gap_frac_t = _z(), _z()
         za_loss_t = _z()
+        hl2_t = _z()
 
         # pi_ref's log-probabilities over the whole buffer, once. pi_ref is frozen for the whole
         # update (it is refreshed after train_step, in train_iteration) and always in eval mode,
@@ -3012,6 +3037,11 @@ class NashPGTrainer(BaseNashPGTrainer):
                 val_loss = self._value_loss(cur_v_win, cur_v_vp, b_ret_win, b_ret_vp,
                                             cur_value_logits)
                 loss = policy_loss + self.vf_coef * val_loss
+                if self._head_l2_pairs:
+                    # P44: L2 toward the initial weights on the policy and value heads (head_l2.py).
+                    _hl2 = head_l2_to_init(self._head_l2_pairs)
+                    loss = loss + self.head_l2_init_coef * _hl2
+                    hl2_t += _hl2.detach().double()
 
                 # Auxiliary DEFCON-risk objective. Positives are rare (a few percent of
                 # steps), so the loss is weighted towards them rather than letting the
@@ -3123,6 +3153,7 @@ class NashPGTrainer(BaseNashPGTrainer):
             "logit_gap_loss": float(gap_loss_t) / max(1, num_updates),
             "logit_gap_frac": float(gap_frac_t) / max(1, num_updates),
             "zero_avoid_kl": float(za_loss_t) / max(1, num_updates),
+            **({"head_l2_init_dist": float(hl2_t) / max(1, num_updates)} if self._head_l2_pairs else {}),
             "val_loss": val_loss_accum / max(1, num_updates),
             **({"predeal_value_loss": float(pd_loss_t) / max(1, pd_batches), "predeal_rows": _pd_rows}
                if self.predeal_value_coef > 0.0 else {}),

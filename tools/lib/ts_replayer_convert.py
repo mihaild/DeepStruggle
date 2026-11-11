@@ -597,7 +597,7 @@ _MISSILE_ENVY = 49
 _STAR_WARS = 85
 _CHERNOBYL = 94
 _THE_CHINA_CARD = 6
-_SPACE_WALK_DISCARD = 250
+_EAGLE_BEAR_LANDED_DISCARD = 250
 _OLYMPIC_GAMES = 20
 _HOW_I_LEARNED_TO_STOP_WORRYING = 46
 _TEAR_DOWN_THIS_WALL = 96
@@ -1793,8 +1793,8 @@ def _defcon_set_under(e: Entry, marker: str) -> Optional[int]:
     return int(m.group(1)) if m else None
 
 
-def _space_walk_discard(raws: List[Dict], index: int, e: Entry) -> Optional[int]:
-    """The card a Space Walk discard takes, which the log hangs on the entry's cleanup copy.
+def _eagle_bear_landed_discard(raws: List[Dict], index: int, e: Entry) -> Optional[int]:
+    """The card a Eagle/Bear Has Landed discard takes, which the log hangs on the entry's cleanup copy.
 
     A player who has reached box 6 of the space race may discard a held card as the turn ends,
     and ts-replayer records that where it records the rest of the turn's bookkeeping: on a
@@ -1871,7 +1871,7 @@ def _free_action_declined(e: Entry, sections: List[Section], card: int) -> bool:
 def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                  raw: Dict, max_steps: int = 300,
                  defcon_after: Optional[int] = None,
-                 space_walk_discard: Optional[int] = None,
+                 eagle_bear_landed_discard: Optional[int] = None,
                  on_decision: Optional[Callable] = None) -> bool:
     """Play one logged entry through the engine, emitting the decisions the log determines."""
     cid_target = card_id(e.card) if e.card and " & " not in e.card else None
@@ -2323,11 +2323,11 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
                     discard_queue.pop(slot)
                     informative = True
                     break
-            if (chosen is None and space_walk_discard is not None
-                    and int(ctx.resolving_card) == _SPACE_WALK_DISCARD):
-                # The card the turn's cleanup record names -- see _space_walk_discard.
+            if (chosen is None and eagle_bear_landed_discard is not None
+                    and int(ctx.resolving_card) == _EAGLE_BEAR_LANDED_DISCARD):
+                # The card the turn's cleanup record names -- see _eagle_bear_landed_discard.
                 chosen = _find(state, legal, ts.DecisionType.SELECT_CARD,
-                               lambda ma: int(ma.primary_id) == space_walk_discard)
+                               lambda ma: int(ma.primary_id) == eagle_bear_landed_discard)
                 informative = chosen is not None
             if chosen is None and int(ctx.resolving_card) == _ASK_NOT:
                 # "Ask Not What Your Country Can Do For You" discards as many cards as its
@@ -3425,9 +3425,9 @@ def _is_turn_end_record(e: Entry, prev: Optional[Entry]) -> bool:
         return False
     if (e.turn, e.phase, e.player, e.card) != (prev.turn, prev.phase, prev.player, prev.card):
         return False
-    # A discard is bookkeeping here too: the Space Walk discard a player at box 6 takes as the
+    # A discard is bookkeeping here too: the Eagle/Bear Has Landed discard a player at box 6 takes as the
     # turn ends is recorded on this copy, and answered inside the entry above -- see
-    # _space_walk_discard. A play always brings more than a discard with it.
+    # _eagle_bear_landed_discard. A play always brings more than a discard with it.
     return _is_cleanup_body(e)
 
 
@@ -3652,7 +3652,7 @@ def _convert_entries(state: ts.GameState, raws, hands, conv: Conversion,
             # own initialisation is the position they belong to.
             _reconcile_turn(state, e, conv.replay_id)
         _drive_entry(state, e, conv, raw, defcon_after=_defcon_after(raws, index, e),
-                     space_walk_discard=_space_walk_discard(raws, index, e),
+                     eagle_bear_landed_discard=_eagle_bear_landed_discard(raws, index, e),
                      on_decision=on_decision)
         _drive_passed_rounds(state, e, conv)
         if on_entry is not None:

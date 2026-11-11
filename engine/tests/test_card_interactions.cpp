@@ -623,6 +623,21 @@ TEST(CardInteractionTest, LatinAmericanDeathSquads_AppliesCoupModifiers) {
     ASSERT_EQ(state.countries[ts::countries::ARGENTINA].ussr_influence, 0);
 }
 
+TEST(CardInteractionTest, LatinAmericanDeathSquads_BothSidesCancelOut) {
+    // Both sides have played it this turn: +1 from one's own and -1 from the other's, for either.
+    for (ts::Player p : {ts::Player::US, ts::Player::USSR}) {
+        ts::GameState state{};
+        state.countries[ts::countries::ARGENTINA].ussr_influence = 2; // Stability 2
+        state.countries[ts::countries::ARGENTINA].us_influence = 2;
+        state.set_flag(ts::effect_bits::DEATH_SQUADS_US);
+        state.set_flag(ts::effect_bits::DEATH_SQUADS_USSR);
+
+        // 2 Ops, roll 3, no modifier: 3 + 2 - 2*2 = 1.
+        auto res = ts::Operations::execute_coup(state, p, ts::countries::ARGENTINA, 2, 3);
+        ASSERT_EQ(res.margin, 1);
+    }
+}
+
 // =============================================================================
 // 17. SALT Negotiations Coup Modifier
 // =============================================================================

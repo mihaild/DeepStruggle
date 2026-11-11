@@ -34,6 +34,10 @@ public:
     static void add_era_cards_to_deck(GameState& state, WarEra era) noexcept;
     static void deal_cards_to_hands(GameState& state) noexcept;
     static void reshuffle_discard_into_draw(GameState& state) noexcept;
+
+private:
+    // The step itself; `step` wraps it with P43's canonical-run bookkeeping (ts/canonical.hpp).
+    [[nodiscard]] static bool step_impl(GameState& state, const MicroAction& action, const uint8_t* legal) noexcept;
 };
 
 } // namespace ts

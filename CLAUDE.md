@@ -329,10 +329,14 @@ learner's exact feature bits; equal observation widths are insufficient. Blocks 
 it shows the box-4 holder the opponent's revealed headline in the base's card rows, for models trained with it;
 2026-10-20). `OPP_EVENT_GATED` (bit 3, `opp_event_gated`, 2026-11-06) is a *rule bit*: no width and no
 change to the observation, but the rule the model's seat plays -- ENG-9's gate on an opponent's card's
-Event (`engine/AGENTS.md` §19). `CANONICAL_SETUP` (bit 4, `canonical_setup`, 2026-11-07, P43 phase A)
-is another: the seat places each setup run in non-decreasing country rank, one sequence per setup
-(`engine/AGENTS.md` §21); a branch adds it with `--resume-add-rules canonical_setup`, and a person does not
-play it. A seat plays the rule bits of the feature set it is observed in, a
+Event (`engine/AGENTS.md` §19). `CANONICAL_FIRST` / `CANONICAL_LAST` (bits 4 / 5, `canonical_first` /
+`canonical_last`, 2026-11-07, P43; the view codes V1 / V2) and `CANONICAL_LEARNED` (bit 6, V3: the order is
+the deciding network's own logits at each run's start, given to the engine by the harness) are three more: the seat places every placement run in
+non-decreasing country rank, most important first or last, one sequence per board, and a run that would strand
+points releases its floor (`engine/AGENTS.md` §21); a branch adds one with `--resume-add-rules`, and a person
+plays neither. Two observation bits of no width let a network see its run's order: `PLACEMENT_LEGAL` (bit 7,
+the mask in the "I can place here" slot, made V1 worse) and `PLACEMENT_ORDER` (bit 8, that slot keeps access and
+marks only order-blocked countries 0.5). A seat plays the rule bits of the feature set it is observed in, a
 search both sides of its tree under its own network's, and a person in the web page every rule bit; an
 unseated side plays the rule from before every bit, so the unseated engine is E8's.
 Adding a block still needs the owner.
@@ -379,7 +383,7 @@ testing.
 4. All simulation randomness must go through `state.rng_state` (SplitMix64) for reproducibility.
 5. All Python must be fully type-annotated (`TypedDict`s in `web/server/replay_types.py` for serialized JSON); run `pyrefly check` with explicit paths after any Python change and keep it at 0 errors.
 6. All self-play/replay generation must go through `tools.lib.self_play.generate_self_play_replay` to keep `.tslog.json` schema consistent — don't hand-roll replay writers.
-7. A checkpoint directory is named from the run's name plus its start timestamp, via `tools/train.py --run-name` — no ad-hoc names. A name is `E<n>-A<n>-R<n>-S<n>` (engine, architecture code, recipe code, seed) plus its branch points, `@<step>M+<changes>` (`research/method/run_nomenclature.md`); the A and R codes are flag sets in `research/architectures_and_recipes.md`, and `tools/scripts/run_codes.py --run <dir>` checks a launched run's name against its recorded flags.
+7. A checkpoint directory is named from the run's name plus its start timestamp, via `tools/train.py --run-name` — no ad-hoc names. A name is `E<n>-A<n>-R<n>[-V<n>]-S<n>` (engine, architecture code, recipe code, view code -- optional, V0 never written -- seed) plus its branch points, `@<step>M+<changes>` (`research/method/run_nomenclature.md`); the A, R and V codes are flag sets in `research/architectures_and_recipes.md`, and `tools/scripts/run_codes.py --run <dir>` checks a launched run's name against its recorded flags.
 8. Demonstration dataset loading must use bounded streaming (`WarmupDataset.stream_batches` / `stream_transitions`), never a monolithic in-memory load.
 9. Never write ad-hoc scripts for training/tournaments/matches — use `tools/train.py`, `tools/tournament.py`, `tools/play_match.py` respectively.
 10. Record the commit and a description in the run's `metadata.json` before launching a training run (`tools/train.py --description` does this).

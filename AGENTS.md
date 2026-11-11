@@ -295,7 +295,7 @@ Numbered as in `CLAUDE.md`.
    `tests/training/test_policy_readout.py`, `test_replay_trace.py`), and **every reader treats the
    trace blocks as optional**.
 7. **Checkpoint directories are named from the run name.** `tools/train.py --run-name
-   E<n>-A<n>-R<n>-S<n>[@<step>M+<changes>]` builds `<name>_<date>_<time>` and records the name in
+   E<n>-A<n>-R<n>[-V<n>]-S<n>[@<step>M+<changes>]` builds `<name>_<date>_<time>` and records the name in
    `metadata.json` (`research/method/run_nomenclature.md`; the A/R codes are
    `research/architectures_and_recipes.md`); `tools/scripts/run_codes.py --run <dir>` checks the
    name against the recorded flags. An unchanged continuation (`--resume` of the run's own

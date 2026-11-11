@@ -1,7 +1,7 @@
 {
   "NATO_ACTIVE": {
     "name": "NATO Active",
-    "description": "USSR cannot Coup or Realign in US-controlled Western European countries."
+    "description": "USSR cannot Coup, Realign or Brush War in US-controlled countries in Europe."
   },
   "NATO_CANCELED_FRANCE": {
     "name": "NATO (France Excluded)",
@@ -21,28 +21,28 @@
   },
   "US_JAPAN_PACT_ACTIVE": {
     "name": "US/Japan Defense Pact",
-    "description": "USSR cannot Coup or Realign in Japan. Japan is US-controlled."
+    "description": "USSR cannot Coup or Realign in Japan."
   },
   "CONTAINMENT_ACTIVE": {
     "name": "Containment Active",
-    "description": "All US Operations receive +1 Op (capped at 4 Ops).",
+    "description": "All US Operations receive +1 Op this turn (capped at 4 Ops).",
     "short": "Containment"
   },
   "PURGE_US_ACTIVE": {
     "name": "Red Scare (US)",
-    "description": "All US Operations receive -1 Op (minimum 1 Op)."
+    "description": "All US Operations receive -1 Op this turn (minimum 1 Op)."
   },
   "PURGE_USSR_ACTIVE": {
-    "name": "Red Scare (USSR)",
-    "description": "All USSR Operations receive -1 Op (minimum 1 Op)."
+    "name": "Purge (USSR)",
+    "description": "All USSR Operations receive -1 Op this turn (minimum 1 Op)."
   },
   "VIETNAM_REVOLTS_ACTIVE": {
     "name": "Vietnam Revolts",
-    "description": "All USSR Operations in Southeast Asia receive +1 Op for remainder of turn."
+    "description": "This turn, a USSR card whose Operations are all spent in Southeast Asia gets +1 Op."
   },
   "FORMOSAN_RESOLUTION_ACTIVE": {
     "name": "Formosan Resolution",
-    "description": "Taiwan counts as a Battleground country for Asia Scoring until China Card played."
+    "description": "While US-controlled, Taiwan is a Battleground country for Asia Scoring and Final Scoring; canceled when the US plays the China Card."
   },
   "CMC_ACTIVE_US": {
     "name": "Cuban Missile Crisis (played by US)",
@@ -59,11 +59,11 @@
   },
   "QUAGMIRE_ACTIVE": {
     "name": "Quagmire Active",
-    "description": "US must discard a 2+ Ops card and roll 5-6 on each Action Round to exit."
+    "description": "Each Action Round the US must discard a 2+ Ops card and roll 1-4 to escape."
   },
   "BEAR_TRAP_ACTIVE": {
     "name": "Bear Trap Active",
-    "description": "USSR must discard a 2+ Ops card and roll 5-6 on each Action Round to exit."
+    "description": "Each Action Round the USSR must discard a 2+ Ops card and roll 1-4 to escape."
   },
   "SALT_ACTIVE": {
     "name": "SALT Negotiations",
@@ -71,15 +71,15 @@
   },
   "WE_WILL_BURY_YOU_PENDING": {
     "name": "We Will Bury You (Pending)",
-    "description": "USSR gains 3 VP at Turn End unless UN Intervention is played by US."
+    "description": "USSR gains 3 VP at the start of the US's next Action Round unless the US plays UN Intervention as an Event in it."
   },
   "BREZHNEV_DOCTRINE_ACTIVE": {
     "name": "Brezhnev Doctrine",
-    "description": "All USSR Operations receive +1 Op (capped at 4 Ops)."
+    "description": "All USSR Operations receive +1 Op this turn (capped at 4 Ops)."
   },
   "FLOWER_POWER_ACTIVE": {
     "name": "Flower Power Active",
-    "description": "USSR gains 2 VP for each US War card played for Operations (canceled by An Evil Empire)."
+    "description": "USSR gains 2 VP for each War card the US plays, as an Event or for Operations (canceled by An Evil Empire)."
   },
   "U2_INCIDENT_ACTIVE": {
     "name": "U-2 Incident",
@@ -87,19 +87,27 @@
   },
   "SHUTTLE_DIPLOMACY_ACTIVE": {
     "name": "Shuttle Diplomacy",
-    "description": "Subtracts 1 USSR Battleground from next Asia or Middle East Scoring."
+    "description": "Subtracts 1 USSR Battleground from next Asia or Middle East Scoring (not Final Scoring)."
   },
   "DEATH_SQUADS_US": {
-    "name": "Death Squads (US)",
-    "description": "US receives +1 to all Realignment rolls in Central and South America this turn."
+    "name": "Latin American Death Squads (US)",
+    "description": "This turn, US Coup rolls in Central and South America get +1 and USSR Coup rolls there get -1."
   },
   "DEATH_SQUADS_USSR": {
-    "name": "Death Squads (USSR)",
-    "description": "USSR receives +1 to all Realignment rolls in Central and South America this turn."
+    "name": "Latin American Death Squads (USSR)",
+    "description": "This turn, USSR Coup rolls in Central and South America get +1 and US Coup rolls there get -1."
   },
   "CAMP_DAVID_PLAYED": {
     "name": "Camp David Accords",
     "description": "Prevents Arab-Israeli War from being played as an Event."
+  },
+  "IRON_LADY_PLAYED": {
+    "name": "The Iron Lady",
+    "description": "Prevents #7 Socialist Governments from being played as an Event."
+  },
+  "NORTH_SEA_OIL_PLAYED": {
+    "name": "North Sea Oil Played",
+    "description": "Prevents #61 OPEC from being played as an Event."
   },
   "NORTH_SEA_OIL_ACTIVE": {
     "name": "North Sea Oil",
@@ -107,7 +115,7 @@
   },
   "THE_REFORMER_PLAYED": {
     "name": "The Reformer",
-    "description": "USSR can no longer Coup in Europe. Enables #90 Glasnost to be used for Operations."
+    "description": "USSR can no longer Coup in Europe. #90 Glasnost's Event also grants 4 Ops for Influence or Realignment."
   },
   "IRAN_CONTRA_ACTIVE": {
     "name": "Iran-Contra Scandal",
@@ -127,7 +135,7 @@
   },
   "NORAD_ACTIVE": {
     "name": "NORAD Active",
-    "description": "When Canada is US-controlled, US adds 1 Influence whenever DEFCON reaches 2 in an AR."
+    "description": "If DEFCON moves to 2 during an Action Round and Canada is US-controlled, the US adds 1 Influence to a country with US Influence (canceled by Quagmire)."
   },
   "YURI_AND_SAMANTHA_ACTIVE": {
     "name": "Yuri and Samantha",

@@ -126,12 +126,12 @@ def test_missing_context_depth_keeps_the_baseline() -> None:
 
 
 NORTH_SEA_OIL_ACTIVE = 1 << 27  # effect_bits in engine/include/ts/constants.hpp
-SPACE_WALK_DISCARD = 250  # card_ids in the same file
+EAGLE_BEAR_LANDED_DISCARD = 250  # card_ids in the same file
 DUCK_AND_COVER = 4
 
 
 def _us_declining_its_eighth_round() -> ts.GameState:
-    """Turn 8, the US in the eighth round North Sea Oil gave it, the USSR holding Space Walk."""
+    """Turn 8, the US in the eighth round North Sea Oil gave it, the USSR holding Eagle/Bear Has Landed."""
     s = _played()
     guard = 0
     while s.current_phase != ts.Phase.ACTION_ROUND and guard < 600:
@@ -160,7 +160,7 @@ def _us_declining_its_eighth_round() -> ts.GameState:
 def test_the_turn_after_a_us_eighth_round_saves_and_loads() -> None:
     """The counter reads 9 through the cleanup after a US eighth round: no ninth round is played.
 
-    J1's blunder screen stored two such Space Walk discards and the loader refused them, ending the
+    J1's blunder screen stored two such Eagle/Bear Has Landed discards and the loader refused them, ending the
     CI part that reached one. Both places the counter can be saved at 9 are checked.
     """
     s = _us_declining_its_eighth_round()
@@ -173,7 +173,7 @@ def test_the_turn_after_a_us_eighth_round_saves_and_loads() -> None:
     ts.Engine.step(s, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
     assert s.action_round == 9
     assert s.ctx().decision_type == ts.DecisionType.SELECT_CARD
-    assert s.ctx().resolving_card == SPACE_WALK_DISCARD
+    assert s.ctx().resolving_card == EAGLE_BEAR_LANDED_DISCARD
     assert s.ctx().decision_player == ts.Player.USSR
     back = ts.state_from_save_json(s.to_save_json())
     _same_position(s, back)
