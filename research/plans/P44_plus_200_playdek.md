@@ -238,3 +238,17 @@ hours behind the control, compared at matched steps). Defaults taken for the thr
   that seat's drop is not attributable: R108 attacked J1 at 13,600M and no exploiter attacked J1's own continuation at
   16,000M without the league, so a less exploitable J1 at 16,000M explains it as well. The missing cell: one 400M US
   exploiter (R108's recipe) against J1's own 15,920-16,000M SWA.
+
+**Step 1's arm, revised (owner, 2026-11-11).** L2 toward the initial weights at 1e-3 (R122) and at 1e-4 (R123), each with
+the head norm, lagged the control by half at 400M (8.5 / 11.5% against A13+R48's SWA, the control 18.6%); the head
+norm alone (`E8.1-A31-R119-S45`, launched 14:38 UTC) read level (19.2%; 52.8% against J1 at 400M). The L2 term at
+these coefficients was the cost -- our term sums over every head parameter, so the literature's range does not carry
+over. **The arm continues as the head norm alone**; L2 at ~1e-5 waits for a slot. Its plasticity is read at 2,000M
+against the control's 54.5% own-head fit (J1 53.4%).
+
+**The plasticity record re-read (2026-11-11, current-engine positions).** J1's own-head random-label fit falls
+53.4 -> 43.0 -> 39.8 -> 37.2% over 2,000-8,000M and 36.0 -> 33.3% over 10,000-15,200M, a fresh head on its trunk
+84-87% throughout; dormant head units reach ~16% by 8,000M and stay; head norms keep growing (6-14x -> 15-37x fresh).
+J1' runs 1-2 points above J1 at every step. Most of the loss is over by 6,000M while J1's read kept rising to
+~13,000M, so the plateau's timing does not follow the probe: "the plateau is the heads losing plasticity" is not
+supported by timing, and the arm is judged on strength at matched steps, not on the probe.
