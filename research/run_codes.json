@@ -2513,6 +2513,22 @@
     "batch_size": 16384,
     "no_blunder_window": true
    }
+  },
+  "R123": {
+   "description": "R119 with L2 toward the initial weights on the policy and value heads at 1e-4 (--head-l2-init-coef): P44 step 1's arm relaunched (owner, 2026-11-11) after 1e-3 (R122) held the heads at 1x fresh and lagged the control by half at 400M",
+   "first": "E8.1-A31-R123-S45_20261111_114544",
+   "flags": {
+    "reward_scheme": "terminal",
+    "opponent_frac": 0.3,
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "head_l2_init_coef": 0.0001,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
   }
  },
  "views": {
@@ -2825,7 +2841,8 @@
   "E8-A8-R102-S44@15210M+R121_20261111_045137": "E8-A8-R102-S44@15210M+R121",
   "E8-A8-R102-S44@15210M+R120@16010M+R108_20261111_050815": "E8-A8-R102-S44@15210M+R120@16010M+R108",
   "E8-A8-R102-S44@15210M+R120@16010M+R109_20261111_071000": "E8-A8-R102-S44@15210M+R120@16010M+R109",
-  "E8.1-A31-R122-S45_20261111_091246": "E8.1-A31-R122-S45"
+  "E8.1-A31-R122-S45_20261111_091246": "E8.1-A31-R122-S45",
+  "E8.1-A31-R123-S45_20261111_114544": "E8.1-A31-R123-S45"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
