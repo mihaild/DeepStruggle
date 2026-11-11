@@ -2483,6 +2483,20 @@
     "mup": true,
     "batch_size": 16384
    }
+  },
+  "R121": {
+   "description": "R102 resumed with a fresh optimiser (--resume-fresh-optimizer: every Adam moment and step count dropped; weights, pi_ref, pool and clocks as saved): P44 step 0b, does an optimiser restart alone make distil-then-RL bleed (owner, 2026-11-11)",
+   "first": "E8-A8-R102-S44@15210M+R121_20261111_045137",
+   "flags": {
+    "resume_fresh_optimizer": true,
+    "opponent_frac": 0.3,
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384
+   }
   }
  },
  "views": {
@@ -2791,7 +2805,8 @@
   "E8-A37-R119-V3-S44_20261109_044432": "E8-A37-R119-V3-S44",
   "E8-A37-R119-V1-S44_20261109_044632": "E8-A37-R119-V1-S44",
   "E8.1-A8-R119-S45_20261111_001030": "E8.1-A8-R119-S45",
-  "E8-A8-R102-S44@15210M+R120_20261111_001303": "E8-A8-R102-S44@15210M+R120"
+  "E8-A8-R102-S44@15210M+R120_20261111_001303": "E8-A8-R102-S44@15210M+R120",
+  "E8-A8-R102-S44@15210M+R121_20261111_045137": "E8-A8-R102-S44@15210M+R121"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
