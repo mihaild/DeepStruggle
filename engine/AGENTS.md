@@ -629,9 +629,34 @@ has one action sequence. The helpers are `ts/canonical.hpp`.
   400M. `PLACEMENT_ORDER` (bit 8, 2026-11-08) keeps slot 19 as access and marks only the countries the run's order
   blocks now as 0.5 (0 no access, 1 access), while a floor is in force and not released. Both edit a base slot at no
   width, so only a model trained with the bit reads them so.
-* **A person plays none of them** (`obs_features::PERSON_RULES` for the page's current rules).
+* **A person plays none of them** (`obs_features::PERSON_RULES` for the page's current rules: ENG-9's bit and §22's).
 
 Tests: `CanonicalPlacement.*` in `engine/tests/test_canonical_placement.cpp` -- every setup board reached
 by exactly one sequence, exhaustively, for both orders; and on Ops plays and covered event runs from 120
 random games, the boards a canonical seat reaches equal free order's, exhaustively per run, for both
 orders. `tests/bindings/test_canonical_placement.py`.
+
+## 22. A person's rules: events that would do nothing, and discards that tell (owner 2026-11-11)
+
+Two **rule bits** of no width, in `obs_features::RULES` and `PERSON_RULES` (a person plays them; no
+training name, so no network does). Unseated, both are the rule from before them, and the behaviour
+digest is unchanged (E8's, as on `main`).
+
+* **`OWN_EVENT_GATED`** (bit 9): a seat's own or neutral card offers its Event only where
+  `CardHandlers::event_has_effect` says something would happen. That already covered Our Man in Tehran and
+  Kitchen Debates; for a seat playing the bit it also covers **One Small Step** (only behind in space) and
+  **Wargames** (only at DEFCON 2), whose Events are nothing but their "If ...". Played anyway (a headline),
+  such a card did not occur, so a starred one is discarded rather than removed (`relocate_played_card`).
+  Without the bit both cases return true, as before: offered, nothing happens, removed.
+* **`ALWAYS_ASK_DISCARD`** (bit 10): Blockade and Latin American Debt Crisis ask the US even when it holds no
+  card of 3+ effective Ops; its one legal answer is then CONFIRM_DONE. Resolving at once told the USSR the
+  US hand held no such card, which at a table nobody learns. Read on **either** seat
+  (`either_seat_plays_rule`): it guards the USSR's ignorance as much as it asks the US, so a person on either
+  side of a game against a network gets it. With auto-advance the game is the same as without the bit (the
+  forced "done" is taken), one micro-step longer.
+
+The page also has a display-only hook here: `StateMachine::pause_between_headlines` (thread-local, off
+except inside the wasm `ts_first_headline_json`) stops a copy of the game between the two headlines, so the
+first headline's VP can be shown alone.
+
+Tests: `OwnEventGated*`, `AlwaysAskDiscard*` in `engine/tests/test_bugs_regression.cpp`.

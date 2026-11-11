@@ -20,6 +20,14 @@ public:
     // Phase Transitions
     static void start_turn(GameState& state) noexcept;
     static void advance_headline_step(GameState& state) noexcept;
+    // For display only, never in play: while `pause_between_headlines` is set, the headline phase
+    // stops where the first headline is done and the second not begun, and `paused_between_headlines`
+    // says it did. A copy of the game stepped this way shows what the first headline did alone --
+    // its VP, which can end the game on their own (20 VP) before the second resolves. Off, the
+    // engine is unchanged. Only the browser build sets it (ts_first_headline_json); per thread, so a
+    // native harness stepping games on many threads never sees another's.
+    static thread_local bool pause_between_headlines;
+    static thread_local bool paused_between_headlines;
     static void advance_after_ops(GameState& state) noexcept;
     static void advance_after_action_round(GameState& state) noexcept;
     static void finish_play_without_ops(GameState& state) noexcept;

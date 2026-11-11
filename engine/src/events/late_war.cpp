@@ -203,7 +203,9 @@ bool trigger_latin_debt_crisis(GameState& state, Player p) noexcept {
             break;
         }
     }
-    if (!has_3ops) {
+    // Under ALWAYS_ASK_DISCARD the US is asked even with no such card, as for Blockade: going
+    // straight to the doubling told the USSR that it had none.
+    if (!has_3ops && !either_seat_plays_rule(state, obs_features::ALWAYS_ASK_DISCARD)) {
         // USSR doubles USSR influence in 2 countries in South America
         state.ctx().decision_player = Player::USSR;
         state.ctx().decision_type = DecisionType::POINT_NODE;

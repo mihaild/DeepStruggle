@@ -278,6 +278,16 @@ bool CardHandlers::event_has_effect(const GameState& state, uint8_t card_id, Pla
     switch (card_id) {
         case card_ids::OUR_MAN_IN_TEHRAN: return us_controls_a_middle_east_country(state);
         case card_ids::KITCHEN_DEBATES:   return us_leads_on_battlegrounds(state);
+        // Two more Events that are nothing but their "If ...", for a seat that plays OWN_EVENT_GATED:
+        // unmet, nothing happens, the Event is not offered (action_mask.cpp) and a starred card played
+        // so anyway (a headline) is discarded, not removed. Without the bit they occur, as before.
+        case card_ids::ONE_SMALL_STEP:
+            if (!seat_plays_rule(state, player, obs_features::OWN_EVENT_GATED)) return true;
+            return player == Player::US ? state.us_space_track < state.ussr_space_track
+                                        : state.ussr_space_track < state.us_space_track;
+        case card_ids::WARGAMES:
+            if (!seat_plays_rule(state, player, obs_features::OWN_EVENT_GATED)) return true;
+            return state.defcon == 2;
         default: return true;
     }
 }
