@@ -27,7 +27,7 @@
     "grainSales": "<strong>{{who}}：</strong><em>向苏联出售谷物</em>：选择一张苏联手牌：",
     "askNot": "<strong>{{who}}：</strong><em>“不要问你的国家能为你做什么”</em>：选择要弃置的手牌：",
     "terrorism": "<strong>{{who}}：</strong><em>恐怖主义</em>：选择一张手牌弃置：",
-    "spaceWalk": "<strong>{{who}}：</strong><em>雄鹰／巨熊登月（太空竞赛第 6 格）</em>：可在回合结束时弃置 1 张手牌（或点击跳过，保留全部手牌）："
+    "eagleBearLanded": "<strong>{{who}}：</strong><em>雄鹰／巨熊登月（太空竞赛第 6 格）</em>：可在回合结束时弃置 1 张手牌（或点击跳过，保留全部手牌）："
   },
   "branchAsk": {
     "chernobyl": "指定一个地区：本回合剩余时间内，苏联不得使用行动点数在该地区放置影响力",
@@ -67,7 +67,7 @@
   "opMode": {
     "influence": {
       "text": "放置影响力",
-      "desc": "在相邻国家放置影响力标记"
+      "desc": "在已有己方影响力的国家、与这些国家相邻的国家，或与己方超级大国相邻的国家放置影响力"
     },
     "coup": {
       "text": "尝试政变",
