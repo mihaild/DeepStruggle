@@ -7,7 +7,9 @@
 #include <limits>
 #include <type_traits>
 
+#include "ts/action_mask.hpp"
 #include "ts/card_data.hpp"
+#include "ts/card_handlers.hpp"
 #include "ts/engine.hpp"
 #include "ts/map_data.hpp"
 
@@ -583,9 +585,20 @@ Value display_state(const GameState& state) {
     CHECK_FLAG(CMC_SUICIDE_LOSS);
     CHECK_FLAG(EUROPE_CONTROL_WIN);
 #undef CHECK_FLAG
+    // Not an effect bit: who received Missile Envy and still holds it, owing its Operations.
+    if (state.forced_card_id == card_ids::MISSILE_ENVY && state.forced_card_player != Player::NONE &&
+        in_hand_of(state.card_locations[card_ids::MISSILE_ENVY], state.forced_card_player)) {
+        flags.push(state.forced_card_player == Player::US ? "MISSILE_ENVY_US" : "MISSILE_ENVY_USSR");
+    }
     d.set("flags", std::move(flags));
     // uint64: exact in Python; a JS reader must use `flags`, not this, past 2^53.
     d.set("persistent_effects", Value(static_cast<uint64_t>(state.persistent_effects)));
+    // Chernobyl's region (engine `Region` order), while it is in effect: its bits are past what a
+    // JS number keeps exactly once higher flags are set.
+    if (state.has_flag(effect_bits::CHERNOBYL_ACTIVE)) {
+        d.set("chernobyl_region", I(static_cast<int>((state.persistent_effects & effect_bits::CHERNOBYL_REGION_MASK)
+                                                     >> effect_bits::CHERNOBYL_REGION_SHIFT)));
+    }
 
     // 6. Countries, by name
     Value countries = Value::object();
@@ -625,6 +638,15 @@ Value display_state(const GameState& state) {
                 ci.set("id", I(i));
                 ci.set("name", std::string(CardData::get_card_name(i)));
                 ci.set("ops", I(CardData::get_card(i).ops));
+                // Whether its Event would happen were it played now: for its holder, or for the
+                // opponent whose card it is (an opponent's card fires for them when played).
+                {
+                    const Player holder = us ? Player::US : Player::USSR;
+                    const Player side = CardData::is_opponent_card(i, holder) ? get_opponent(holder) : holder;
+                    ci.set("event_ready", i != card_ids::THE_CHINA_CARD &&
+                                              CardHandlers::can_trigger_event(state, i, side) &&
+                                              CardHandlers::event_has_effect(state, i, side));
+                }
                 (us ? us_hand : ussr_hand).push(I(i));
                 (us ? us_cards : ussr_cards).push(std::move(ci));
                 break;
@@ -705,6 +727,19 @@ Value display_state(const GameState& state) {
     legal_actions.set("valid_ids", std::move(legal));
     legal_actions.set("valid_action_labels", std::move(labels));
     legal_actions.set("allow_early_stop", Value(ctx.allow_early_stop != 0));
+    // Whether the engine takes "done" here (the flat mask's CONFIRM_DONE): an early stop, a
+    // choice with nothing left to choose, or an optional bonus the player may decline (Junta's
+    // and Tear Down This Wall's free coup or realignment) -- which `allow_early_stop` misses.
+    {
+        uint8_t flat[FLAT_ACTION_SPACE_SIZE];
+        ActionMask::generate_flat_mask_212(state, flat);
+        legal_actions.set("can_decline", Value(flat[flat_slots::CONFIRM_DONE] != 0));
+        // UN Intervention played on the card Grain Sales drew: a card slot at a resolution node,
+        // which `valid_ids` (the play modes) cannot say.
+        if (ctx.decision_type == DecisionType::SELECT_PLAY_MODE && ctx.resolving_card == card_ids::GRAIN_SALES) {
+            legal_actions.set("un_intervention", Value(flat[card_ids::UN_INTERVENTION - 1] != 0));
+        }
+    }
     d.set("legal_actions", std::move(legal_actions));
 
     const bool terminal = Engine::is_terminal(state);

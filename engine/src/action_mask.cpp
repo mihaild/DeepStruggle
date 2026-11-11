@@ -316,7 +316,11 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                     CardHandlers::can_trigger_event(state, card, get_opponent(p))) {
                     mask_out[static_cast<size_t>(Resolution::EVENT)] = 1;
                 }
-            } else if (CardHandlers::can_trigger_event(state, card, p)) {
+            } else if (CardHandlers::can_trigger_event(state, card, p) &&
+                       (!seat_plays_rule(state, p, obs_features::OWN_EVENT_GATED) ||
+                        CardHandlers::event_has_effect(state, card, p))) {
+                // A seat playing OWN_EVENT_GATED is not offered its own or a neutral card's Event
+                // where nothing would happen: an unmet "If ..." (event_has_effect).
                 mask_out[static_cast<size_t>(Resolution::EVENT)] = 1;
             }
 

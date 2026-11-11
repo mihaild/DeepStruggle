@@ -80,7 +80,18 @@ are cited from elsewhere; keep them.
     `ts_env.seat_tree`; `seat_decider` seats the real position's decider. `(seed, actions)` datasets
     record `us_obs_features` / `ussr_obs_features`, which `WarmupDataset` seats (absent: 0). The wasm
     build exports `ts_seat_obs_features`, `ts_seat_rules` and `ts_obs_features_rules`, the rules a
-    person plays: `OBS_FEATURES_PERSON_RULES`, every rule bit but the canonical orders.
+    person plays: `OBS_FEATURES_PERSON_RULES`, every rule bit but the canonical orders
+    (`OBS_FEATURE_OPP_EVENT_GATED`, and `OBS_FEATURE_OWN_EVENT_GATED` / `OBS_FEATURE_ALWAYS_ASK_DISCARD`,
+    a person's rules with no training name, [`engine/AGENTS.md`](../engine/AGENTS.md) §22).
+  - **For pages that mirror a game played elsewhere** (Twilight Struggle /ai, the analysis board): the wasm
+    build also exports `ts_step_dice` (a click with both dice of an opposed roll forced), `ts_first_headline_json`
+    (a copy of the game stopped between the two headlines), `ts_card_location` / `ts_set_card_location` and
+    `ts_set_rng` (put a real deal or draw on the board), and `ts_rollout_leaf_features` /
+    `ts_rollout_leaf_feature_count` (Europe at each rollout leaf). `ts_step` accepts UN Intervention played on the
+    card Grain Sales drew, the one action `StateMachine::step` takes for another decision type. The display
+    state says, per card in hand, whether its Event would happen now (`event_ready`), who owes Missile Envy's Ops
+    (`MISSILE_ENVY_US` / `_USSR` in `flags`), Chernobyl's region (`chernobyl_region`), whether "done" is legal
+    (`legal_actions.can_decline`) and, at Grain Sales' card, whether UN Intervention is (`legal_actions.un_intervention`).
   - **`BatchedSearch`** ([`batched_search.hpp`](batched_search.hpp)): the C++ tree behind
     `ai/search/batched_mcts.py` (`backend="cpp"`), Python-only. Up to `capacity` PUCT searches in
     lockstep, split into `num_groups` evaluation groups: `reset(roots, simulations, rng_state,

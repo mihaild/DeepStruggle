@@ -96,11 +96,13 @@ void keep_event_tracks(const ts::GameState& s) {
 }
 
 // `settled`, if given, takes the state after each step that rolled a die (see g_settled), and that
-// step's roll joins g_rolls.
-bool drain(ts::GameState& s, int forced_die, ts::GameState* settled = nullptr) {
+// step's roll joins g_rolls. `forced_opp_die` is the other die of an opposed roll (a realignment:
+// the roller's die is `forced_die`, the opponent's this one), 0 to roll it.
+bool drain(ts::GameState& s, int forced_die, ts::GameState* settled = nullptr, int forced_opp_die = 0) {
     while (!ts::Engine::is_terminal(s) && s.ctx().decision_player == ts::Player::NONE &&
            s.ctx().decision_type == ts::DecisionType::ROLL_DIE) {
-        const ts::MicroAction roll{ts::DecisionType::ROLL_DIE, static_cast<uint8_t>(forced_die), 0, 0};
+        const ts::MicroAction roll{ts::DecisionType::ROLL_DIE, static_cast<uint8_t>(forced_die),
+                                   static_cast<uint8_t>(forced_opp_die), 0};
         if (!ts::Engine::step(s, roll)) return false;
         if (settled && s.last_roll.type != ts::RollType::NONE) {
             *settled = s;
@@ -112,9 +114,10 @@ bool drain(ts::GameState& s, int forced_die, ts::GameState* settled = nullptr) {
 }
 
 // All or nothing: a refused action, or a refused forced die, leaves the game where it was.
-int apply(const ts::MicroAction& action, int forced_die) {
+int apply(const ts::MicroAction& action, int forced_die, int forced_opp_die = 0) {
     if (ts::Engine::is_terminal(g_state)) { g_error = "the game is over"; return 0; }
     if (forced_die < 0 || forced_die > 6) { g_error = "forced die must be 0..6"; return 0; }
+    if (forced_opp_die < 0 || forced_opp_die > 6) { g_error = "forced die must be 0..6"; return 0; }
     const ts::GameState before = g_state;
     if (!ts::Engine::step(g_state, action)) {
         g_state = before;
@@ -126,7 +129,7 @@ int apply(const ts::MicroAction& action, int forced_die) {
     g_event_tracks.clear();
     keep_roll(g_state);
     keep_event_tracks(g_state);
-    if (!drain(g_state, forced_die, &g_settled)) {
+    if (!drain(g_state, forced_die, &g_settled, forced_opp_die)) {
         g_state = before;
         g_error = "the engine refused the die roll";
         return 0;
@@ -547,15 +550,76 @@ TS_API int ts_decision_type() { return static_cast<int>(g_state.ctx().decision_t
 
 // ---- acting -----------------------------------------------------------------------------------
 
+// Is `a` an answer to the open decision? Its type is the decision's, but for one action the engine
+// itself excepts (StateMachine::step): UN Intervention played ON the card Grain Sales drew arrives
+// card-shaped at a resolution node. Refusing it here made a move the mask offers impossible -- for
+// the AI, a refused move and a game that stops. The engine's mask still has the final say.
+static bool for_open_decision(const ts::MicroAction& a) {
+    const auto& c = g_state.ctx();
+    return a.decision_type == c.decision_type ||
+           (c.decision_type == ts::DecisionType::SELECT_PLAY_MODE && c.resolving_card == ts::card_ids::GRAIN_SALES &&
+            a.decision_type == ts::DecisionType::SELECT_CARD && a.primary_id == ts::card_ids::UN_INTERVENTION);
+}
+
 // A click: one MicroAction, then the chance nodes it lands on (forced_die 0 = roll).
 TS_API int ts_step(int decision_type, int primary, int secondary, int flags, int forced_die) {
     const ts::MicroAction a{static_cast<ts::DecisionType>(decision_type), static_cast<uint8_t>(primary),
                             static_cast<uint8_t>(secondary), static_cast<uint8_t>(flags)};
-    if (a.decision_type != g_state.ctx().decision_type) {
+    if (!for_open_decision(a)) {
         g_error = "the action is for a different decision than the one open";
         return 0;
     }
     return apply(a, forced_die);
+}
+
+// The same, with both dice of an opposed roll named: `forced_opp_die` is the opponent's die of a
+// realignment (0 = roll it). Twilight Struggle /ai uses it to enter the dice of a game played
+// elsewhere, where both players rolled real dice.
+TS_API int ts_step_dice(int decision_type, int primary, int secondary, int flags, int forced_die,
+                        int forced_opp_die) {
+    const ts::MicroAction a{static_cast<ts::DecisionType>(decision_type), static_cast<uint8_t>(primary),
+                            static_cast<uint8_t>(secondary), static_cast<uint8_t>(flags)};
+    if (!for_open_decision(a)) {
+        g_error = "the action is for a different decision than the one open";
+        return 0;
+    }
+    return apply(a, forced_die, forced_opp_die);
+}
+
+// The first headline on its own, for the page's log. Steps a copy of the game with the action (and
+// its dice, as ts_step_dice), stopping where the first headline is done and the second not begun
+// (StateMachine::pause_between_headlines), and returns {"state": <display>, "rolls": n} -- n the
+// dice rolled up to there -- or "" when the action does not get there: no headline resolving, or
+// the game over with the first. The game itself is not touched. The real step's own dice record
+// is cleared by the next ts_step, which is why this may run just before it.
+TS_API const char* ts_first_headline_json(int decision_type, int primary, int secondary, int flags, int forced_die,
+                                          int forced_opp_die) {
+    const ts::MicroAction a{static_cast<ts::DecisionType>(decision_type), static_cast<uint8_t>(primary),
+                            static_cast<uint8_t>(secondary), static_cast<uint8_t>(flags)};
+    if (g_state.current_phase != ts::Phase::HEADLINE) return keep("");
+    ts::GameState copy = g_state;
+    g_rolls.clear();
+    ts::StateMachine::pause_between_headlines = true;
+    ts::StateMachine::paused_between_headlines = false;
+    // As apply() and drain() step a click, but no further than the pause: a die node the first
+    // headline left behind is not one to roll.
+    bool ok = ts::Engine::step(copy, a);
+    if (ok) keep_roll(copy);
+    while (ok && !ts::StateMachine::paused_between_headlines && !ts::Engine::is_terminal(copy) &&
+           copy.ctx().decision_player == ts::Player::NONE && copy.ctx().decision_type == ts::DecisionType::ROLL_DIE) {
+        const ts::MicroAction roll{ts::DecisionType::ROLL_DIE, static_cast<uint8_t>(forced_die),
+                                   static_cast<uint8_t>(forced_opp_die), 0};
+        ok = ts::Engine::step(copy, roll);
+        if (ok) keep_roll(copy);
+    }
+    const bool paused = ts::StateMachine::paused_between_headlines;
+    ts::StateMachine::pause_between_headlines = false;
+    ts::StateMachine::paused_between_headlines = false;
+    if (!ok || !paused) return keep("");
+    sj::Value out = sj::Value::object();
+    out.set("state", sj::display_state(copy));
+    out.set("rolls", static_cast<int>(g_rolls.size()));
+    return keep(out.dump());
 }
 
 // The flat legal mask in an action view: 0 E4, 1 E4.1's merged influence, 2 P42's macro (until-control) view.
@@ -660,6 +724,29 @@ TS_API int ts_set_vp(int v) {
     if (v < -20 || v > 20) { g_error = "VP must be -20..20"; return 0; }
     g_state.victory_points = static_cast<int8_t>(v);
     return 1;
+}
+
+// ---- entering a game played elsewhere (Twilight Struggle /ai) ----------------------------------
+//
+// The analysis board mirrors a game played at a table or in another app, so what chance decided
+// there has to be put on the board here: which cards were dealt, which card a random draw took.
+// A deal is not a decision, and the engine draws from its RNG; these two calls are how the page
+// corrects it. Moving a card keeps every count right only if the page swaps cards in pairs, which
+// it does; the engine itself checks nothing here, as with the debug overrides above.
+
+TS_API int ts_card_location(int card) {
+    if (card < 1 || card > 110) { g_error = "card ids are 1..110"; return -1; }
+    return static_cast<int>(g_state.card_locations[card]);
+}
+TS_API int ts_set_card_location(int card, int loc) {
+    if (card < 1 || card > 110) { g_error = "card ids are 1..110"; return 0; }
+    if (loc < 0 || loc > static_cast<int>(ts::CardLocation::HEADLINE_COMMITTED)) { g_error = "no such card location"; return 0; }
+    g_state.card_locations[card] = static_cast<ts::CardLocation>(loc);
+    return 1;
+}
+// The RNG state, so a random event can be re-run until it draws the card that was really drawn.
+TS_API void ts_set_rng(uint32_t lo, uint32_t hi) {
+    g_state.rng_state = (static_cast<uint64_t>(hi) << 32) | lo;
 }
 
 // ---- the rollout root's playouts (bindings/rollout_batch.hpp, the same C++ as Python's) --------
@@ -912,6 +999,38 @@ TS_API int ts_rollout_fill_leaves() {
     g_ro_masks.assign(std::max<size_t>(1, n * ts::FLAT_ACTION_SPACE_SIZE), 0);
     return static_cast<int>(g_rollout->fill_leaves(g_ro_obs.data(), g_ro_masks.data()));
 }
+// What the last ts_rollout_fill_leaves listed, read from each leaf's root mover's side, for a page
+// that weighs the critic's value with what it knows the critic misjudges -- Europe, above all, where
+// a player who controls it when the scoring card comes wins at once. kLeafFeatures floats a leaf, in
+// the order fill_leaves wrote them: the mover's and the opponent's Europe status (0 none, 1 presence,
+// 2 domination, 3 control), Europe battlegrounds the mover controls less the opponent's, where
+// Europe Scoring is in that world (0 the mover's hand, 1 the draw deck, 2 the opponent's hand, 3
+// anywhere else: played, discarded), and the turn.
+namespace {
+constexpr int kLeafFeatures = 5;
+std::vector<float> g_ro_leaf_features;
+}  // namespace
+TS_API int ts_rollout_leaf_feature_count() { return kLeafFeatures; }
+TS_API const float* ts_rollout_leaf_features() {
+    const size_t n = g_rollout ? g_rollout->leaves_listed() : 0;
+    g_ro_leaf_features.assign(std::max<size_t>(1, n * kLeafFeatures), 0.0f);
+    for (size_t j = 0; j < n; ++j) {
+        const auto& row = g_rollout->row(g_rollout->leaf_row(j));
+        const ts::Player me = g_rollout->mover(row.position);
+        const auto e = ts::Scoring::evaluate_region(row.state, ts::Region::EUROPE);
+        const bool us = me == ts::Player::US;
+        float* f = g_ro_leaf_features.data() + j * kLeafFeatures;
+        f[0] = static_cast<float>(us ? e.us_status : e.ussr_status);
+        f[1] = static_cast<float>(us ? e.ussr_status : e.us_status);
+        f[2] = static_cast<float>(us ? e.us_battlegrounds - e.ussr_battlegrounds : e.ussr_battlegrounds - e.us_battlegrounds);
+        const auto loc = row.state.card_locations[ts::card_ids::EUROPE_SCORING];
+        f[3] = ts::in_hand_of(loc, me) ? 0.0f : loc == ts::CardLocation::DRAW_DECK ? 1.0f
+             : ts::in_hand_of(loc, ts::get_opponent(me)) ? 2.0f : 3.0f;
+        f[4] = static_cast<float>(row.state.turn);
+    }
+    return g_ro_leaf_features.data();
+}
+
 TS_API int ts_rollout_set_leaf_values(const float* values) {
     if (!g_rollout) { g_error = "ts_rollout_reset first"; return 0; }
     if (any_nan(values, g_rollout->leaves_listed())) { g_error = "a leaf value is NaN"; return 0; }

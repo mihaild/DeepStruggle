@@ -622,14 +622,25 @@ namespace obs_features {
     // 0.5 access but blocked by the order). PLACEMENT_LEGAL's mask-in-the-slot changed the slot at 71% of placement
     // decisions and made V1 worse; this changes it only where the order blocks.
     constexpr uint32_t PLACEMENT_ORDER = 1u << 8;
+    // A rule bit (no width, owner 2026-11-11): a seat's own or neutral card offers its Event only where
+    // it would do something (CardHandlers::event_has_effect), and the Events that are nothing but an
+    // unmet "If ..." -- One Small Step not behind in space, Wargames off DEFCON 2, with Our Man in
+    // Tehran and Kitchen Debates -- count as not occurring, so a starred one played that way (a
+    // headline) is discarded, not removed. Clear, they are offered and removed as before.
+    constexpr uint32_t OWN_EVENT_GATED = 1u << 9;
+    // A rule bit (no width, owner 2026-11-11): Blockade and Latin American Debt Crisis ask the US even
+    // when it holds no card of 3+ Ops (its one answer is then "done"), so the USSR never learns that it
+    // had none. Read on either seat: it guards the USSR's ignorance and asks the US. With auto-advance
+    // the game is the same as without it -- one forced decision more; clear, the event resolves at once.
+    constexpr uint32_t ALWAYS_ASK_DISCARD = 1u << 10;
     constexpr float BOARD_BLOCKED_BY_ORDER = 0.5f;
     constexpr size_t BOARD_MY_PLACEABLE = 19;
     // The bits that change the rules a seat plays (GameState::seat_rules), not its observation.
-    constexpr uint32_t RULES       = OPP_EVENT_GATED | CANONICAL;
+    constexpr uint32_t RULES       = OPP_EVENT_GATED | CANONICAL | OWN_EVENT_GATED | ALWAYS_ASK_DISCARD;
     // The rule bits a person plays (the page's current rules): game rules, not a model's action order.
-    constexpr uint32_t PERSON_RULES = OPP_EVENT_GATED;
+    constexpr uint32_t PERSON_RULES = OPP_EVENT_GATED | OWN_EVENT_GATED | ALWAYS_ASK_DISCARD;
     constexpr uint32_t ALL         = OPS_BUDGET | HEADLINE_REVEAL | OPP_EVENT_GATED | CANONICAL | PLACEMENT_LEGAL |
-                                     PLACEMENT_ORDER;
+                                     PLACEMENT_ORDER | OWN_EVENT_GATED | ALWAYS_ASK_DISCARD;
 
     constexpr size_t OPS_BUDGET_WIDTH = 3;
 
@@ -653,6 +664,11 @@ inline void seat_both(GameState& state, uint32_t features) noexcept {
 
 inline bool seat_plays_rule(const GameState& state, Player p, uint32_t rule) noexcept {
     return (state.seat_rules[seat_index(p)] & rule) != 0;
+}
+
+// A rule that guards what one side may learn of the other's hand is the game's once either seat plays it.
+inline bool either_seat_plays_rule(const GameState& state, uint32_t rule) noexcept {
+    return ((state.seat_rules[0] | state.seat_rules[1]) & rule) != 0;
 }
 
 namespace ctx_slots {

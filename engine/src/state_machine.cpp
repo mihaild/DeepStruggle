@@ -243,9 +243,16 @@ void StateMachine::start_turn(GameState& state) noexcept {
     state.ctx().decision_type = DecisionType::SELECT_CARD;
 }
 
+thread_local bool StateMachine::pause_between_headlines = false;
+thread_local bool StateMachine::paused_between_headlines = false;
+
 void StateMachine::advance_headline_step(GameState& state) noexcept {
     // Check if we need to resolve headline 2 or enter AR 1
     if (state.headline_stage == 1) {
+        if (pause_between_headlines && state.current_phase != Phase::GAME_OVER) {
+            paused_between_headlines = true;
+            return;
+        }
         // Move to Stage 2: Second headline
         state.headline_stage = 2;
         uint8_t h2_card = state.headline_second_card;

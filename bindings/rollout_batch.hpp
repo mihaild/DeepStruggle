@@ -187,6 +187,7 @@ public:
     bool all_done() const noexcept { return live() == 0; }
     size_t listed() const noexcept { return live_order_.size(); }        // rows the last fill_live wrote
     size_t leaves_listed() const noexcept { return leaf_order_.size(); } // rows the last fill_leaves wrote
+    uint32_t leaf_row(size_t j) const noexcept { return leaf_order_[j]; }  // the row of the j-th leaf listed
     // Rows at their horizon still waiting for a leaf value: what the next fill_leaves writes.
     size_t leaves_pending() const noexcept {
         size_t n = 0;

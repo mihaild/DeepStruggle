@@ -1506,6 +1506,8 @@ NB_MODULE(ts_engine, m) {
     m.attr("OBS_FEATURE_CANONICAL_LEARNED") = static_cast<uint32_t>(ts::obs_features::CANONICAL_LEARNED);
     m.attr("OBS_FEATURE_PLACEMENT_LEGAL") = static_cast<uint32_t>(ts::obs_features::PLACEMENT_LEGAL);
     m.attr("OBS_FEATURE_PLACEMENT_ORDER") = static_cast<uint32_t>(ts::obs_features::PLACEMENT_ORDER);
+    m.attr("OBS_FEATURE_OWN_EVENT_GATED") = static_cast<uint32_t>(ts::obs_features::OWN_EVENT_GATED);
+    m.attr("OBS_FEATURE_ALWAYS_ASK_DISCARD") = static_cast<uint32_t>(ts::obs_features::ALWAYS_ASK_DISCARD);
     m.attr("OBS_FEATURES_RULES") = static_cast<uint32_t>(ts::obs_features::RULES);
     m.attr("OBS_FEATURES_PERSON_RULES") = static_cast<uint32_t>(ts::obs_features::PERSON_RULES);
     m.attr("OBS_FEATURES_ALL") = static_cast<uint32_t>(ts::obs_features::ALL);

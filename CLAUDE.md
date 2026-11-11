@@ -336,7 +336,9 @@ non-decreasing country rank, most important first or last, one sequence per boar
 points releases its floor (`engine/AGENTS.md` §21); a branch adds one with `--resume-add-rules`, and a person
 plays neither. Two observation bits of no width let a network see its run's order: `PLACEMENT_LEGAL` (bit 7,
 the mask in the "I can place here" slot, made V1 worse) and `PLACEMENT_ORDER` (bit 8, that slot keeps access and
-marks only order-blocked countries 0.5). A seat plays the rule bits of the feature set it is observed in, a
+marks only order-blocked countries 0.5). `OWN_EVENT_GATED` (bit 9) and `ALWAYS_ASK_DISCARD` (bit 10, 2026-11-11) are
+rule bits a person plays and no network does (no training name): no Event offered that would do nothing, and Blockade
+/ Latin American Debt Crisis always ask the US (`engine/AGENTS.md` §22). A seat plays the rule bits of the feature set it is observed in, a
 search both sides of its tree under its own network's, and a person in the web page every rule bit; an
 unseated side plays the rule from before every bit, so the unseated engine is E8's.
 Adding a block still needs the owner.

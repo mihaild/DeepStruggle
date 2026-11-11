@@ -119,7 +119,9 @@ bool trigger_blockade(GameState& state, Player p) noexcept {
             }
         }
     }
-    if (!has_3ops) {
+    // Under ALWAYS_ASK_DISCARD the US is asked even with no such card (its one answer is then
+    // "done"): resolving at once told the USSR the US hand held none, which at a table nobody learns.
+    if (!has_3ops && !either_seat_plays_rule(state, obs_features::ALWAYS_ASK_DISCARD)) {
         // Remove all US influence from West Germany
         state.countries[countries::WEST_GERMANY].us_influence = 0;
         return true;

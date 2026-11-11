@@ -970,6 +970,107 @@ TEST(RegressionTest, UnseatedStatePlaysThePreFixRule) {
     ASSERT_FALSE(seat_plays_rule(state, Player::US, obs_features::OPP_EVENT_GATED));
 }
 
+// OWN_EVENT_GATED (a rule bit, owner 2026-11-11): a seat's own or neutral card whose Event is nothing
+// but an unmet "If ..." is not offered as an Event. Unseated, the Event is offered and does nothing.
+namespace {
+bool event_offered(GameState& state, Player p, uint8_t card) {
+    state.card_locations[card] = ts::hand_of(p);
+    state.current_phase = Phase::ACTION_ROUND;
+    state.action_round = 1;
+    state.phasing_player = p;
+    state.ctx().decision_player = p;
+    state.ctx().decision_type = DecisionType::SELECT_PLAY_MODE;
+    state.ctx().pending_op_card = card;
+    uint8_t mask[128]{};
+    size_t out_size = 0;
+    ActionMask::generate_mask(state, mask, &out_size);
+    return mask[static_cast<uint8_t>(Resolution::EVENT)] != 0;
+}
+}  // namespace
+
+TEST(RegressionTest, OwnEventGatedHidesOneSmallStepUnlessBehind) {
+    GameState state{};
+    Engine::init_game(state, 42);
+    state.us_space_track = 2;
+    state.ussr_space_track = 1;
+    ASSERT_TRUE(event_offered(state, Player::US, card_ids::ONE_SMALL_STEP));   // unseated: as before
+    ASSERT_TRUE(CardHandlers::event_has_effect(state, card_ids::ONE_SMALL_STEP, Player::US));
+
+    seat_obs_features(state, Player::US, obs_features::OWN_EVENT_GATED);
+    ASSERT_FALSE(event_offered(state, Player::US, card_ids::ONE_SMALL_STEP));  // ahead
+    ASSERT_FALSE(CardHandlers::event_has_effect(state, card_ids::ONE_SMALL_STEP, Player::US));
+    state.ussr_space_track = 2;
+    ASSERT_FALSE(event_offered(state, Player::US, card_ids::ONE_SMALL_STEP));  // level
+    state.ussr_space_track = 3;
+    ASSERT_TRUE(event_offered(state, Player::US, card_ids::ONE_SMALL_STEP));   // behind
+    ASSERT_TRUE(CardHandlers::event_has_effect(state, card_ids::ONE_SMALL_STEP, Player::US));
+}
+
+TEST(RegressionTest, OwnEventGatedHidesWargamesOffDefcon2) {
+    GameState state{};
+    Engine::init_game(state, 42);
+    state.defcon = 3;
+    seat_obs_features(state, Player::USSR, obs_features::OWN_EVENT_GATED);
+    ASSERT_FALSE(event_offered(state, Player::USSR, card_ids::WARGAMES));
+    ASSERT_TRUE(event_offered(state, Player::US, card_ids::WARGAMES));         // the US seat is unseated
+    state.defcon = 2;
+    ASSERT_TRUE(event_offered(state, Player::USSR, card_ids::WARGAMES));
+}
+
+TEST(RegressionTest, OwnEventGatedHidesOurManInTehranWithoutAMiddleEastCountry) {
+    GameState state{};
+    Engine::init_game(state, 42);
+    for (uint8_t i = 0; i < 84; ++i) {
+        if (MapData::get_country(i).region == Region::MIDDLE_EAST) state.countries[i].us_influence = 0;
+    }
+    ASSERT_TRUE(event_offered(state, Player::US, card_ids::OUR_MAN_IN_TEHRAN));
+    seat_obs_features(state, Player::US, obs_features::OWN_EVENT_GATED);
+    ASSERT_FALSE(event_offered(state, Player::US, card_ids::OUR_MAN_IN_TEHRAN));
+}
+
+// ALWAYS_ASK_DISCARD (a rule bit, owner 2026-11-11): Blockade asks the US even with no card of 3+ Ops,
+// so the USSR does not learn it had none. Either seat's bit asks; the only answer is "done", the one
+// legal action auto-advance takes, and West Germany is cleared as it was at once without the bit.
+TEST(RegressionTest, AlwaysAskDiscardAsksBlockadeWithNothingToDiscard) {
+    for (const Player seat : {Player::US, Player::USSR}) {
+        GameState state{};
+        state.countries[countries::WEST_GERMANY].us_influence = 4;
+        seat_obs_features(state, seat, obs_features::ALWAYS_ASK_DISCARD);
+        ASSERT_FALSE(CardHandlers::trigger_event(state, card_ids::BLOCKADE, Player::USSR));
+        ASSERT_EQ(state.ctx().decision_player, Player::US);
+        ASSERT_EQ(state.ctx().decision_type, DecisionType::SELECT_CARD);
+        ASSERT_EQ(state.countries[countries::WEST_GERMANY].us_influence, 4);
+
+        uint8_t flat[FLAT_ACTION_SPACE_SIZE]{};
+        ActionMask::generate_flat_mask_212(state, flat);
+        int legal = 0;
+        for (size_t i = 0; i < FLAT_ACTION_SPACE_SIZE; ++i) legal += flat[i];
+        ASSERT_EQ(legal, 1);
+        ASSERT_EQ(flat[flat_slots::CONFIRM_DONE], 1);
+
+        MicroAction done{};
+        done.decision_type = DecisionType::SELECT_CARD;
+        done.flags = action_flags::CONFIRM_DONE;
+        ASSERT_TRUE(CardHandlers::handle_event_step(state, done));
+        ASSERT_EQ(state.countries[countries::WEST_GERMANY].us_influence, 0);
+    }
+}
+
+TEST(RegressionTest, AlwaysAskDiscardAsksLatinAmericanDebtCrisisWithNothingToDiscard) {
+    GameState state{};
+    seat_obs_features(state, Player::USSR, obs_features::ALWAYS_ASK_DISCARD);
+    ASSERT_FALSE(CardHandlers::trigger_event(state, card_ids::LATIN_AMERICAN_DEBT_CRISIS, Player::USSR));
+    ASSERT_EQ(state.ctx().decision_player, Player::US);
+    ASSERT_EQ(state.ctx().decision_type, DecisionType::SELECT_CARD);
+
+    MicroAction done{};
+    done.decision_type = DecisionType::SELECT_CARD;
+    done.flags = action_flags::CONFIRM_DONE;
+    ASSERT_FALSE(CardHandlers::handle_event_step(state, done));
+    ASSERT_EQ(state.ctx().decision_player, Player::USSR);                      // the doubling
+    ASSERT_EQ(state.ctx().decision_type, DecisionType::POINT_NODE);
+}
+
 // ENG-10: a target is offered only if its cost fits the budget that spending there keeps.
 // The region bonuses were withdrawn only after the Op was spent, so the last one could go
 // anywhere: the China Card under Vietnam Revolts placed five Ops in Southeast Asia and the
