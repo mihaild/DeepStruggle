@@ -23,9 +23,9 @@
     "spec": "选取概率最高的 {{moves}}，分别在 {{worlds}} 中模拟",
     "moves_other": "{{count}} 个行动",
     "worlds_other": "{{count}} 个抽样局面",
-    "invalid": "搜索参数无效：k 和抽样局面数须为至少 1 的整数，模拟步数和信念手牌数须为非负整数，竞逐局面数须为 0（关闭）或小于抽样局面数，决策规则须为 argmax、z<x> 或 kl<t>。",
+    "invalid": "搜索参数无效：候选行动数 k 和抽样局面数须为至少 1 的整数，搜索深度和推断手牌数须为非负整数，淘汰前模拟局面数须为 0（关闭）或小于抽样局面数，选择规则须为 argmax、z<x> 或 kl<t>。",
     "defaultTitle": "默认搜索：{{spec}}",
-    "rollout": "根节点模拟搜索",
+    "rollout": "Rollout 根节点搜索",
     "policy": "策略"
   },
   "model": {

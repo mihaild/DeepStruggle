@@ -29,7 +29,7 @@
     "controlsSpare": "{{side}}控制，超出控制所需 {{spare}} 点",
     "controlsNoSpare": "{{side}}恰好控制",
     "controlsWith_other": "{{side}}再增加 {{count}} 点影响力即可控制（需 {{count}} 行动点数）",
-    "breaksWith": "{{side}}增加 {{brk}} 点可打破控制（需 {{breakOps}} 点行动），增加 {{control}} 点可取得控制（需 {{controlOps}} 点行动）"
+    "breaksWith": "{{side}}增加 {{brk}} 点影响力可打破控制（需 {{breakOps}} 行动点数），增加 {{control}} 点影响力可取得控制（需 {{controlOps}} 行动点数）"
   },
   "tooltip": {
     "theUs": "美国",

@@ -28,7 +28,7 @@
     "doneTitle": "最后一格：空间站，太空竞赛已完成",
     "done": "完成",
     "title": "第 {{box}} 格，{{name}}：使用至少 {{ops}} 行动点数的卡牌，掷出 1–{{roll}}",
-    "text": "下次需 {{ops}} 点行动 · 掷出 1～{{roll}}"
+    "text": "下次需 {{ops}} 行动点数 · 掷出 1～{{roll}}"
   },
   "label": {
     "defcon": "核危机等级",
@@ -70,7 +70,7 @@
     "program": "{{side}}太空计划",
     "maxAttemptsUsed": "尝试次数已用尽",
     "attemptAvailable": "可以尝试",
-    "position": "局面：",
+    "position": "位置：",
     "positionValue": "第 {{box}} 格——{{name}}",
     "attemptsThisTurn": "本回合尝试次数：",
     "attemptsValue": "{{used}}／上限 {{max}}",
@@ -78,7 +78,7 @@
     "leadSubtext": "使用行动点数达到目标格要求的卡牌，尝试前进",
     "boxNumber": "第 {{box}} 格",
     "requiredOps": "所需行动点数：",
-    "requiredOpsValue": "≥ {{ops}} 点行动",
+    "requiredOpsValue": "≥ {{ops}} 行动点数",
     "rollToAdvance": "前进所需骰点：",
     "firstVp": "首位到达的胜利点数：",
     "secondVp": "次位到达的胜利点数：",

@@ -10,7 +10,7 @@
   "cardNumber": "卡牌 #{{id}}",
   "countryNumber": "国家 #{{id}}",
   "event": "事件",
-  "cardOpsSide": "{{ops}} 点行动 · {{side}}",
+  "cardOpsSide": "{{ops}} 行动点数 · {{side}}",
   "cardSide": {
     "us": "美国",
     "ussr": "苏联",
@@ -37,7 +37,7 @@
   },
   "optionNumber": "选项 {{n}}",
   "mode": {
-    "ops": "{{ops}} 点行动",
+    "ops": "{{ops}} 行动点数",
     "cardsOps": "该牌的行动点数",
     "event": {
       "title": "结算事件",
@@ -48,15 +48,15 @@
       "desc": "弃置此牌，尝试推进太空竞赛（{{ops}}）。"
     },
     "opsInfluence": {
-      "title": "使用行动点：放置影响力",
+      "title": "使用行动点数：放置影响力",
       "desc": "使用 {{ops}} 放置影响力。"
     },
     "opsCoup": {
-      "title": "使用行动点：尝试政变",
+      "title": "使用行动点数：尝试政变",
       "desc": "使用 {{ops}} 尝试政变，需要掷骰。"
     },
     "opsRealign": {
-      "title": "使用行动点：调整阵营",
+      "title": "使用行动点数：调整阵营",
       "desc": "使用 {{ops}} 调整阵营，双方对掷骰子。"
     },
     "unlabelled": {
@@ -124,12 +124,12 @@
   },
   "timing": {
     "opsFirst": {
-      "title": "分支 0：先行动",
-      "desc": "现在进行行动，之后触发对手事件。"
+      "title": "分支 0：先使用行动点数",
+      "desc": "现在使用行动点数执行行动，之后触发对手事件。"
     },
     "eventFirst": {
       "title": "分支 1：先执行对手事件",
-      "desc": "先触发对手事件，再进行你的行动。"
+      "desc": "先触发对手事件，再使用己方行动点数执行行动。"
     }
   },
   "target": {
