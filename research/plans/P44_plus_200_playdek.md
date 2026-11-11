@@ -222,3 +222,19 @@ hours behind the control, compared at matched steps). Defaults taken for the thr
 * **Step 1's arm: `E8.1-A31-R122-S45`**, queued after step 0 in the second slot: the control plus
   `--ladder-head-norm` (A31) and `--head-l2-init-coef 1e-3` (R122; the trainer flag added for it, b973653), the
   60M check first.
+
+**Step 0's results (2026-11-11).**
+
+* **0c:** J1's 64-world race-16 player beats R98's 61.6% +- 1.1 (J1 as US 64.1, as USSR 59.2; `leaderboard/matches/E8.jsonl`):
+  J1 is the network to put in front of people.
+* **0b:** J1 resumed at 15,210M with a fresh optimiser scores 49.8% +- 1.1 against its own start after 50M: an
+  optimiser restart alone does not bleed. This does not, as the rule above has it, put the loss in the distilled
+  function: D7's fresh start also reset the pool (seeded with the student) and pi_ref (the student) and ran its own
+  rate, entropy and pi_ref schedule (R116), and 0b kept all of those.
+* **0a:** 800M with R108 / R109 in ~15% of games cost nothing (63.5% against A13+R48's SWA at 16,000M, J1's own
+  continuation 61.9; 53.4% against J1's 13,600M SWA). Fresh exploiters against it: the US exploiter (it attacks the
+  target's USSR seat) -0.8 against R108's +5.5 over J1 (a drop of ~2.3 SE); the USSR exploiter (the target's US
+  seat, the human-relevant half) -0.5 against R109's +2.1, which was within noise. The rule is met in one seat, and
+  that seat's drop is not attributable: R108 attacked J1 at 13,600M and no exploiter attacked J1's own continuation at
+  16,000M without the league, so a less exploitable J1 at 16,000M explains it as well. The missing cell: one 400M US
+  exploiter (R108's recipe) against J1's own 15,920-16,000M SWA.
