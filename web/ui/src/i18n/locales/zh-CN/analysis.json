@@ -38,7 +38,7 @@
     "error": "错误",
     "off": "关闭",
     "loading": "加载中",
-    "composedSum": "汇总全部“行动 → 放置影响力”选项：模型在同一行动中决定第一点影响力放在哪里",
+    "composedSum": "汇总全部“行动点数 → 放置影响力”选项：模型在同一行动中决定第一点影响力放在哪里",
     "composedHere": "行动点数 → 影响力，第一点置于此处"
   },
   "favourite": {
@@ -55,7 +55,7 @@
   },
   "search": {
     "label": "Rollout 根节点搜索",
-    "spec": "{{k}} 个候选 · {{worlds}} 个局面 · {{horizon}} 个边界 · {{rule}}",
+    "spec": "{{k}} 个候选 · {{worlds}} 个抽样局面 · 搜索深度 {{horizon}} 个行动轮边界 · {{rule}}",
     "searching": "正在搜索……",
     "ownTitle": "网络原本选择的行动",
     "leadTitle": "相对网络原选行动的配对评估优势，以及其标准误差",
@@ -70,7 +70,7 @@
     "noDecision": "当前没有待处理决策。",
     "toChoose": "下一次决策——由{{who}}选择{{auto}}",
     "autoPlaying": "· 正在自动行动",
-    "best": "最佳 {{p}}",
+    "best": "最高概率 {{p}}",
     "bestTitle": "最可能行动的概率，温度为 1",
     "entropyTitle": "分布熵，单位为 nat",
     "legal": "{{n}} 个合法行动",
@@ -81,7 +81,7 @@
   "off": {
     "choosing": "模型正在为<b>{{side}}</b>选择行动。",
     "choosingSearching": "模型正在为<b>{{side}}</b>选择行动。正在进行 Rollout 根节点搜索，约需数秒。",
-    "searchFailed": "根节点模拟搜索失败，改用策略首选行动：{{error}}",
+    "searchFailed": "Rollout 根节点搜索失败，改用策略首选行动：{{error}}",
     "hidden": "模型分析（胜率、行动概率及搜索结果）已隐藏。可在顶栏开启<b>显示分析</b>来查看。",
     "hiddenPlayer": "你执<b>{{side}}</b>。模型分析（胜率、行动概率及搜索结果）已隐藏。可在顶栏开启<b>显示分析</b>来查看；玩家视角下，模型方的决策分析仍然隐藏。"
   }

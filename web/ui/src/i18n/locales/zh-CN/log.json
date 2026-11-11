@@ -93,7 +93,7 @@
   },
   "headline": {
     "revealed": "双方同时展示头条：美国打出“{{usCard}}”（#{{usId}}，{{usOps}} 行动点数），苏联打出“{{ussrCard}}”（#{{ussrId}}，{{ussrOps}} 行动点数）",
-    "order": "结算顺序：先由{{first}}执行“{{firstCard}}”（{{firstOps}} 行动点数）→ 再由{{second}}执行“{{secondCard}}”（{{secondOps}} 行动点数）"
+    "order": "结算顺序：先结算{{first}}打出的“{{firstCard}}”（{{firstOps}} 行动点数）→ 再结算{{second}}打出的“{{secondCard}}”（{{secondOps}} 行动点数）"
   },
   "change": {
     "influenceUs": "{{country}}影响力：美国 {{usFrom}} → {{usTo}}（{{usDelta}}）",
@@ -168,7 +168,7 @@
     "space": "太空竞赛",
     "ops": "行动点数：{{ops}}",
     "opsThenEvent": "行动点数：{{ops}}，随后执行{{side}}事件",
-    "eventThenOps": "先执行{{side}}事件，再进行行动",
+    "eventThenOps": "先执行{{side}}事件，再使用行动点数",
     "eventThenOpsAs": "先执行{{side}}事件，随后行动点数：{{ops}}",
     "then": "{{first}}，随后{{next}}"
   },

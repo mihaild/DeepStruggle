@@ -47,7 +47,7 @@
   "perk": {
     "animalInSpace": "{{side}}：动物进入太空（第 2 格）",
     "animalInSpaceDesc": "{{side}}每回合可尝试两次太空竞赛。",
-    "manInEarthOrbit": "{{side}}：载人地球轨道飞行（第 4 格）",
+    "manInEarthOrbit": "{{side}}：载人绕地飞行（第 4 格）",
     "manInEarthOrbitDesc": "{{opponent}}必须先选择并展示头条牌，{{side}}随后选择。",
     "eagleHasLanded": "{{side}}：雄鹰登月（第 6 格）",
     "bearHasLanded": "{{side}}：巨熊登月（第 6 格）",
@@ -72,7 +72,7 @@
     "ussr": "苏联",
     "neutral": "中立"
   },
-  "tooltipMeta": "{{age}} • {{side}} • {{ops}} 点行动",
+  "tooltipMeta": "{{age}} • {{side}} • {{ops}} 行动点数",
   "pileCard": "#{{id}} {{name}}（{{ops}} 行动点数，{{side}}，{{age}}）",
   "pileModalTitle": "{{title}}（{{n}} 张牌）",
   "pileModalEmpty": "此牌堆为空"

@@ -6,7 +6,7 @@
   "youLost": "——你输了",
   "reason": "（{{reason}}）",
   "facts": {
-    "youPlayed": "你执行了",
+    "youPlayed": "你的阵营",
     "against": "对手",
     "takenBack": "已撤销",
     "moves_other": "{{count}} 步行动"

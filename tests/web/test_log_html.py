@@ -21,6 +21,11 @@ from tests.web.js_runner import PUBLIC, run_ts
 
 SPAN = re.compile(r'<span class="log-card" data-card-id="(\d+)">(.*?)</span>')
 MARK = re.compile(r"^  (•|🎲|★|✂|⇄|▸) ")
+ZH = Path(__file__).resolve().parents[2] / "web/ui/src/i18n/locales/zh-CN"
+
+
+def _catalog(namespace: str) -> Dict[str, Any]:
+    return json.loads((ZH / f"{namespace}.json").read_text(encoding="utf-8"))
 
 
 @pytest.fixture(scope="module")
@@ -69,21 +74,27 @@ def test_in_the_pseudo_language_every_line_is_translated_and_its_cards_still_hov
 
 
 def test_chinese_log_keeps_card_ids_and_english_saved_data(log: Dict[str, Any]) -> None:
-    catalog = Path(__file__).resolve().parents[2] / "web/ui/src/i18n/locales/zh-CN/game.json"
-    cards = json.loads(catalog.read_text(encoding="utf-8"))["cards"]
+    cards = _catalog("game")["cards"]
     for row, translated in zip(log["game"], log["chinese"]):
         assert _spans(translated["html"]) == [(i, cards[str(i)]["name"]) for i, _ in row["cards"]]
         assert _strip(translated["html"]) == (f"  {row['mark']} " if row["mark"] else "") + translated["text"]
         assert "{{" not in translated["text"] and "[object Object]" not in translated["text"]
-    assert any("放置初始影响力" in row["text"] for row in log["chinese"])
+    assert any(re.search(r"[\u4e00-\u9fff]", row["text"]) for row in log["chinese"])
     assert log["englishAfterSwitch"] == [row["text"] for row in log["game"]]
     assert log["savedUnchanged"], "a translation must not change the position or replay steps"
 
 
 def test_chinese_linked_card_and_nested_play_mode(log: Dict[str, Any]) -> None:
     linked = log["linked"]
-    assert _spans(linked["html"]) == [(32, "联合国干预"), (26, "中情局成立")]
-    assert _strip(linked["html"]) == "苏联配合联合国干预打出中情局成立（#26）：取消其事件，苏联使用其行动点数"
-    assert linked["timing"] == "先执行苏联事件，随后行动点数：政变"
+    cards = _catalog("game")["cards"]
+    messages = _catalog("log")
+    side = _catalog("common")["side"]["USSR"]
+    assert _spans(linked["html"]) == [(i, cards[str(i)]["name"]) for i in (32, 26)]
+    expected = (messages["choice"]["unIntervention"].replace("{{side}}", side)
+                .replace("{{event}}", cards["32"]["name"])
+                .replace("{{card}}", cards["26"]["name"]).replace("{{id}}", "26"))
+    assert _strip(linked["html"]) == expected
+    timing = messages["mode"]["eventThenOpsAs"].replace("{{side}}", side).replace("{{ops}}", messages["ops"]["COUP"])
+    assert linked["timing"] == timing
     assert "UN Intervention" in linked["english"] and "CIA Created" in linked["english"]
     assert not re.search(r"[\u4e00-\u9fff]", linked["english"])

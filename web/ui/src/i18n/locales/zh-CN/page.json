@@ -93,7 +93,7 @@
     "sourceLocal": "本地检查点",
     "sourceHf": "Hugging Face",
     "sourceFile": ".onnx 文件",
-    "runTitle": "训练批次",
+    "runTitle": "训练记录",
     "snapshotTitle": "检查点",
     "hfRepoTitle": "存放导出的 .onnx 文件的公开 Hugging Face 模型仓库（tools/export_onnx.py）",
     "hfRevisionTitle": "分支、标签或提交",
@@ -112,7 +112,7 @@
     "worlds": "抽样局面数",
     "worldsTitle": "每个候选行动进行模拟的抽样局面数",
     "horizon": "搜索深度",
-    "horizonTitle": "每次模拟跨越的行动轮边界数量",
+    "horizonTitle": "搜索深度：按每次模拟跨越的行动轮边界数计算",
     "rule": "选择规则",
     "ruleTitle": "选择方式：argmax、z<x>（领先策略首选 x 个标准误才改选）或 kl<t>",
     "stop": "停止条件",
@@ -120,8 +120,8 @@
     "leaf": "末端评估视角",
     "leafTitle": "模拟末端从哪一方视角评估",
     "chance": "随机方式",
-    "chanceTitle": "同一抽样局面中的候选行动如何共享随机性：shared 使用同一随机流；keyed 按局面固定抽样；keyed2 还编码玩家信息，避免苏联视角隐藏回合信息。",
-    "aligned": "对齐后的模拟深度",
+    "chanceTitle": "同一抽样局面中的候选行动如何共享随机性：shared 使用同一随机流；keyed 按局面固定抽样；keyed2 进一步修正阵营字段的编码，避免苏联标识覆盖回合等字段。",
+    "aligned": "对齐搜索深度",
     "alignedTitle": "从行动方自己的行动轮结束时开始计算每个候选行动的搜索深度",
     "box4": "第 4 格头条特权",
     "box4Title": "每个抽样局面都保留太空竞赛第 4 格特权揭示的对方头条",
@@ -146,8 +146,8 @@
   "log": {
     "resizerTitle": "上下拖动以调整面板高度",
     "title": "行动记录",
-    "vpFilter": "🎯 胜利点数事件（前后各 2 步）",
-    "vpFilterTitle": "仅显示影响胜利点数的记录，并保留其前后各两条上下文"
+    "vpFilter": "🎯 胜利点数事件（前后各 2 条记录）",
+    "vpFilterTitle": "仅显示影响胜利点数的记录，并保留其前后各两条记录"
   },
   "replay": {
     "firstTitle": "第一步",
