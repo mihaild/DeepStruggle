@@ -201,3 +201,24 @@ Neither is shown by a run that merely finishes sooner.
    losses as US are the direct read on the empty West Germany.)
 
 ## Runs (filled in while running)
+
+**2026-11-11 (owner: "step 0 and step 1 in parallel").** At most two trainers at once, so step 1's control has
+one slot and step 0 runs in the other, one trainer at a time; the arm follows step 0 in that slot (about ten
+hours behind the control, compared at matched steps). Defaults taken for the three choices above.
+
+* **Step 1's control: `E8.1-A8-R119-S45`** (launched 00:10 UTC): J1's recipe on R119 from scratch, seed 45, the
+  default observation (headline_reveal + opp_event_gated, so E8.1 -- one more difference from J1, the default
+  for a new network since 2026-11-06). Reads every 400M against J1's 13,520-13,600M SWA (measure 4) and
+  A13+R48's.
+* **0a: `E8-A8-R102-S44@15210M+R120`** (00:13 UTC): J1 at 15,210M with R108 / R109 (15,610M) as league members,
+  `--league-frac 0.5` of the pool's 0.3 (~15% of games; seats alternate, so each exploiter is in its own seat in
+  half its games), J1's blunder-aware reward given explicitly (the default changed on 2026-11-06; a first launch
+  that took the new default was stopped within a minute and voided). Then, in the same slot: its read and
+  greedy self-play bar at 16,000M; **0b** (`E8-A8-R102-S44@15210M+R121`, `--resume-fresh-optimizer`, 50M, read
+  against J1's 15,210M snapshot); the two fresh exploiters (`...+R120@16010M+R108` / `+R109`) against 0a's
+  15,920-16,000M SWA, read at +390M.
+* **0c** (J1 against R98, both under the 64-world race-16 root, 1,000 deals a side) is playing beside the
+  trainers through `tools/leaderboard_play.py`.
+* **Step 1's arm: `E8.1-A31-R122-S45`**, queued after step 0 in the second slot: the control plus
+  `--ladder-head-norm` (A31) and `--head-l2-init-coef 1e-3` (R122; the trainer flag added for it, b973653), the
+  60M check first.
