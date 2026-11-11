@@ -33,8 +33,8 @@
     "vp": "[调试] 设置胜利点数 → {{value}}"
   },
   "action": {
-    "spaceWalkPass": "{{side}}放弃雄鹰／巨熊登月特权（第 6 格）的回合末弃牌机会。",
-    "spaceWalkDiscard": "{{side}}利用雄鹰／巨熊登月特权（第 6 格）弃置{{card}} (#{{id}})。",
+    "eagleBearLandedPass": "{{side}}放弃雄鹰／巨熊登月特权（第 6 格）的回合末弃牌机会。",
+    "eagleBearLandedDiscard": "{{side}}利用雄鹰／巨熊登月特权（第 6 格）弃置{{card}} (#{{id}})。",
     "headlineCommit": "{{side}}提交头条：{{card}} (#{{id}})",
     "headlineFaceDown": "{{side}}选定头条牌（双方均选定前保持背面朝上）",
     "plays": "{{side}}打出卡牌：{{card}} (#{{id}})",
@@ -138,8 +138,8 @@
     "warFailed": "掷骰失败（{{total}} < 目标值 {{threshold}}）",
     "olympics": "奥运会比赛：主办方（{{sponsor}}）掷出 {{sponsorRoll}}（+2 = {{sponsorTotal}}），对方（{{opponent}}）掷出 {{opponentRoll}} → {{result}}",
     "olympicsSponsor": "主办方{{side}}以 {{by}} 点优势获胜（+2 胜利点数）",
-    "olympicsOpponent": "对手{{side}}获胜",
-    "olympicsTie": "平局（未获得胜利点数）",
+    "olympicsOpponent": "对手{{side}}获胜（获得 2 胜利点数）",
+    "olympicsTie": "平局（不应出现：平局时须重新掷骰）",
     "summit": "首脑峰会掷骰：美国掷出 {{usRoll}}（+{{usMod}} 支配修正 = {{usTotal}}），苏联掷出 {{ussrRoll}}（+{{ussrMod}} 支配修正 = {{ussrTotal}}）→ {{result}}",
     "summitUs": "美国以 {{by}} 点优势赢得首脑峰会",
     "summitUssr": "苏联以 {{by}} 点优势赢得首脑峰会",

@@ -1,7 +1,7 @@
 {
   "NATO_ACTIVE": {
     "name": "北大西洋公约组织生效中",
-    "description": "苏联不能在美国控制的欧洲国家政变或调整阵营。"
+    "description": "苏联不能在美国控制的欧洲国家政变、调整阵营或发动局部战争。"
   },
   "NATO_CANCELED_FRANCE": {
     "name": "北大西洋公约组织（不含法国）",
@@ -21,28 +21,28 @@
   },
   "US_JAPAN_PACT_ACTIVE": {
     "name": "美日共同防卫协定",
-    "description": "苏联不能在日本政变或调整阵营。此事件使美国获得足以控制日本的影响力。"
+    "description": "苏联不能在日本政变或调整阵营。"
   },
   "CONTAINMENT_ACTIVE": {
     "name": "遏制政策生效中",
-    "description": "美国所有行动点数加 1（上限为 4）。",
+    "description": "本回合美国所有行动点数加 1（上限为 4）。",
     "short": "遏制政策"
   },
   "PURGE_US_ACTIVE": {
-    "name": "红色恐怖（美国）",
-    "description": "美国所有行动点数减 1（下限为 1）。"
+    "name": "红色恐慌（美国）",
+    "description": "本回合美国所有行动点数减 1（下限为 1）。"
   },
   "PURGE_USSR_ACTIVE": {
     "name": "清洗（苏联）",
-    "description": "苏联所有行动点数减 1（下限为 1）。"
+    "description": "本回合苏联所有行动点数减 1（下限为 1）。"
   },
   "VIETNAM_REVOLTS_ACTIVE": {
     "name": "越南起义",
-    "description": "本回合余下时间，苏联将行动点数全部用于东南亚时加 1。"
+    "description": "本回合苏联将一张牌的行动点数全部用于东南亚时，该牌的行动点数加 1。"
   },
   "FORMOSAN_RESOLUTION_ACTIVE": {
     "name": "台湾决议",
-    "description": "美国控制台湾时，亚洲计分将其视为战场国；美国打出中国牌后失效。"
+    "description": "美国控制台湾时，亚洲计分和最终计分将其视为战场国；美国打出中国牌后失效。"
   },
   "CMC_ACTIVE_US": {
     "name": "古巴导弹危机（美国打出）",
@@ -75,7 +75,7 @@
   },
   "BREZHNEV_DOCTRINE_ACTIVE": {
     "name": "勃列日涅夫主义",
-    "description": "苏联所有行动点数加 1（上限为 4）。"
+    "description": "本回合苏联所有行动点数加 1（上限为 4）。"
   },
   "FLOWER_POWER_ACTIVE": {
     "name": "花朵力量生效中",
@@ -87,7 +87,7 @@
   },
   "SHUTTLE_DIPLOMACY_ACTIVE": {
     "name": "穿梭外交",
-    "description": "下次亚洲或中东计分少计苏联一个战场国。"
+    "description": "下次亚洲或中东计分少计苏联一个战场国（不适用于最终计分）。"
   },
   "DEATH_SQUADS_US": {
     "name": "拉丁美洲敢死队（美国）",
@@ -101,13 +101,21 @@
     "name": "戴维营协议",
     "description": "阿拉伯—以色列战争不能再作为事件打出。"
   },
+  "IRON_LADY_PLAYED": {
+    "name": "铁娘子",
+    "description": "#7 社会主义政府不能再作为事件打出。"
+  },
+  "NORTH_SEA_OIL_PLAYED": {
+    "name": "北海油田已打出",
+    "description": "#61 石油输出国组织不能再作为事件打出。"
+  },
   "NORTH_SEA_OIL_ACTIVE": {
     "name": "北海油田",
     "description": "仅本回合，美国可以进行第八行动轮。"
   },
   "THE_REFORMER_PLAYED": {
     "name": "改革家",
-    "description": "苏联不能再在欧洲政变；#90 开放政策事件还允许苏联使用该牌的行动点数放置影响力或调整阵营。"
+    "description": "苏联不能再在欧洲政变；#90 开放政策事件还给予苏联 4 行动点数，用于放置影响力或调整阵营。"
   },
   "IRAN_CONTRA_ACTIVE": {
     "name": "伊朗门丑闻",
@@ -127,7 +135,7 @@
   },
   "NORAD_ACTIVE": {
     "name": "北美防空司令部生效中",
-    "description": "美国控制加拿大时，若核危机等级在一个行动轮中变为 2，美国在该行动轮结束时，在一个已有美国影响力的国家增加 1 点影响力。"
+    "description": "美国控制加拿大时，若核危机等级在一个行动轮中变为 2，美国在该行动轮结束时，在一个已有美国影响力的国家增加 1 点影响力（可被泥潭取消）。"
   },
   "YURI_AND_SAMANTHA_ACTIVE": {
     "name": "尤里和萨曼莎",
