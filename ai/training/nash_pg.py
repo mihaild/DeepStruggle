@@ -1253,13 +1253,13 @@ class BaseNashPGTrainer:
         pool = self.opponent_pool
         if pool is None or not pool.is_mixed[env_idx]:
             return mine, mine
-        theirs = int(pool.current_view)
+        theirs = int(pool.view_of(env_idx))   # P45: a league game's member, else the iteration's opponent
         return (mine, theirs) if int(pool.learner_side[env_idx]) == 1 else (theirs, mine)
 
     def _uniform_view(self) -> Optional[int]:
         """The single action view every side of every env is in, or None when they differ."""
         pool = self.opponent_pool
-        if pool is None or not pool.is_mixed.any() or int(pool.current_view) == self.action_view:
+        if pool is None or not pool.is_mixed.any() or pool.views_in_use() == [self.action_view]:
             return self.action_view
         return None
 
@@ -1627,14 +1627,20 @@ class BaseNashPGTrainer:
             logits, v_win_t, v_vp_t = g_l.outputs()
             return logits, v_win_t, v_vp_t
         assert self.opponent_pool is not None
-        g_o = self._graphs.get(self.opponent_pool.current)
         g_l.replay()
-        g_o.load(obs_t, masks_t)
-        g_o.replay()
         logits, v_win_t, v_vp_t = g_l.outputs()
         logits = logits.float()
-        opp_idx = torch.from_numpy(np.flatnonzero(~learner_np)).to(self.device)
-        logits.index_copy_(0, opp_idx, g_o.static_out[0].index_select(0, opp_idx).float())
+        for net, rows in self.opponent_pool.opponent_rows(learner_np):
+            idx = torch.from_numpy(rows).to(self.device)
+            if net is self.opponent_pool.current:
+                g_o = self._graphs.get(net)
+                g_o.load(obs_t, masks_t)
+                g_o.replay()
+                logits.index_copy_(0, idx, g_o.static_out[0].index_select(0, idx).float())
+            else:
+                # P45: a league member on the rows of its own games, eagerly (graphs are per network
+                # and full-batch; a league game's rows are few).
+                logits.index_copy_(0, idx, net(obs_t.index_select(0, idx), masks_t.index_select(0, idx))[0].float())
         return logits, v_win_t, v_vp_t
 
     def _searched_opponent_moves(self, obs_t: torch.Tensor, masks_t: torch.Tensor, logits: torch.Tensor,
@@ -1761,10 +1767,12 @@ class BaseNashPGTrainer:
                     # nonzero() and so a CPU-GPU sync each time it is used.
                     logits, v_win_t, v_vp_t = self.active_net(obs_t, masks_t)
                     logits = logits.float()
-                    opp_idx = torch.from_numpy(np.flatnonzero(~learner_np)).to(self.device)
-                    opp_logits, _, _ = self.opponent_pool.current(
-                        obs_t.index_select(0, opp_idx), masks_t.index_select(0, opp_idx))
-                    logits.index_copy_(0, opp_idx, opp_logits.float())
+                    # P45: the iteration's opponent on its own-pool rows, each league member on the rows
+                    # of its own games.
+                    for _net, _rows in self.opponent_pool.opponent_rows(learner_np):
+                        opp_idx = torch.from_numpy(_rows).to(self.device)
+                        opp_logits, _, _ = _net(obs_t.index_select(0, opp_idx), masks_t.index_select(0, opp_idx))
+                        logits.index_copy_(0, opp_idx, opp_logits.float())
                 v_win_t = v_win_t.squeeze(-1)
                 v_vp_t = v_vp_t.squeeze(-1)
 

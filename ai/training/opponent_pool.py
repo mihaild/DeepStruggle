@@ -62,6 +62,21 @@ policy it was trained against is recent. With `league_frac` set, each iteration'
 from the league group with that probability, whatever the two groups' sizes. Otherwise every member
 is drawn alike. The league group is left out of `state_dict`: the trainer re-scans its directories
 on resume. A pool without league members runs exactly the code paths it ran before.
+
+**A league member has a seat, and a league game keeps its member (P45, owner 2026-11-12).** Until then
+the learner's seat was drawn 50/50 whoever the opponent was, so a seat-locked exploiter played its
+untrained seat in half its games, and the league member was the iteration's opponent like any other,
+so a game met about five opponents and no member played one from start to finish. Now a member's
+seat is the one its run was locked to (`seats`: +1 US, -1 USSR, None either), read by the trainer
+from that run's metadata, and league games are assigned per episode: when a mixed environment starts
+a game the learner's seat is drawn as before, then with probability `league_frac` (1 for a league-
+only pool; the league's share of members when `league_frac` is None) the game goes to a member of the
+opposite seat, drawn alike among them, which plays it to the end (`env_member`). With no member for
+that seat the game is an ordinary own-pool game. Own-pool games keep the one-opponent-per-iteration
+draw, from the run's own members only, and consume the pool's random stream exactly as before; the
+league's draws use a stream of their own, so a pool without league members, or with `league_frac`
+0, plays the same sequence it did before this change. A member evicted mid-game hands its games to
+the own pool for the rest of the episode (`opp_league_orphaned_games`).
 """
 from __future__ import annotations
 
@@ -91,7 +106,8 @@ class OpponentPool:
                  macro: Optional[Sequence[bool]] = None,
                  seat_balance: bool = False, seat_balance_max_frac: float = 0.8,
                  groups: Optional[Sequence[str]] = None, league_capacity: int = 0,
-                 league_frac: Optional[float] = None, obs_features: Optional[int] = None) -> None:
+                 league_frac: Optional[float] = None, obs_features: Optional[int] = None,
+                 seats: Optional[Sequence[Optional[int]]] = None) -> None:
         if not nets:
             raise ValueError("OpponentPool needs at least one frozen network")
         if capacity < 1:
@@ -161,6 +177,23 @@ class OpponentPool:
         #: Probability that an iteration's opponent is drawn from the league group, when both
         #: groups have members. None draws every member alike.
         self.league_frac: Optional[float] = None if league_frac is None else float(league_frac)
+        #: P45: the seat each member was trained in (+1 US, -1 USSR), None when it may take either,
+        #: parallel to self.nets. Only league members are ever seated by it.
+        if seats is not None and len(seats) != len(self.nets):
+            raise ValueError("seats must give one seat per seed net")
+        self.seats: List[Optional[int]] = [self._check_seat(x) for x in seats] if seats is not None \
+            else [None] * len(self.nets)
+        #: The league's own random stream: per-episode league draws never touch `self.rng`, so the
+        #: own pool's sequence is unchanged whatever the league does.
+        self.league_rng = random.Random((int(seed) * 1_000_003) ^ 0x1EA6)
+        #: Per environment, the id of the league member playing its current game; -1 for an own-pool
+        #: game (the iteration's opponent) or self-play.
+        self.env_member = np.full(num_envs, -1, dtype=np.int64)
+        #: League games completed, by (member id, the learner's seat); and games in which a member
+        #: sat in a seat other than its own (must stay 0); and games handed back on eviction.
+        self.league_seat_games: Dict[tuple, int] = {}
+        self.league_wrong_seat_games = 0
+        self.league_orphaned_games = 0
         for n in self.nets:
             n.eval()
             for p in n.parameters():
@@ -196,6 +229,8 @@ class OpponentPool:
         self.learner_side = np.ones(num_envs, dtype=np.int8)
         for i in range(num_envs):
             self.learner_side[i] = self._draw_side()
+        for i in range(num_envs):
+            self._assign_league(i)
         self.current: Any = self.nets[0]
         self.current_id: int = self.ids[0]
         self.current_merged: bool = self.merged[0]
@@ -205,6 +240,46 @@ class OpponentPool:
     def current_view(self) -> int:
         """The action view of the current opponent: 0 E4, 1 merged (E4.1), 2 macro (P42)."""
         return 1 if self.current_merged else 2 if self.current_macro else 0
+
+    @staticmethod
+    def _check_seat(seat: Optional[int]) -> Optional[int]:
+        if seat not in (None, 1, -1):
+            raise ValueError(f"a member's seat is +1 (US), -1 (USSR) or None, got {seat!r}")
+        return None if seat is None else int(seat)
+
+    def _index_of(self, oid: int) -> int:
+        return self.ids.index(int(oid))
+
+    def _view_at(self, j: int) -> int:
+        return 1 if self.merged[j] else 2 if self.macro[j] else 0
+
+    def view_of(self, env_index: int) -> int:
+        """The action view of whoever plays the learner's opponent in one env: its league member's,
+        or the iteration's opponent's."""
+        oid = int(self.env_member[env_index])
+        return self.current_view if oid < 0 else self._view_at(self._index_of(oid))
+
+    def views_in_use(self) -> List[int]:
+        """The distinct opponent action views across the mixed environments this iteration."""
+        views = {self.current_view} if self.is_mixed.any() else set()
+        for oid in np.unique(self.env_member[self.is_mixed & (self.env_member >= 0)]):
+            views.add(self._view_at(self._index_of(int(oid))))
+        return sorted(views)
+
+    def opponent_rows(self, learner_np: np.ndarray) -> List[tuple]:
+        """[(network, env indices)] for the rows the frozen side moves in: the iteration's opponent
+        on its own-pool rows, then each league member on the rows of its own games."""
+        rows = np.flatnonzero(~np.asarray(learner_np, dtype=bool))
+        if not rows.size:
+            return []
+        member = self.env_member[rows]
+        out: List[tuple] = []
+        own = rows[member < 0]
+        if own.size:
+            out.append((self.current, own))
+        for oid in np.unique(member[member >= 0]):
+            out.append((self.nets[self._index_of(int(oid))], rows[member == oid]))
+        return out
 
     def _check_obs_features(self, net: Any) -> None:
         actual = model_obs_features(net)
@@ -305,7 +380,7 @@ class OpponentPool:
         return 1 if self.rng.random() < 0.5 else -1
 
     def add(self, net: Any, steps: int, merged: bool = False, path: str = "",
-            group: str = "self", macro: bool = False) -> None:
+            group: str = "self", macro: bool = False, seat: Optional[int] = None) -> None:
         """Add a snapshot taken at `steps`, evicting to stay within capacity.
 
         The net is frozen in place. Callers pass a freshly loaded copy, not the live training
@@ -326,6 +401,7 @@ class OpponentPool:
         self.merged.append(bool(merged))
         self.macro.append(bool(macro))
         self.groups.append(group)
+        self.seats.append(self._check_seat(seat))
         self._register()
 
         while len(self._members("self")) > self.capacity:
@@ -342,9 +418,13 @@ class OpponentPool:
             if victim is None:  # capacity < 3: fall back to dropping the oldest
                 victim = order[0]
             self._remove(victim)
-        while len(self._members("league")) > self.league_capacity:
-            # Oldest-added first: ids are issued in arrival order.
-            self._remove(min(self._members("league"), key=lambda i: self.ids[i]))
+        # Oldest-added first: ids are issued in arrival order. P45: `league_capacity` holds per seat, so a
+        # new US exploiter generation evicts the oldest US member and never a USSR one; members without
+        # a seat share one group, as every member did before.
+        seat = self.seats[-1] if group == "league" else None
+        while len([i for i in self._members("league") if self.seats[i] == seat]) > self.league_capacity:
+            self._remove(min((i for i in self._members("league") if self.seats[i] == seat),
+                             key=lambda i: self.ids[i]))
 
     def _members(self, group: str) -> List[int]:
         """Indices, in `self.nets` order, of the members in one group."""
@@ -357,7 +437,13 @@ class OpponentPool:
         self.merged.pop(victim)
         self.macro.pop(victim)
         self.groups.pop(victim)
+        self.seats.pop(victim)
         dead = self.ids.pop(victim)
+        # A league member evicted mid-game: its games go to the own pool for the rest of the episode.
+        orphaned = self.env_member == dead
+        if orphaned.any():
+            self.league_orphaned_games += int(orphaned.sum())
+            self.env_member[orphaned] = -1
         self.wins.pop(dead, None)
         self.games.pop(dead, None)
         # Exposure to an evicted opponent is dropped rather than reattributed: the outcome
@@ -377,12 +463,13 @@ class OpponentPool:
         probs = self.sampling_probs()
         league = self._members("league")
         own = self._members("self")
-        if self.league_frac is not None and league and own:
-            # P24: the league's share is fixed rather than set by the two groups' sizes. Within
-            # the run's own group the draw is whatever it would have been without the league.
-            if self.rng.random() < self.league_frac:
-                idx = league[self.rng.randrange(len(league))]
-            elif (self.pfsp or (self.seat_balance and self.pressure() > 0.0)) and probs:
+        if league and own:
+            # P45: league games are assigned per episode (`_assign_league`), so the iteration's
+            # opponent comes from the run's own members. The draw that used to choose between the
+            # groups is still taken, so with --league-frac 0 the own pool's sequence is unchanged.
+            if self.league_frac is not None:
+                self.rng.random()
+            if (self.pfsp or (self.seat_balance and self.pressure() > 0.0)) and probs:
                 sub = [probs[i] for i in own]
                 total = sum(sub)
                 idx = own[self._weighted_index([q / total for q in sub])] if total > 0.0 \
@@ -400,7 +487,35 @@ class OpponentPool:
         for i in range(self.num_envs):
             if self.is_mixed[i]:
                 env = self._exposure[i]
-                env[self.current_id] = env.get(self.current_id, 0.0) + 1.0
+                oid = int(self.env_member[i]) if self.env_member[i] >= 0 else self.current_id
+                env[oid] = env.get(oid, 0.0) + 1.0
+
+    def _assign_league(self, env_index: int) -> None:
+        """P45: decide at a game's start whether a league member plays it, and which one.
+
+        The learner's seat is already drawn; the member must sit opposite it. Draws use the
+        league's own stream. No member for that seat: an ordinary own-pool game."""
+        self.env_member[env_index] = -1
+        if not self.is_mixed[env_index]:
+            return
+        league = self._members("league")
+        if not league:
+            return
+        own = self._members("self")
+        if not own:
+            p = 1.0
+        elif self.league_frac is not None:
+            p = self.league_frac
+        else:
+            p = len(league) / len(self.nets)
+        if self.league_rng.random() >= p:
+            return
+        side = int(self.learner_side[env_index])
+        fits = [j for j in league if self.seats[j] is None or self.seats[j] == -side]
+        if not fits:
+            return
+        j = fits[self.league_rng.randrange(len(fits))]
+        self.env_member[env_index] = self.ids[j]
 
     def _weighted_index(self, probs: Sequence[float]) -> int:
         r = self.rng.random()
@@ -425,6 +540,14 @@ class OpponentPool:
         proportion to how many iterations each was current for. Passing None records nothing,
         which is what a caller with no outcome to report should do.
         """
+        member = int(self.env_member[env_index])
+        if member >= 0 and member in self.games:
+            side_now = int(self.learner_side[env_index])
+            key = (member, side_now)
+            self.league_seat_games[key] = self.league_seat_games.get(key, 0) + 1
+            seat = self.seats[self._index_of(member)]
+            if seat is not None and seat == side_now:
+                self.league_wrong_seat_games += 1
         if victory_points is not None and self.is_mixed[env_index]:
             exposure = self._exposure[env_index]
             total = sum(exposure.values())
@@ -450,6 +573,10 @@ class OpponentPool:
             if self.is_mixed[env_index]:
                 self._exposure[env_index][self.current_id] = 1.0
         self.learner_side[env_index] = self._draw_side()
+        self._assign_league(env_index)
+        if self.seat_balance and self.env_member[env_index] >= 0:
+            # A newly mixed env that went to a league member starts its exposure to that member.
+            self._exposure[env_index] = {int(self.env_member[env_index]): 1.0}
 
     def state_dict(self) -> Dict[str, Any]:
         """Everything about the pool except the weights, which live in the snapshot files.
@@ -520,6 +647,8 @@ class OpponentPool:
         self.steps = [int(st) for st in loaded_steps]
         self.paths = [str(q) for q in loaded_paths] if loaded_paths is not None else [""] * len(self.nets)
         self.groups = ["self"] * len(self.nets)
+        self.seats = [None] * len(self.nets)
+        self.env_member[:] = -1
         saved_steps = list(blob.get("steps", []))
         saved_ids = list(blob.get("ids", []))
         by_step = {int(st): int(oid) for st, oid in zip(saved_steps, saved_ids)}
@@ -589,6 +718,13 @@ class OpponentPool:
                 w = sum(self.side_wins.get((o, side), 0.0) for o in league)
                 out[f"opp_league_games_{name}"] = float(g)
                 out[f"opp_league_win_{name}"] = float(w / g) if g > 0.0 else 0.5
+            # P45: each member's games by the learner's seat, and the games that broke seating.
+            for o in league:
+                for side, name in ((1, "us"), (-1, "ussr")):
+                    out[f"opp_league_m{o}_games_learner_{name}"] = float(self.league_seat_games.get((o, side), 0))
+            out["opp_league_frac_envs"] = float((self.env_member >= 0).mean())
+            out["opp_league_wrong_seat_games"] = float(self.league_wrong_seat_games)
+            out["opp_league_orphaned_games"] = float(self.league_orphaned_games)
         rates = [self.win_rate(oid) for oid in self.ids]
         played = [self.games.get(oid, 0.0) for oid in self.ids]
         if rates:

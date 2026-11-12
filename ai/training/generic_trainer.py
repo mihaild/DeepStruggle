@@ -1275,6 +1275,25 @@ def scan_league_snapshots(dirs: Sequence[str], seen: Set[str],
     return [q for _, q in sorted(found)]
 
 
+def league_member_seat(path: str) -> Optional[int]:
+    """P45: the seat a league member was trained in, from its run's `metadata.json` -- +1 for a run locked to
+    the US (`opponent_lock_side` "us"), -1 for the USSR, None for an unlocked run. The run is the directory the
+    snapshot really lives in (a league directory of links is followed). A snapshot whose run has no readable
+    metadata is refused: seating it by guess is the defect this exists to remove."""
+    run_dir = os.path.dirname(os.path.realpath(path))
+    meta_path = os.path.join(run_dir, "metadata.json")
+    try:
+        with open(meta_path) as f:
+            meta = json.load(f)
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"league member {path}: no readable metadata.json in {run_dir} ({exc}); its seat "
+                         f"cannot be known") from exc
+    side = meta.get("opponent_lock_side")
+    if side not in (None, "us", "ussr"):
+        raise ValueError(f"league member {path}: unknown opponent_lock_side {side!r} in {meta_path}")
+    return {"us": 1, "ussr": -1, None: None}[side]
+
+
 def resolve_resume(resume: str) -> str:
     """The resume state a --resume argument names.
 
@@ -2352,6 +2371,10 @@ def train_pipeline(
         "league_dirs": [os.path.abspath(d) for d in league_dirs] if league_dirs else None,
         "league_pool_size": int(league_pool_size),
         "league_frac": None if league_frac is None else float(league_frac),
+        # P45: how league games are played -- a member only in the seat its run was locked to, one member for a
+        # whole game. Runs before 2026-11-12 had neither (None here); a league run's recipe code must not be
+        # shared across the two (research/run_codes.json overrides).
+        "league_seating": "member_seat_whole_game" if league_dirs else None,
         "per_seat_adv_norm": bool(per_seat_adv_norm),
         "adv_norm_learner_only": bool(adv_norm_learner_only),
         "opponent_temperature": None if opponent_temperature is None else float(opponent_temperature),
@@ -2877,6 +2900,7 @@ def train_pipeline(
         added = 0
         for q in new[-int(league_pool_size):]:
             try:
+                seat = league_member_seat(q)
                 net = load_pool([q], dev)[0]
             except Exception as exc:
                 print(f"[league] could not load {q} ({exc}); will retry at the next scan",
@@ -2885,7 +2909,9 @@ def train_pipeline(
                 continue
             m = LEAGUE_SNAPSHOT_RE.search(os.path.basename(q))
             pool.add(net, int(m.group(1)) if m else 0, merged=checkpoint_merged_influence(q),
-                     path=q, group="league", macro=_is_macro(net))
+                     path=q, group="league", macro=_is_macro(net), seat=seat)
+            print(f"[league] member {os.path.basename(q)} seat="
+                  f"{ {1: 'us', -1: 'ussr', None: 'either'}[seat] }", flush=True)
             added += 1
         if added:
             print(f"[league] +{added} member(s); league group now "
@@ -2900,6 +2926,7 @@ def train_pipeline(
         _seed_steps: List[int] = []
         _seed_paths: List[str] = []
         _seed_groups: Optional[List[str]] = None
+        _seed_seats: Optional[List[Optional[int]]] = None
         if opponent_checkpoints:
             _seed_nets = load_pool(opponent_checkpoints, dev)
             _seed_merged = [checkpoint_merged_influence(p) for p in opponent_checkpoints]
@@ -2920,6 +2947,7 @@ def train_pipeline(
             _seed_merged = [checkpoint_merged_influence(p) for p in _new]
             _seed_macro = [_is_macro(n) for n in _seed_nets]
             _seed_groups = ["league"] * len(_new)
+            _seed_seats = [league_member_seat(q) for q in _new]
             _seed_steps = [int(m.group(1)) if (m := LEAGUE_SNAPSHOT_RE.search(os.path.basename(q))) else 0
                            for q in _new]
             _seed_paths = list(_new)
@@ -3032,6 +3060,7 @@ def train_pipeline(
             league_capacity=int(league_pool_size) if league_dirs else 0,
             league_frac=league_frac,
             obs_features=trainer.obs_features,
+            seats=_seed_seats,
         )
         if any(_seed_merged) or any(_seed_macro) or merged_influence or macro_influence:
             print(f"[opponent pool] action views (P23 / P42): learner "
