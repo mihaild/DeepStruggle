@@ -325,7 +325,7 @@ def test_the_leagues_capacity_holds_per_seat() -> None:
     p.add(_Tiny(9.0), 9, group="league", seat=1)
     ids = [p.ids[j] for j in p._members("league")]
     assert first_us not in ids and first_ussr in ids
-    assert sorted(p.seats[j] for j in p._members("league")) == [-1, -1, 1, 1]
+    assert sorted(int(p.seats[j] or 0) for j in p._members("league")) == [-1, -1, 1, 1]
 
 
 def test_seats_are_validated() -> None:
