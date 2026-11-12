@@ -2898,7 +2898,15 @@ def train_pipeline(
         new = scan_league_snapshots(league_dirs, _league_seen)
         _league_seen.update(new)
         added = 0
-        for q in new[-int(league_pool_size):]:
+        # P45: the newest `league_pool_size` of each seat (capacity holds per seat), oldest first.
+        by_seat: Dict[Optional[int], List[str]] = {}
+        for q in new:
+            try:
+                by_seat.setdefault(league_member_seat(q), []).append(q)
+            except ValueError as exc:
+                print(f"[league] refused {q}: {exc}", flush=True)
+        take = sorted((q for qs in by_seat.values() for q in qs[-int(league_pool_size):]), key=new.index)
+        for q in take:
             try:
                 seat = league_member_seat(q)
                 net = load_pool([q], dev)[0]
@@ -2942,7 +2950,10 @@ def train_pipeline(
                     f"--league-dirs holds no snapshot to play against: {league_dirs}. A league-only "
                     "pool needs at least one snapshot_<n>steps.pt there before it starts.")
             _league_seen.update(_found)
-            _new = _found[-int(league_pool_size):]
+            _per_seat: Dict[Optional[int], List[str]] = {}
+            for q in _found:
+                _per_seat.setdefault(league_member_seat(q), []).append(q)
+            _new = sorted((q for qs in _per_seat.values() for q in qs[-int(league_pool_size):]), key=_found.index)
             _seed_nets = load_pool(_new, dev)
             _seed_merged = [checkpoint_merged_influence(p) for p in _new]
             _seed_macro = [_is_macro(n) for n in _seed_nets]

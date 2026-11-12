@@ -112,6 +112,30 @@ policy and value restored exactly).
 | `--adam-beta2` (0.999), `--adam-eps` (1e-8), `--policy-head-lr-mult` (1) | AdamW's second-moment decay and epsilon; the policy heads' rate as a multiple of `--lr` (P39 arm 5) |
 | `--mup` (`--mup-base-proj-dim` 256, `--mup-base-hidden-dim` 480) | muP against A8's widths (`ai/models/mup.py`): each matrix's rate times base fan-in over its own, readouts zeroed at initialisation; the identity at the base widths (P39 arm 4). Per-parameter rates are contiguous optimiser groups in model order, scaled together by the schedule; a resume maps a state laid out in other groups onto them |
 
+### The league (`--league-dirs`, P24 / P45)
+
+`--league-dirs <dir>` adds other runs' snapshots (`snapshot_<n>steps.pt`, or `<prefix>_snapshot_<n>steps.pt`,
+links followed) to the pool as league members, re-scanned every `--pool-every-steps`; `--league-frac f` is the
+share of the pool's games they play (`--opponent-frac 0.3 --league-frac 0.5`: 15% of all games) and
+`--league-pool-size k` the members kept **per seat**, the oldest out first.
+
+**A member plays only the seat its run was locked to, and one member plays a whole game (P45, 2026-11-12).** Its
+seat is read from its run's `metadata.json` (`opponent_lock_side`; a snapshot with none is refused); an unlocked
+run's snapshot takes either seat. At a mixed game's start the learner's seat is drawn as before, then the game
+goes to a member of the opposite seat with probability `--league-frac`, and that member plays it to the end;
+with no member for that seat it is an ordinary own-pool game. Own-pool games keep their draws exactly (the
+league uses a random stream of its own). Metrics: `opp_league_m<id>_games_learner_us|ussr`,
+`opp_league_wrong_seat_games` (must be 0), `opp_league_frac_envs`, `opp_league_orphaned_games`. Runs launched
+before this change seated members 50/50 and changed opponent every 128 steps; their metadata has no
+`league_seating`.
+
+`tools/scripts/league_seats.py` drives P45's generations beside a running main (adopted by PID): every
+`--every` main steps the main's newest 80M SWA is the target, the US exploiter trains `--gen-steps` against it,
+then the USSR exploiter, each continued from its own previous generation (restarted from the main's state
+after two negative margins in a row); every generation is published into the league directory with its margin
+(its greedy win rate in its seat against the target minus the target's own self-play rate there) in
+`events.jsonl`. `tools/scripts/league.py` is P24's single-exploiter driver.
+
 ### The searched opponent (`--searched-opponent-spec`, P40 Arm S)
 
 In the last `--searched-opponent-share` (0.125) of the envs -- after the pool's mixed ones, which come first -- the
