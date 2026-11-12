@@ -185,6 +185,7 @@ per-seat control ratings, setup placement and temperature self-play.
 | [`E7_searched_leak_R39.md`](E7_searched_leak_R39.md) | where R39 under the rollout root still loses |
 | [`E7_searched_leak_A13_R48.md`](E7_searched_leak_A13_R48.md) | the same census on A13+R48 at 12,000M |
 | [`E8_J1_census_and_leak.md`](E8_J1_census_and_leak.md) | J1's searched leak is level with R48's; engine-proven blunders are rare and cheap; its largest estimated rows are the Cuban Missile Crisis hole |
+| [`P44_checks_2026-11-12.md`](P44_checks_2026-11-12.md) | step 0a's league branch against J1's own continuation (54.7% head to head, 64.2 against 60.9% on the old reference); how the pool seated the exploiters (their untrained seat half the time, a new opponent every 128 steps); the head-norm arm 55.3% against the control at 3,200M; J1's step size flat across its plateau and 3-6 times larger in the distil-then-RL runs; the reported human games miss two thirds of the models' late wins; the E9 16B model 37.2% against J1 |
 | [`E7_determinization_audit.md`](E7_determinization_audit.md) | determinization leaks nothing; a few deductions unused |
 | [`P33_diagnostics.md`](P33_diagnostics.md) | the critic is the channel search keeps, blind where the searched player errs |
 

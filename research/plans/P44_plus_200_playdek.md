@@ -1,15 +1,55 @@
-# P44 — toward +200 on the Playdek scale: what to measure, and the next runs in order (2026-11-10)
+# P44 — a stronger model: what to measure, and the next runs in order (2026-11-10, revised 2026-11-12)
 
-**Status:** proposed; written down at the owner's request (2026-11-10). The three choices under
-*Decide before running* are open, each with the default this plan would take.
-**Gate:** none for step 0; step 1 needs the small trainer flag named there.
+**Status:** running (step 0 done, step 1 running); **revised 2026-11-12** after step 0, step 1's first reads and
+the owner's corrections -- read *Revision of 2026-11-12* first; where it and the older text disagree, it holds.
+**Gate:** none.
 **Needs approval:** none (no engine, bindings or observation change).
 
 ## Goal
 
-+200 Elo on the Playdek scale for the deployed player (the network under the rollout root): from about
-1,700 to about 1,900, a very good but not top human. One GPU, where two trainers share the throughput of
-one; a rented machine only on the evidence listed under *What would justify renting*.
+**A stronger model** (owner, 2026-11-12: exact human ratings are not important). The yardstick is the old
+reference, `E7-A8-R1-S44@6400M+R34@7200M+R48@9170M+A13@12730..12800M`, greedy: J1 reads 61-64% against it, and
+**the target is 75% or higher**. The plan was first framed as +200 Elo on the Playdek scale for the deployed
+player (the network under the rollout root), about 1,700 to about 1,900; that stays the motive, not the
+measure. One GPU, where two trainers share the throughput of one; a rented machine only on the evidence
+listed under *What would justify renting*.
+
+## Revision of 2026-11-12
+
+Numbers and instruments: [`../log/P44_checks_2026-11-12.md`](../log/P44_checks_2026-11-12.md).
+
+* **Withdrawn: "the plateau is the policy heads losing plasticity".** The probe decays mostly by 6,000M while
+  J1 rises to ~13,000M (*Runs*, below); the head-norm arm is stronger than the control with a lower probe;
+  J1's policy moves as much per update at 17,000M as at 4,000M while its head norms double; a head reset at
+  the plateau (R87) had already returned only to the band, which this plan under-weighted. With it go the
+  probe as a decision rule, L2 toward the initial weights (the 60M check this plan wrote -- norm within 2x
+  fresh -- asked for heads that cannot grow; the control's are 3-8x fresh by 400M), weight projection and
+  shrink-and-perturb. The working reading, a hypothesis: the plateau is signal against noise at the current
+  step size, and weight growth is a slow decay of that step (log §4).
+* **Withdrawn: "the old reference no longer separates players at J1's level"** (measure 4). It was this plan's
+  claim; J1 is at 61-64% on it and the target is 75%. The old reference is the primary read again.
+* **Withdrawn: "the US seat is the weak one against people"**, and "won games are already ahead after turn 1".
+  The reported games miss about two thirds of the models' late wins in both seats -- a losing player leaves,
+  and nothing is sent -- and US wins are the late ones (log §5). What stands is how people win: Europe Control
+  against the models' USSR, 9 of 50 reported wins as US against 1.3-1.4% in self-play.
+* **Found in step 0's data: the league branch is stronger than J1's continuation** -- 64.2% against 60.9% on
+  the old reference, 54.7% head to head -- although its exploiters sat in their untrained seat half the time
+  and no member played a whole game (log §1-§2). The league is now the first line of work:
+  **[P45](P45_league.md)**.
+* **Step 1:** the arm is the head norm alone (A31). It beats the control 55.3% directly at 3,200M; run-to-run
+  spread at that step is ~7 points on the reference, so it is judged where the control caught J1, at
+  4,800-5,600M, and again at 8,000M (against the control if it has run that far, else against J1's own read
+  at that step): ahead by 2 points or more on the reference at both -> A31 is the base architecture for the
+  next from-scratch run. The control may pause at a tagged state for P45's L1 (it has been level with J1
+  head to head since 4,800M; J1's own curve stands in past that).
+* **Dropped:** step 2a (the search-distillation cell: every student so far switches moves wrongly as often as
+  rightly, and "the network's own second choice" at 51% of departures beats all of them; a fresh head on the
+  same trunk has the same inputs), L2 at 1e-5, measures 1 and 3 as things decisions ride on.
+* **After P45's first reads, in this order:** a soup-teacher cycle on the plateau (three seed branches, their
+  soup as a frozen teacher for 400M: +60-75 Elo over the plain leg on E7, never run on E8); a rate anneal at
+  the end of the final recipe; a distilled student at a matched step (about 5e-5), A8-sized and wider, as the
+  capacity test -- the earlier students lost their start at 3-6 times J1's step (log §4), so that failure
+  said nothing about capacity; auxiliary heads on A8.
 
 ## Why
 
@@ -33,34 +73,34 @@ US +2, the mode the models train in; intervals are a 95% bootstrap over people):
 | critic in lost games, end of turn 1 / 3 / 5 / 7 | -0.06 / -0.15 / -0.17 / -0.31 | -0.01 / -0.09 / -0.30 / -0.43 |
 | critic in won games, same turns | +0.28 / +0.46 / +0.57 / +0.58 | +0.35 / +0.63 / +0.62 / +0.46 |
 
-* **The US seat is the weak one against people**, by about 25 points in both players (the intervals
-  overlap; the direction agrees). Self-play balance cannot show a weakness of this kind.
-* **Europe Control ends 11-12% of the models' losses against 3.3% of their self-play games.** The owner's
-  expectation of a strong USSR against J1's US setup is the same line: West Germany early, a high Europe
-  score, control with some luck. It is also what J1's USSR exploiter does (West Germany on turn 1 in 30%
-  of games against 3%, Europe controlled in 8.7% against 3.2%; [P41](P41_jaxcalibur_ingredients.md)).
-* **Losses are not late surprises**: the critic starts level and falls from turn 3; won games are already
-  ahead after turn 1.
-* **Self-play Elo's transfer to people is unmeasured.** The estimate fixes the slope at 1. Fitted freely it
-  is 1.09 [0.22, 2.00] for the E7 soup and 0.93 [-0.06, 1.67] pooled over 26 people; for R98 the ratings
-  span too little to fit one, and people at its estimated position score about 74% against it. R98's
-  higher estimate than the E7 soup's is not supported by its own games.
+**The table is what was reported, and what was reported is selected (revision of 2026-11-12):** a player who is
+losing a long game leaves, and nothing is sent. About two thirds of the models' late wins are missing in both
+seats, so the scores, the seat split, the rating bands and the critic rows above are not estimates of
+anything; the first reading of them here ("the US seat is the weak one", "won games are already ahead after
+turn 1", a free-slope fit) is withdrawn.
+
+* **Europe Control is how people beat the models' USSR:** 9 of the 50 reported human wins as US, against
+  1.3-1.4% of US wins in the two players' self-play; as USSR people win by it at the self-play rate (3 of
+  49). The table's "11-12% of losses" row is that, pooled over seats. (The first version put it on the US
+  seat and on J1's empty West Germany; the games do not say that.)
+* **Self-play Elo's transfer to people is unmeasured**, and these games cannot measure it.
 
 **Training:**
 
-* **The plateau is the policy heads losing plasticity, and J1 has it too.** At 13,600M J1's own heads fit
-  random labels at 36.7% against 99.1% for a fresh head on the same trunk, with 11.6% of head units
-  dormant and head norms 14-34 times fresh ([P41](P41_jaxcalibur_ingredients.md),
+* **J1 has a plateau, and its heads read as unplastic on the probe** -- the first version called the second
+  the cause of the first; **withdrawn** (revision of 2026-11-12). At 13,600M J1's own heads fit random
+  labels at 36.7% against 99.1% for a fresh head on the same trunk, with 11.6% of head units dormant and
+  head norms 14-34 times fresh ([P41](P41_jaxcalibur_ingredients.md),
   [P37](P37_known_playbook_remainder.md)). J1 has read about 62% against the reference since ~13,000M, and
   its 17,200M state scores 50.2% against its own 16,800M. The zero-avoiding term removes saturation of the
-  *output* (top-two logit gap 1.23 against 3.50) and delays the plateau; it does not keep the heads
-  trainable. P37's remedies for that were never run.
+  *output* (top-two logit gap 1.23 against 3.50) and delays the plateau.
 * **J1 is exploitable in about an hour of GPU.** Seat-locked exploiters, 400M each from J1's 15,210M
   state, gain +5.5 (US) and +2.1 (USSR) over its self-play bars (R108, R109), from Europe left uncontested
   after the setup and not from the setup itself.
 * **No league run tested whether a main absorbs an exploit.** Every attempt was one alternating-seat
   exploiter behind a 400-game publish bar; the E7 null was a league that held one member for 490M
-  ([P24](P24_league.md)). Pool fraction, size and spacing were never varied.
+  ([P24](P24_league.md)). Pool fraction, size and spacing were never varied. (Step 0a did test it, and its
+  branch came out stronger: [P45](P45_league.md).)
 * **"Search distillation is closed" holds for the cells that were run.** The students that failed either
   could not fit (saturated heads: 21.9-40.9% of training departures) or never learned the game (from
   scratch, 43-45% overall agreement). A student both plastic and competent was not measured
@@ -94,17 +134,18 @@ US +2, the mode the models train in; intervals are a 95% bootstrap over people):
 
 ## What to measure (standing, from now)
 
-1. **Human games by seat, rating band and ending**, as in the table above, each time the estimate is
-   refreshed. Two models are compared on the human scale only when their fields overlap in rating; twelve
-   people in one band cannot order them.
+1. **Human games: how people win, nothing else** (revised 2026-11-12). The reported games are selected by who
+   finishes them, so scores, seats and bands are not read; the endings of human wins are.
 2. **The exploiter margin, per seat**: a fresh 400M seat-locked exploiter (R108/R109's recipe) against the
-   frozen candidate, with the Europe Control rate and West Germany on turn 1 in its games. The USSR
-   exploiter against the candidate's US seat is the human-relevant half.
+   frozen candidate, with the Europe Control rate and West Germany on turn 1 in its games.
 3. **The head-plasticity probe every 2,000M on every long run**: own-head random-label fit, dormant
-   fraction, head norm against fresh (P37a's probe). J1 has two points; A8 fell from 47% at 2,000M to 35%
-   at 6,400M.
-4. **A new fixed reference.** The A13+R48 SWA no longer separates players at J1's level; J1's
-   13,520-13,600M SWA takes over for new runs, the old one kept beside it for one overlap.
+   fraction, head norm against fresh (P37a's probe). Logged as a curve; no decision rides on it (revised
+   2026-11-12: its timing does not follow the plateau).
+4. **The old reference is the primary read, and the target on it is 75%** (owner, 2026-11-12; the first
+   version retired it, wrongly). Every arm and its matched control are read on it at the same step, on the
+   same seed sets; J1's 13,520-13,600M SWA and a head to head against the matched control are read beside
+   it, because a gain can be larger inside a lineage than outside it (R94: +34 Elo on its own past, +10 on
+   the reference; the league branch: +33 head to head, +25 on the reference).
 5. **Setups at every read** (`tools/scripts/checkpoint_report.py`'s census): West Germany's share in the
    US setup, by step.
 
@@ -151,16 +192,23 @@ removed dormant units on R48 without a matched-step gain, and under normalisatio
 growth; the pair is the combination the literature reports working. If the arm wins, the two are
 separated afterwards.
 
+**As run and as judged (revision of 2026-11-12):** the arm is the head norm alone (A31; the L2 term cost half
+the strength at 400M at both coefficients and is dropped). The probe screen and the 14,000M probe rule that
+stood here are withdrawn with the premise.
+
 * Both runs: measures 3 and 5, saved states at 2,000M and 4,000M as branch points, reads every 400M
-  against the new reference.
-* Early screen: the arm's own-head fit not clearly above the control's by 4,000-6,000M -> stop the arm,
-  and the slot goes to the next remedy (weight projection to the initial norm, then soft
-  shrink-and-perturb).
-* Decision at 14,000M: the arm passes when its probe stays near a fresh head's and it is above the
-  control per seat by the usual rule, or still rising over the last 2,000M where the control is flat.
-  Close arms are not ordered before ~1,600M.
+  against the old reference and J1's 13,520-13,600M SWA.
+* The arm is judged on strength at matched steps: against the control on the old reference and head to head,
+  at 4,800-5,600M (where the control caught J1) and at 8,000M (against J1's own read there if the control
+  has paused). Ahead by 2 points or more on the reference at both -> A31 is the base architecture of the
+  next from-scratch run. Close arms are not ordered before ~1,600M, and run-to-run spread at 3,200M is ~7
+  points on the reference.
+* The control may pause at a tagged state once it has shown what it can (level with J1 head to head since
+  4,800M), its slot going to P45's L1; it resumes in place if the plateau's seed spread is wanted.
 
 ### Step 2 — in the gaps between long runs
+
+**2a is dropped (revision of 2026-11-12); the text is kept for what it proposed.**
 
 **2a. Search distillation, the cell that was not run** (about a day): fresh policy heads on J1's frozen
 trunk fitted to the root's targets (P36c's set rebuilt on J1, 200k entry decisions at 64 worlds). Measure
@@ -175,20 +223,33 @@ departures by paired playouts.
 
 ### Step 3 — by the outcomes above
 
-* **ITER** on the better of step 1's two runs: a fresh A8 distilled in parallel on the live batches, the
-  distillation weight annealed to zero, swapped in; then the same with a wider student, which is the
-  capacity test this record lacks.
-* **A league on J1's recipe**, if 0a or 2b shows absorption: seat-locked exploiters, 400M generations,
-  every generation published (the margin is read against the self-play bar, so no publish bar), from the
-  state where absorption was shown; judged by measure 2 on the final main, not by self-play.
+Revised 2026-11-12; the order is the revision's.
+
+* **A league on J1's recipe: [P45](P45_league.md).** 0a's branch came out stronger than J1's continuation
+  with the league seated wrongly; P45 seats it properly (a member only in the seat it trained in, one member
+  for the whole game) and lists the runs. Judged on the old reference.
+* **A soup-teacher cycle on the plateau:** three seed branches of the best main (400M each), their soup as a
+  frozen teacher for 400M of the main (R45's form, `--search-teacher-policy`: the soup's raw policy as the
+  target). On E7 it was the largest plateau gain on record (R32 59.0%, R39 60.7%, R45 level with R39 against
+  the plain leg: +60-75 Elo, the student above its teacher's raw policy);
+  never run on E8. Read against the plain leg on the old reference; a second cycle only if the first gains
+  2 points or more.
+* **A rate anneal at the end of the final recipe** (R46 on E7: +15-25 Elo on SWAs, +48 raw): part of the
+  recipe, not an arm.
+* **The capacity test, as a distilled student at a matched step:** J1's SWA distilled into a fresh A8 and
+  into a wider network (R114's pipeline, about an hour each), then RL at a rate that gives J1's plateau step
+  (about 5e-5; the earlier students ran at 3-6 times that step and lost their start, so they tested nothing),
+  the teacher's pool kept, 2,000M each, read against J1's SWA and the old reference. The wider one rising
+  where the A8 one does not is capacity; both rising is fresh weights; neither is signal. ITER proper (the
+  student trained in parallel on the live batches) only if the A8 student rises.
 * **Auxiliary heads on A8** (opponent's next action, hidden hand: P41's J2/J3, gated there on the
-  transformer for no technical reason), from scratch against step 1's control.
+  transformer for no technical reason), from scratch against the base recipe of the time.
 
 ## What would justify renting
 
-* Step 1's arm still rising where the control is flat: longer runs pay, and a faster machine shortens
-  every read.
-* ITER into a wider student holds its start and gains: capacity pays.
+* A recipe still rising on the old reference where J1's is flat -- the league's main over P45's L3, or the
+  head-norm run past 13,000M: longer runs pay, and a faster machine shortens every read.
+* The wider distilled student rises where the A8-sized one does not: capacity pays.
 
 Neither is shown by a run that merely finishes sooner.
 
@@ -199,6 +260,13 @@ Neither is shown by a run that merely finishes sooner.
    the total is the same and the matched reads come earlier.)
 3. J1's searched player in front of people as it is? (Default: yes; it costs no GPU, and Europe Control
    losses as US are the direct read on the empty West Germany.)
+
+Open since the revision of 2026-11-12:
+
+4. Pause the control at its next tagged state, its slot to P45's L1? (Default: yes; it resumes in place.)
+5. P45's L3 takes both slots: at which read does the head-norm arm pause? (Default: after its 8,000M read.)
+6. P45's L6 and L7 change what every run's own pool does (one opponent for the whole game; draws weighted to
+   recent snapshots): run them? (No default; the owner's call.)
 
 ## Runs (filled in while running)
 
