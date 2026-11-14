@@ -2529,6 +2529,22 @@
     "batch_size": 16384,
     "no_blunder_window": true
    }
+  },
+  "R124": {
+   "description": "R119 with the value heads trained on self-play games' rows only (--value-selfplay-only): P44 diagnostic (2026-11-14) -- does the critic learn from the pool games that the side playing unlike the current self loses?",
+   "first": "E8.1-A8-R119-S45@11230M+R124_20261114_000354",
+   "flags": {
+    "reward_scheme": "terminal",
+    "opponent_frac": 0.3,
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true,
+    "value_selfplay_only": true
+   }
   }
  },
  "views": {

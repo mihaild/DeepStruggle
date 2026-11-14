@@ -2042,6 +2042,7 @@ def train_pipeline(
     zero_avoid_scope: str = "all",
     zero_avoid_ramp_steps: int = 0,
     head_l2_init_coef: float = 0.0,
+    value_selfplay_only: bool = False,
     logit_gap: float = 7.0,
     setup_block_lambda: bool = False,
     block_lambda: str = "off",
@@ -2461,6 +2462,7 @@ def train_pipeline(
         "zero_avoid_scope": str(zero_avoid_scope),
         "zero_avoid_ramp_steps": int(zero_avoid_ramp_steps),
         "head_l2_init_coef": float(head_l2_init_coef),
+        "value_selfplay_only": bool(value_selfplay_only),
         "phase_lock": phase_lock,
         "token_chunk": int(token_chunk),
         "token_compile": bool(token_compile),
@@ -2853,6 +2855,7 @@ def train_pipeline(
         zero_avoid_coef=zero_avoid_coef,
         zero_avoid_scope=zero_avoid_scope,
         head_l2_init_coef=head_l2_init_coef,
+        value_selfplay_only=value_selfplay_only,
         logit_gap=logit_gap,
         setup_block_lambda=setup_block_lambda,
         block_lambda=block_lambda,
@@ -3157,6 +3160,9 @@ def train_pipeline(
     if z_loss_coef > 0.0:
         print(f"[z-loss] coef {z_loss_coef:g} on the policy logits' log-normaliser (--z-loss-coef)",
               flush=True)
+    if value_selfplay_only:
+        print("[value self-play only] the value heads train on self-play games' rows only; pool games still enter "
+              "GAE and the policy loss (--value-selfplay-only, P44 diagnostic)", flush=True)
     if head_l2_init_coef > 0.0:
         print(f"[head L2-init] coef {head_l2_init_coef:g} on sum ||theta - theta_0||^2 over the policy and value heads "
               f"(--head-l2-init-coef, P44)", flush=True)

@@ -230,3 +230,14 @@ def test_a_value_fits_name_carries_its_seed_and_its_branch(tmp_path: Any) -> Non
     got = sorted(p.text() for p in names.values())
     assert got == ["E9-A1-R1-S44", "E9-A1-R1-S44@12000M+A2-R2", "E9-A2-R3-S44"]
 
+
+
+def test_a_resume_source_takes_every_form_resume_does() -> None:
+    """`--resume` takes `<dir>:<steps>` and `<dir>@<steps>` alike (resolve_resume); a branch's directory name may itself
+    hold '@' followed by more than digits."""
+    d = "/data/E8.1-A8-R119-S45_20261111_001030"
+    assert rc._resume_source(f"{d}:11230052352") == (d, "resume_11230052352steps.pt")
+    assert rc._resume_source(f"{d}@11230052352") == (d, "resume_11230052352steps.pt")
+    b = "/data/E8-A8-R102-S44@15210M+R108_20261103_195850"
+    assert rc._resume_source(b) == (b, "resume_state.pt")
+    assert rc._resume_source(f"{b}/resume_15610019840steps.pt") == (b, "resume_15610019840steps.pt")

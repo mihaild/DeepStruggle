@@ -517,6 +517,7 @@ class BaseNashPGTrainer:
         zero_avoid_coef: float = 0.0,   # P41 J1: coef * KL(uniform || pi) over the legal moves, learner rows
         zero_avoid_scope: str = "all",  # 'setup': only the learner's setup placements (P41 exploiters)
         head_l2_init_coef: float = 0.0,  # P44: coef * sum ||theta - theta_0||^2 over the policy and value heads
+        value_selfplay_only: bool = False,  # P44 diagnostic: the value loss on self-play games' rows only
         setup_block_lambda: bool = False,
         block_lambda: str = "off",
         phase_lock_path: Optional[str] = None,
@@ -1120,6 +1121,12 @@ class BaseNashPGTrainer:
         self.head_init: Dict[str, torch.Tensor] = (head_init_params(self.active_net)
                                                    if self.head_l2_init_coef > 0.0 else {})
         self._head_l2_pairs = head_pairs(self.active_net, self.head_init) if self.head_init else []
+        # P44 diagnostic (2026-11-14): the critic fitted on self-play games only. Pool games' rows still enter GAE
+        # and the policy loss; the value loss skips them, so the critic cannot learn that the side playing unlike
+        # the current self (an older snapshot) tends to lose. `_value_rows` marks, per buffer row, whether its
+        # game was self-play when the row was written.
+        self.value_selfplay_only = bool(value_selfplay_only)
+        self._value_rows: Optional[torch.Tensor] = None
         self._compiled_nets: Dict[int, nn.Module] = {}
         self._compiled_methods: Dict[Tuple[int, str], Tuple[nn.Module, Callable[..., Any]]] = {}
         #: --wolf-seat-weight. Each seat's PPO surrogate is scaled by `wolf_seat_weights`, driven by
@@ -2005,6 +2012,12 @@ class BaseNashPGTrainer:
                         torch.from_numpy(own_obs).to(self.device, torch.float32), None)
                 next_own_t = own_v.squeeze(-1)
 
+            if self.value_selfplay_only:
+                if self._value_rows is None or tuple(self._value_rows.shape) != (self.buffer.buffer_size, self.num_envs):
+                    self._value_rows = torch.ones((self.buffer.buffer_size, self.num_envs), dtype=torch.float32,
+                                                  device=self.device)
+                self._value_rows[self.buffer.step] = torch.from_numpy(
+                    self._selfplay_mask.astype(np.float32)).to(self.device)
             self.buffer.add(
                 obs=obs_t,
                 masks=masks_t,
@@ -2659,6 +2672,16 @@ class NashPGTrainer(BaseNashPGTrainer):
         # weight the same sub-objective about forty times harder.
         return F.mse_loss(cur_v_win, b_ret_win) + self.value_dist_coef * cross_entropy
 
+    def _value_loss_rows(self, cur_v_win: torch.Tensor, cur_v_vp: torch.Tensor, b_ret_win: torch.Tensor,
+                         b_ret_vp: torch.Tensor, value_logits: Optional[torch.Tensor],
+                         rows: torch.Tensor) -> torch.Tensor:
+        """`_value_loss` over the rows `rows` marks (1.0) only: --value-selfplay-only, the scalar heads' MSE."""
+        if value_logits is not None:
+            raise ValueError("--value-selfplay-only is built for the scalar value heads, not --categorical-value")
+        n = rows.sum().clamp(min=1.0)
+        return ((rows * (cur_v_win - b_ret_win) ** 2).sum()
+                + self.vp_coef * (rows * (cur_v_vp - b_ret_vp) ** 2).sum()) / n
+
     def train_step(self) -> Dict[str, float]:
         self.active_net.train()
 
@@ -3042,8 +3065,12 @@ class NashPGTrainer(BaseNashPGTrainer):
                 with torch.no_grad():
                     lse_sum_t += lse.mean().double()
                     lse_absmax_t = torch.maximum(lse_absmax_t, lse.abs().max().double())
-                val_loss = self._value_loss(cur_v_win, cur_v_vp, b_ret_win, b_ret_vp,
-                                            cur_value_logits)
+                if self.value_selfplay_only and self._value_rows is not None:
+                    val_loss = self._value_loss_rows(cur_v_win, cur_v_vp, b_ret_win, b_ret_vp, cur_value_logits,
+                                                     self._value_rows.view(-1).index_select(0, b_idx))
+                else:
+                    val_loss = self._value_loss(cur_v_win, cur_v_vp, b_ret_win, b_ret_vp,
+                                                cur_value_logits)
                 loss = policy_loss + self.vf_coef * val_loss
                 if self._head_l2_pairs:
                     # P44: L2 toward the initial weights on the policy and value heads (head_l2.py).

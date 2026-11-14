@@ -59,11 +59,20 @@ def expand(opening: Sequence[Tuple[int, int]]) -> List[int]:
 #: A symmetric USSR opening that commits nothing to East Germany, so the two US setups below face
 #: the same board and differ only in whether the US holds West Germany.
 USSR_POLAND_HUNGARY: Sequence[Tuple[int, int]] = ((POLAND, 3), (HUNGARY, 3))
+FINLAND = 5
+#: Poland 3 / Finland 3: no route to Yugoslavia (P44's control from 8,000M).
+USSR_POLAND_FINLAND: Sequence[Tuple[int, int]] = ((POLAND, 3), (FINLAND, 3))
 #: The setup M2d s3 settled on from 185M: West Germany left empty, Canada taken instead.
 US_NO_WEST_GERMANY: Sequence[Tuple[int, int]] = (
     (CANADA, 2), (ITALY, 2), (FRANCE, 3), (IRAN, 1), (SOUTH_KOREA, 1))
 
 PANAMA = 70
+
+#: P44 (owner, 2026-11-13): J1's US setups either side of its dropping West Germany (~8,000 -> 8,400M), seven Western
+#: Europe points first, then the two bonus points: France 3 / West Germany 3 / Italy 2 / Iran 1 (its 8,000M mode) and
+#: France 3 / Italy 3 / Canada 2 / Iran 1 (from 8,400M to 15,200M).
+US_FR3_WG3_IT2_IR1: Sequence[Tuple[int, int]] = ((WEST_GERMANY, 3), (FRANCE, 3), (ITALY, 1), (ITALY, 1), (IRAN, 1))
+US_FR3_IT3_CA2_IR1: Sequence[Tuple[int, int]] = ((CANADA, 2), (FRANCE, 3), (ITALY, 2), (ITALY, 1), (IRAN, 1))
 
 #: The US openings E5-16 settled on (research/log/E5_16_setup_mc_credit.md), in placement order:
 #: seven Western Europe points, then the two bonus points where the US already has influence.
@@ -97,6 +106,10 @@ OPENINGS: Dict[str, Dict[str, List[int]]] = {
     "us_marshall": {"US": expand(US_MARSHALL)},
     "ussr_eg1_pl4_au1": {"USSR": expand(USSR_OPENING_AUSTRIA)},
     "ussr_eg1_pl4_yu1": {"USSR": expand(USSR_OPENING)},
+    # P44 (owner, 2026-11-13): the USSR setup step 1's control drifted to by 8,000M, forced on its earlier self.
+    "ussr_pl3_fi3": {"USSR": expand(USSR_POLAND_FINLAND)},
+    "us_fr3_wg3_it2_ir1": {"US": expand(US_FR3_WG3_IT2_IR1)},
+    "us_fr3_it3_ca2_ir1": {"US": expand(US_FR3_IT3_CA2_IR1)},
 }
 
 #: The owner's --forced-openings sets per side. `us_marshall` is conditional: with Marshall Plan

@@ -1110,6 +1110,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--logit-gap-coef", type=float, default=0.0,
                         help="Penalty coef * mean over legal moves of relu(top - logit - --logit-gap)^2 "
                              "(owner 2026-10-09): keeps a saturated policy learnable. 0 (default): off.")
+    parser.add_argument("--value-selfplay-only", action="store_true", default=False,
+                        help="P44 diagnostic (2026-11-14): train the value heads on self-play games' rows only; pool games still enter GAE and the policy loss. Tests whether the critic's misjudgement of unfamiliar play (the side playing unlike the current self rated as losing) is learned from pool games.")
     parser.add_argument("--head-l2-init-coef", type=float, default=0.0,
                         help="P44 step 1's arm: add coef * sum ||theta - theta_0||^2 over the policy heads (base, "
                              "per-entity and their trunk context, branch, play-mode, --ladder-head-norm's norms) and the "
@@ -1624,6 +1626,7 @@ def main():
             logit_gap_coef=args.logit_gap_coef,
             zero_avoid_coef=args.zero_avoid_coef,
             head_l2_init_coef=args.head_l2_init_coef,
+            value_selfplay_only=args.value_selfplay_only,
             zero_avoid_scope=args.zero_avoid_scope,
             zero_avoid_ramp_steps=args.zero_avoid_ramp_steps,
             logit_gap=args.logit_gap,

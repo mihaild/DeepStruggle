@@ -248,10 +248,12 @@ def link_models(codes: Dict[str, Any], root: str) -> List[str]:
 
 def _resume_source(src: str) -> Tuple[str, str]:
     """(run directory, state file) of a recorded `resumed_from`: a state file, a run directory
-    (its end state), or `<run_dir>:<steps>` (that step's state) -- the forms `--resume` takes."""
-    head, sep, tail = src.rpartition(":")
-    if sep and tail.isdigit():
-        return head.rstrip("/"), f"resume_{tail}steps.pt"
+    (its end state), or `<run_dir>:<steps>` / `<run_dir>@<steps>` (that step's state) -- the forms `--resume`
+    takes (`resolve_resume`). A run directory's own name may hold '@' (a branch), never followed by digits only."""
+    for sep_char in (":", "@"):
+        head, sep, tail = src.rpartition(sep_char)
+        if sep and head and tail.isdigit():
+            return head.rstrip("/"), f"resume_{tail}steps.pt"
     if os.path.isdir(src) or not src.endswith(".pt"):
         return src.rstrip("/"), "resume_state.pt"
     return os.path.dirname(src), os.path.basename(src)
