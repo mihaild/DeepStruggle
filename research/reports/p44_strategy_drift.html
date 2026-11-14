@@ -1,0 +1,258 @@
+<title>Strategy Drift in Self-Play</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column with full-width data tables; findings marked by a side-coded stripe (US blue / USSR red) only where a side is the subject. */
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --ink: #1b2330;
+  --muted: #5a6577;
+  --rule: #d9dee6;
+  --accent: #2f5d8a;
+  --us: #2a63b8;
+  --ussr: #b8322a;
+  --good: #2e7d4f;
+  --warn: #a8691c;
+  --chip: #e8edf4;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161d; --surface: #1a2029; --ink: #e3e8ef; --muted: #9aa5b5; --rule: #2c3442;
+    --accent: #7fa8d6; --us: #6f9be0; --ussr: #e0766d; --good: #6cc391; --warn: #d9a45a; --chip: #232b37;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161d; --surface: #1a2029; --ink: #e3e8ef; --muted: #9aa5b5; --rule: #2c3442;
+  --accent: #7fa8d6; --us: #6f9be0; --ussr: #e0766d; --good: #6cc391; --warn: #d9a45a; --chip: #232b37;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15.5px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 64px;
+}
+main { max-width: 980px; margin: 0 auto; display: grid; gap: 44px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font-family: var(--font-data); font-size: 12.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(30px, 5vw, 44px); line-height: 1.08; margin: 0; text-wrap: balance; }
+h2 { font-family: var(--font-display); font-weight: 600; font-size: 25px; margin: 0 0 10px; text-wrap: balance; }
+h3 { font-family: var(--font-display); font-weight: 600; font-size: 18px; margin: 18px 0 6px; }
+p, li { max-width: 72ch; }
+p { margin: 0 0 12px; }
+ul, ol { margin: 0 0 12px; padding-left: 22px; }
+li { margin-bottom: 6px; }
+.lede { font-size: 17.5px; color: var(--ink); }
+.muted { color: var(--muted); }
+section { display: grid; gap: 6px; }
+.thesis { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 18px 20px; }
+.thesis ol { margin: 0; }
+.thesis li { max-width: none; }
+.tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; margin: 6px 0 12px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font-family: var(--font-display); font-weight: 600; font-size: 13.5px; color: var(--muted); background: var(--chip); white-space: nowrap; }
+tr:last-child td { border-bottom: none; }
+td.n, th.n { text-align: right; font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.code { font-family: var(--font-data); font-size: 13px; background: var(--chip); padding: 1px 5px; border-radius: 4px; }
+.us { color: var(--us); font-weight: 600; }
+.ussr { color: var(--ussr); font-weight: 600; }
+.bad { color: var(--ussr); font-weight: 600; }
+.ok { color: var(--good); font-weight: 600; }
+.pill { display: inline-block; font-family: var(--font-data); font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--chip); color: var(--muted); white-space: nowrap; }
+.pill.run { color: var(--warn); }
+.pill.owner { color: var(--accent); }
+.plan { display: grid; gap: 14px; }
+.step { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 18px; display: grid; gap: 4px; }
+.step h3 { margin: 0; display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; }
+.step p, .step li { max-width: none; }
+.cite { font-size: 13.5px; color: var(--muted); }
+.reasons { display: grid; gap: 14px; }
+.reason { border-left: 3px solid var(--accent); padding: 2px 0 2px 16px; }
+.reason h3 { margin-top: 0; }
+footer { font-size: 13px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 14px; }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 520px) { body { font-size: 15px; } th, td { padding: 7px 9px; } }
+</style>
+
+<main>
+<header>
+  <div class="eyebrow">P44 diagnostics · 13–14 Nov 2026 · step 1 control (E8.1-A8-R119-S45) and J1 (E8-A8-R102-S44)</div>
+  <h1>Why self-play drops good strategies</h1>
+  <p class="lede">Both runs keep improving, yet they abandon setups a strong human would keep (West Germany for the US, Yugoslavia or Austria for the USSR) and do not come back. The diagnostics point to four causes, one of them new: <strong>the critic has learned to rate play unlike its own as losing</strong>, by 3–13 win-rate points, even when the unfamiliar play comes from a stronger network.</p>
+</header>
+
+<section class="thesis">
+  <h2>Summary</h2>
+  <ol>
+    <li><strong>The drift is real and long.</strong> J1's US left West Germany for 7,200M steps; the control's USSR held Yugoslavia/Austria only 15% of its run, J1's 45%. Switches happen within 40–80M.</li>
+    <li><strong>It is drift, not cycling.</strong> Round robins of both runs are fully transitive: every checkpoint beats every earlier one.</li>
+    <li><strong>For the network's own play the abandoned setups are worth the same</strong> (within about 1 point). It never learned the multi-turn plans that make them valuable, so self-play has no reason to choose them.</li>
+    <li><strong>The critic penalises unfamiliar play.</strong> Single in-game deviations are judged correctly, but when a whole turn is played in another style, the critic rates that side 3–13 points worse than the playouts show, even for stronger exploiters. The source is the opponent pool: the side that plays unlike the current self is usually an older snapshot, and it loses 62% of the time. A branch whose value trains on self-play games only lost the error within 390M, and within 770M its USSR was placing in Austria in every deal (the human Pol 4 Aus 1 EG 1 in 17%), at no cost in strength.</li>
+    <li><strong>The training signal for early decisions is almost all critic.</strong> The game result reaches a setup decision with weight ~0.2%; the rest is the critic's bootstrap. So the critic's familiarity bias decides early choices, and it locks in whatever is played.</li>
+  </ol>
+</section>
+
+<section>
+  <h2>What we observed</h2>
+  <h3>Setups held and dropped</h3>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Run</th><th>Side</th><th>Good setup</th><th class="n">Share of run holding it</th><th>When it held it</th></tr></thead>
+    <tbody>
+      <tr><td>Control</td><td class="ussr">USSR</td><td>Yugoslavia or Austria</td><td class="n">15%</td><td>350–1,050M, 7,300–7,900M (then Fin 3 Pol 3)</td></tr>
+      <tr><td>Control</td><td class="us">US</td><td>West Germany</td><td class="n">77%</td><td>2,800M to now (Ita 4 WG 4 Iran 1)</td></tr>
+      <tr><td>Head-norm arm</td><td class="ussr">USSR</td><td>Yugoslavia or Austria</td><td class="n">38%</td><td>2,100–4,150M, 4,800–6,200M</td></tr>
+      <tr><td>Head-norm arm</td><td class="us">US</td><td>West Germany</td><td class="n">35%</td><td>1,750–5,300M; at 10,800M Greece/Spain-Portugal/Philippines/Turkey, 4 non-battlegrounds</td></tr>
+      <tr><td>J1</td><td class="ussr">USSR</td><td>Yugoslavia or Austria</td><td class="n">45%</td><td>3,200–8,000M (Pol 3 Yug 3), 8,800–10,800M (Pol 4 Aus 1 EG 1 at 10,400M), then Fin 3 Pol 3 to the end</td></tr>
+      <tr><td>J1</td><td class="us">US</td><td>West Germany</td><td class="n">59%</td><td>to 8,000M; absent 8,400–15,200M (Fra 3 Ita 3 Can 2 Iran 1); back from 15,600M</td></tr>
+    </tbody>
+  </table></div>
+  <p>Greedy setups over 100 deals at each 400M SWA (J1) or 50 deals at each 50M raw snapshot (control, arm). Switches are fast: the control's USSR dropped Yugoslavia within ~40M (Finland first took the spare point beside it for ~300M, then replaced it); J1's US went West Germany 3 → 2 → 1 → Canada within ~80M.</p>
+
+  <h3>The abandoned setups are worth the same to the network</h3>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Comparison (same deals, paired)</th><th class="n">Greedy</th><th class="n">T=1</th></tr></thead>
+    <tbody>
+      <tr><td>Control: Yugoslavia setup minus Finland setup, against the control at 7,600M and 8,000M (10,000 deals each)</td><td class="n">+0.5 ± 0.3</td><td class="n">+0.4 ± 0.35</td></tr>
+      <tr><td>J1 at 8,800M against itself, 2×2 of own vs human setups: spread of all four cells</td><td class="n">within 1.1</td><td class="n">within 1.9</td></tr>
+      <tr><td>J1 8,000M: Canada setup instead of its West Germany setups, against J1 8,000M</td><td class="n">+1.2 ± 0.7</td><td class="n">+2.4 ± 0.7</td></tr>
+      <tr><td>J1 8,800M: West Germany setups instead of Canada, against J1 8,800M</td><td class="n">−0.5 / +0.1</td><td class="n">+0.8 / +1.0</td></tr>
+    </tbody>
+  </table></div>
+  <p>Canada beat West Germany only against J1 at 8,000M as a whole. The 8,800M USSR then learned to play against Canada, and the choice became flat; nothing pulled West Germany back. The human USSR setup (EG 1 Pol 4 Yug 1) is about 1 point better for the USSR than J1's own at 8,800M, so its move away from Yugoslavia made it slightly worse.</p>
+
+  <h3>Drift, not cycling</h3>
+  <p>Round robins of 400M SWAs every 800M (control 4,000–10,400M, J1 6,000–13,600M, 1,000 deals a side): <strong>0 intransitive triples</strong> of 84 and 120; no older checkpoint beats a newer one; the newer side's score grows with the gap, from +1 point at 800M to +10–12 at 6,400M. Strength rises slowly and steadily while strategies wander along directions that do not change the result against the current self.</p>
+</section>
+
+<section>
+  <h2>How a setup gets dropped</h2>
+  <p>At the control's switch (7,740M, 7,880M, 7,980M) I restored the saved training state with its optimizer, collected 100 iterations of self-play without updating, and split the update into its sources, each projected on the setup preference (log-likelihood of Fin 3 Pol 3 minus Pol 4 EG 1 Yug 1).</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Source of the update (per iteration)</th><th class="n">7,740M (Yugoslavia held)</th><th class="n">7,880M (switching)</th><th class="n">7,980M (Finland held)</th></tr></thead>
+    <tbody>
+      <tr><td>Setup decisions' own policy gradient (USSR)</td><td class="n">−0.19</td><td class="n">−0.23</td><td class="n">+0.19</td></tr>
+      <tr><td>In-game decisions, through shared weights</td><td class="n">−0.12</td><td class="n">−0.34</td><td class="n">+0.94</td></tr>
+      <tr><td>Entropy bonus + zero-avoiding term</td><td class="n">+0.53</td><td class="n">+0.39</td><td class="n">−0.93</td></tr>
+      <tr><td>KL to π<sub>ref</sub></td><td class="n">0</td><td class="n">0</td><td class="n">−0.27</td></tr>
+      <tr><td><strong>Sum</strong></td><td class="n"><strong>≈ +0.2</strong></td><td class="n"><strong>≈ −0.2</strong></td><td class="n"><strong>≈ 0</strong></td></tr>
+      <tr><td>Noise of the setup rows alone (sd per iteration)</td><td class="n">0.6</td><td class="n">1.4</td><td class="n">0.8</td></tr>
+    </tbody>
+  </table></div>
+  <p>Positive pushes toward Finland. The policy-gradient terms reinforce whichever setup is held; the regularisers pull against it; the sums are about zero. That is a two-state system with no preference between the states, and noise 3–7 times larger than any steady term carries it across. The advantages behind those policy-gradient terms come from the critic, which is where the next section starts.</p>
+</section>
+
+<section>
+  <h2>The critic rates unfamiliar play as losing</h2>
+  <h3>Single decisions: correct</h3>
+  <p>At 2,000 in-game positions and 4,000 turn-1 AR1–AR2 decisions, the critic's value after the policy's preferred move and after a less likely legal move matches 32 playouts per move: habit gap <span class="ok">+0.05 ± 0.2</span> win-rate points, in every slice (side, action round, decision type, rarity).</p>
+  <h3>Setup placements: wrong, and in favour of what is played</h3>
+  <ul>
+    <li>Control: an extra Poland point undervalued by 4–7 points per placement, at 7,600M and 8,000M; whole forced setups rated 2–3 points in favour of whichever setup the policy currently plays, flipping when it switches.</li>
+    <li>J1: the habitual placement favoured by 0.7–1.3 points on average (3.5–6.5 SE). Yugoslavia/Austria is ~1 point better than its habitual Hungary point in play; the critic rates it 2.5 points worse. After the switch it credits Canada over West Germany/Italy/Iran by 2 points that the playouts do not show.</li>
+  </ul>
+  <h3>A whole turn played in another style: wrong by 3–13 points</h3>
+  <p>Turn 1 (setup included) is played by another network for one side, then the late network plays both sides to the end, 800 positions × 24 playouts per row. The critic error is the late network's value at the start of turn 2 minus the playouts' result, signed against the side the other network played.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Late network</th><th>Turn 1 of one side played by</th><th class="n">Real effect on that side</th><th class="n">Critic error against that side</th></tr></thead>
+    <tbody>
+      <tr><td>J1 13,600M</td><td>R108, J1's US exploiter (stronger)</td><td class="n ok">+3.2</td><td class="n bad">−4.4</td></tr>
+      <tr><td>J1 13,600M</td><td>R109, J1's USSR exploiter (stronger)</td><td class="n ok">+4.3</td><td class="n bad">−3.8</td></tr>
+      <tr><td>J1 13,600M</td><td>J1 at 17,600M (stronger, same lineage), US / USSR</td><td class="n">−0.1 / +0.4</td><td class="n bad">−3.7 / −3.1</td></tr>
+      <tr><td>J1 13,600M</td><td>J1 at 10,000M, US / USSR</td><td class="n">−0.2 / +1.6</td><td class="n bad">−1.4 / −5.1</td></tr>
+      <tr><td>J1 13,600M</td><td>J1 at 6,000M, US / USSR</td><td class="n">−2.6 / −0.6</td><td class="n bad">−9.0 / −12.9</td></tr>
+      <tr><td>J1 13,600M</td><td>J1 at 2,000M, US / USSR</td><td class="n">−4.4 / −3.7</td><td class="n bad">−8.0 / −10.4</td></tr>
+      <tr><td>Control 10,800M</td><td>control at 4,000M, US / USSR</td><td class="n">+0.8 / −0.6</td><td class="n bad">−8.4 / −11.2</td></tr>
+      <tr><td>either</td><td>the late network itself (familiar)</td><td class="n">0</td><td class="n ok">−0.5 to +0.2</td></tr>
+    </tbody>
+  </table></div>
+  <p>The error grows with how different the style is, not with how weak it is: the exploiters make their side better and are still marked down 4 points. Per-position error beyond playout noise is 6–10 points even on familiar positions, and calibration slopes stay near 1, so this is an offset by style, not a scale problem.</p>
+  <h3>Where it comes from (confirmed by the R124 branch)</h3>
+  <p>30% of training games are against older pool snapshots, which lose 55–73% of their games to the learner (62% on average). The value loss covers every row, including the pool opponent's own decisions, and the critic has no input saying who is playing. The best predictor it can learn is "the side that plays unlike the current self is a pool member and will lose". That is right on the training mixture and wrong whenever the policy asks "what if I play this differently". An old setup is exactly such a signature, which explains why returning to one looks losing and why the critic's setup preference flips together with the policy.</p>
+  <p>A second, pool-free source was possible (at temperature 1, a side that drew rare moves really did play worse). The diagnostic branch rules it out as the main one: training the value on self-play games only removed the style error within 390M (plan step 1).</p>
+</section>
+
+<section>
+  <h2>Deep reasons</h2>
+  <div class="reasons">
+    <div class="reason">
+      <h3>1. The critic reads opponent identity from style</h3>
+      <p>With a hidden opponent type, a critic without the type learns the mixture value, so style is evidence of the weak type. Off-Belief Learning (Hu et al., 2021) and ReBeL (Brown et al., 2020) describe values that read meaning into who took past actions; KataGo's 2020 run hit the same problem with unequal playouts and fixed it by telling the network which side was stronger. Nothing found documents it in pool self-play; the handover numbers above are that posterior, measured.</p>
+    </div>
+    <div class="reason">
+      <h3>2. Strategic indifference: self-play only improves along the transitive axis</h3>
+      <p>Balduzzi et al. (2019) and Czarnecki et al. (2020): directions that do not change the result against the current self are not learned, they drift. The network never acquired the plans that make West Germany or the Italy route pay, so it cannot see their value; each setup is judged by a policy tuned to the other.</p>
+    </div>
+    <div class="reason">
+      <h3>3. On-policy gradients commit, and dropped options return slowly</h3>
+      <p>Chung et al. (2021) and Mei et al. (2021): sampled actions with positive advantage get reinforced, and normalised policy gradients can lock onto a suboptimal option. NeuRD (Hennes et al., 2019): the softmax gradient scales with π(a), so an option at 1% barely moves. Per-step entropy and the zero-avoiding term add decision noise, not strategic exploration (Osband et al., 2016).</p>
+    </div>
+    <div class="reason">
+      <h3>4. Early decisions learn almost only from the critic</h3>
+      <p>With λ = 0.98 over ~300 decisions, the game result reaches a setup's target with weight ~0.2% (Schulman et al., 2016: λ &lt; 1 is biased exactly when the critic is). Learned critics fit poorly where the policy rarely goes (Ilyas et al., 2020), and with a shared trunk policy and value interfere (Cobbe et al., 2021, PPG). So reason 1's bias becomes the setup's training signal.</p>
+    </div>
+    <div class="reason">
+      <h3>5. The KL term is a trust region, not R-NaD</h3>
+      <p>R-NaD and NashPG converge only because each reference is held until the regularised game is solved (Perolat et al., 2021; DeepNash η 0.2 with references held 10–100k steps; NashPG paper 10,000 updates per reference). Ours refreshes π<sub>ref</sub> every 200k environment steps (~50 updates) at η 0.1, so nothing anchors indifferent directions and the last iterate wanders (Mertikopoulos et al., 2018). With the round robins transitive, this is a contributor, not the main cause.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Plan</h2>
+  <div class="plan">
+    <div class="step">
+      <h3>1. Confirm the critic's source <span class="pill">done: confirmed</span></h3>
+      <p>Branch <span class="code">E8.1-A8-R119-S45@11230M+R124</span>: the control with its value heads trained on self-play games' rows only (<span class="code">--value-selfplay-only</span>, built tonight), 400M, in the slot the stopped arm freed. Read at 11,630M with the handover experiment and the setup critic check, against the control at the same step. If the handover error falls to the familiar level, the pool is the source; if not, the rare-move correlation of self-play is.</p>
+      <p id="r124-result"><strong>Result (02:06 UTC): the pool is the source.</strong> After 390M of the value on self-play rows only, the critic error on the handover test, relative to its familiar baseline and against the side the control's 4,000M checkpoint played, fell from <span class="bad">−8.4 / −11.4</span> (control at 11,630M; US / USSR turn 1) to <span class="ok">+0.1 / −1.9</span> (branch at 11,620M). The whole-setup preference fell from <span class="bad">+5.6</span> points for the control's own Finland setup to <span class="ok">−0.2</span>. A side offset remains in both critics (about 2–3 points against the US everywhere), unrelated to style. The branch continues in place to 12,430M to see whether its setups and strength move once the critic stops penalising unfamiliar lines; reads at 11,600 / 12,000 / 12,400M.</p>
+      <p><strong>First read, 11,600M (370M into the branch):</strong> no strength cost. Against the old reference 61.6% (control 58.9%), against J1's 13,600M SWA 50.8% (control 50.1%), head to head against the control at the same step 51.9% over 4,000 games (about 2.4 SE). Its USSR setup is no longer locked: Fin 3 Pol 3 in 33% of deals, with <span class="ussr">Austria</span> back in 36% (Pol 3 Fin 2 Aus 1 31%, Pol 4 Aus 1 Fin 1 5%) and EG or a 4th Poland point in the rest; the control plays Fin 3 Pol 3 in 100%. Its US setup keeps West Germany 4 with Italy (WG 4 Ita 3 Fra 1 Iran 1 66%), while the control's US setup at 12,000M has started taking Spain/Portugal.</p>
+      <p><strong>Second read, 12,000M (770M into the branch):</strong> the branch's USSR now places in <span class="ussr">Austria in every deal</span>: Pol 4 Aus 1 Fin 1 in 83%, and Pol 4 Aus 1 EG 1, the human setup, in 17%. Its US keeps WG 4 Ita 3 Fra 1 Iran 1 (67%) and WG 4 Fra 2 Ita 2 Iran 1 (24%), no non-battlegrounds. Strength is level with the control on both references (60.6% / 50.5% against the control's 60.6% / 50.6%), and head to head it wins 51.6% over 4,000 games (54.5% as USSR, 48.8% as US). The control at the same step still plays Fin 3 Pol 3 in 100% of deals.</p>
+    </div>
+    <div class="step">
+      <h3>2. Give the critic the opponent type <span class="pill owner">needs owner: architecture</span></h3>
+      <p>R124 itself is a working interim: same architecture, one flag, no strength cost so far. Its known flaw is that pool games' advantages are computed by a critic that never trained on them, which biases those games' policy gradient; the group heads remove that too. Choosing between continuing R124 as an arm and building the heads is the owner's call.</p>
+      <p>One value head per opponent group (self-play, own pool, league), or a critic-only input with the same information. Every row of a game uses that game's head (the zero-sum GAE bootstraps through the opponent's rows), and the self-play head is trained on self-play rows. This is the supported fix (AlphaStar's privileged value, asymmetric critics; Baisero &amp; Amato 2022 show a critic that also sees what the agent sees stays unbiased). Not an observation change: the policy reads nothing new. Success: handover error and setup habit bias at the familiar level (under 1 point), and the "held setup reinforced" term in the gradient split shrinks.</p>
+    </div>
+    <div class="step">
+      <h3>3. Do it before P45's league <span class="pill owner">sequencing</span></h3>
+      <p>A seat-true league adds opponents whose style marks them too; without group heads the critic would fold their win rates into the same shortcut, whichever way they win. The league is still the only mechanism here that makes a weak strategy cost something (AlphaStar's league ablation: +280 Elo over mains alone), so it follows, it is not dropped.</p>
+    </div>
+    <div class="step">
+      <h3>4. Show the critic other game families</h3>
+      <p>Exploring starts as part of the environment: in a share of games, both sides' setups (and possibly turn 1) are drawn from a menu of the run's own earlier lines, human setups and one-point perturbations, with those decisions kept out of the policy loss and the value trained on the games (Go-Exploit, Trudeau &amp; Bowling 2023; KataGo's branched openings). This is critic data, not a teacher: it does not say which setup is right. Measured by the same probes; the question is whether the policy then mixes among equal setups instead of locking.</p>
+    </div>
+    <div class="step">
+      <h3>5. Only if drift persists after 2–4</h3>
+      <ul>
+        <li>A faithful R-NaD schedule in one arm: η 0.2, π<sub>ref</sub> held ~40M steps.</li>
+        <li>A Monte Carlo value target at setup states (λ = 1 there), which removes the 0.2% chain; the opponent heads may make it unnecessary.</li>
+        <li>As a tie-breaker, not a cure: a small KL to the human setup distribution on setup rows (DiL-πKL, Bakhtin et al. 2022). If setups really are within a point, it costs nothing in self-play.</li>
+      </ul>
+      <p class="muted">Not recommended: more per-step entropy, λ 0.99 globally (collapsed on E4), PSRO/NeuPL at one GPU (Rudolph et al., 2025: no gain over tuned PPO).</p>
+    </div>
+  </div>
+  <h3>Standing instruments</h3>
+  <p>Kept as scripts for any new run: the handover test (critic error on other-style turn 1), the setup-placement critic probe, the setup traces every 50M, and the 2×2 of own vs human setups.</p>
+</section>
+
+<section>
+  <h2>Run status</h2>
+  <ul>
+    <li>Control at 11,200M: 60.4% against the old reference, 51.8% against J1's 13,600M SWA; continuing to 14,000M.</li>
+    <li>Head-norm arm: stopped at 11,200M as allowed (42.0% against the old reference; declining since 7,200M).</li>
+    <li>Control at 11,600M: 58.9% against the old reference, 50.1% against J1's 13,600M SWA, 52.4% against J1 at the same step.</li>
+    <li>R124 diagnostic branch: reached 11,630M; continuing in place to 12,430M.</li>
+  </ul>
+</section>
+
+<footer>
+  Data: <span class="code">data/reports/</span> — p44_forced*, p44_j1_2x2, p44_cycle, p44_critic_bias_*, p44_handover_*, p44_setup_grad_*, p44_delta_path_control.json, trace_setups_*. Literature review by the plans session (Fable), 2026-11-14. Code: commit 87ff2ab (<span class="code">--value-selfplay-only</span>, openings, run_codes fix).
+</footer>
+</main>
