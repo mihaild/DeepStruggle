@@ -71,7 +71,7 @@ seed unless stated. Per-seat numbers are against the control's own self-play rat
 | Starting episodes from saved mid-game positions? | `sp_pool_*` | **settled negative** — −115 Elo | [log/early_training_signal.md](log/early_training_signal.md) §3 |
 | A length-scaled decisiveness reward? | `dec_turns20/40` | **settled** (E1) — K=40 adopted | [log/agent_deficiencies_and_decisiveness.md](log/agent_deficiencies_and_decisiveness.md) |
 | Confining a blunder penalty to its own turn; prioritising decisive transitions? | `abw_window_*`, `dec_prio_*` | **retained on stale evidence**; **open** (never written up) | [log/early_training_signal.md](log/early_training_signal.md) §2 |
-| What pool fraction and capacity? | — | **not run** (all arms 0.3 / 12) | [archive/E3_ladder/plans/P10_opponent_sampling.md](archive/E3_ladder/plans/P10_opponent_sampling.md) |
+| What pool fraction and capacity? | — | **not run** (all arms 0.3 / 12); queued as P47 (composition, PFSP, window, no pool), next after P46 | [archive/E3_ladder/plans/P10_opponent_sampling.md](archive/E3_ladder/plans/P10_opponent_sampling.md), [plans/P47_pool_composition.md](plans/P47_pool_composition.md) |
 
 ## Architecture — (B)
 

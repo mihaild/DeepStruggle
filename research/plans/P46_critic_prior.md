@@ -242,3 +242,6 @@ only.
   from R124's ~13,200M state, 800M) in the next free slot. B3 = R127 (the fixed line on the control's critic) is
   dropped: arm A answers its question with a learned gain. B0 = the control and B1 = R124 (stopped at 13,200M) are
   the references. B4 (one opponent per game + value on self-play rows) is decided later.
+* **Next after P46 (owner, 2026-11-14): the pool checks,
+  [P47](P47_pool_composition.md)** -- who is in the pool and how often each plays (PFSP, a recent window, the
+  oldest member unpinned, no pool), each carrying whatever P46 adopts.
