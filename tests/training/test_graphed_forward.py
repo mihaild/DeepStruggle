@@ -12,11 +12,16 @@ GPU only: CUDA graphs have no CPU counterpart.
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 import torch
+import ts_engine
 
 from ai.models.coldwar_net_v2 import create_coldwar_net_v2
 from ai.training.graphed_forward import GraphCache, GraphedForward
+from ai.training.nash_pg import NashPGTrainer
+from ai.training.opponent_pool import OpponentPool
+from bindings.ts_env import TsVectorizedEnv
 
 pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="needs a GPU")
 
@@ -203,3 +208,54 @@ def test_warmup_runs_on_the_capture_stream() -> None:
     assert entered, "the warmup did not run under a stream context"
     assert all(e is not None and e.cuda_stream == cache._stream.cuda_stream for e in entered), (
         "warmup ran on a stream other than the cache's capture stream")
+
+
+def test_a_few_rows_replay_at_a_padded_bucket_and_match_eager() -> None:
+    """P45 L6: a per-game member runs on its own games' rows only, replayed at the smallest bucket that fits; each
+    row's output is the eager one (the forward never mixes rows), whatever fills the padding."""
+    torch.manual_seed(0)
+    net = create_coldwar_net_v2().cuda().eval()
+    cache = GraphCache(256, ts_engine.OBS_SIZE, 220, torch.device("cuda"))
+    gen = torch.Generator(device="cuda").manual_seed(1)
+    for n, bucket in ((5, 32), (32, 32), (33, 128), (200, 256)):
+        obs, mask = _inputs(n, gen)
+        with torch.no_grad():
+            eager = net(obs, mask)[0]
+        out = cache.run_rows(net, obs, mask)
+        assert cache.bucket(n) == bucket and out.shape == eager.shape
+        assert torch.allclose(out, eager, rtol=0, atol=1e-5)
+    assert {k[1] for k in cache._graphs} == {32, 128, 256}
+    cache.retain([])
+    assert not cache._graphs
+
+
+def _collect_per_game(graphs: bool) -> dict[str, torch.Tensor]:
+    torch.manual_seed(0)
+    np.random.seed(0)
+    env = TsVectorizedEnv(num_envs=64, base_seed=1234)
+    tr = NashPGTrainer(active_net=create_coldwar_net_v2(), env=env, num_envs=64,
+                       buffer_size=16, device="cuda", cuda_graphs=graphs)
+    nets = []
+    for s in (7, 8, 9):
+        torch.manual_seed(s)
+        nets.append(create_coldwar_net_v2().cuda().eval())
+    pool = OpponentPool([nets[0]], num_envs=64, frac=0.5, seed=5, capacity=8, per_game_own=True)
+    for i, n in enumerate(nets[1:]):
+        pool.add(n, (i + 1) * 1_000_000)
+    for i in range(64):
+        pool.on_episode_end(i, victory_points=None)
+    tr.opponent_pool = pool
+    torch.manual_seed(3)
+    tr.collect_rollouts()
+    b = tr.buffer
+    return {"actions": b.actions.clone(), "log_probs": b.log_probs.clone(),
+            "values_win": b.values_win.clone(), "obs": b.obs.clone()}
+
+
+def test_rollout_with_graphs_matches_eager_with_per_game_members() -> None:
+    """--opponent-per-game: several members in one step, each replayed at a bucket on its own rows."""
+    a, b = _collect_per_game(False), _collect_per_game(True)
+    assert torch.equal(a["actions"], b["actions"])
+    assert torch.equal(a["obs"], b["obs"])
+    assert torch.equal(a["values_win"], b["values_win"])
+    assert torch.allclose(a["log_probs"], b["log_probs"], rtol=0, atol=1e-5)

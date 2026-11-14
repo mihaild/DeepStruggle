@@ -1153,6 +1153,7 @@ class BaseNashPGTrainer:
         self.gain_learned = bool(self.critic_prior and critic_prior_gain == "learned")
         self._prior_beta_rows: Optional[torch.Tensor] = None
         self._prior_base_rows: Optional[torch.Tensor] = None
+        self._prior_turn_rows: Optional[np.ndarray] = None
         self._gain_stats: Dict[str, List[float]] = {}
         self._shift_stats = [0, 0, 0.0]   # rows seen, rows shifted, sum of |shift| over them (P46)
         if self.gain_learned and not getattr(self.active_net, "prior_gain", False):
@@ -1342,8 +1343,9 @@ class BaseNashPGTrainer:
     def _prior_shift_rollout(self, obs_t: torch.Tensor, v_win_t: torch.Tensor, decision_players: Any, turns: Any,
                              row: Optional[int]) -> torch.Tensor:
         """P46b / P46: the log-odds shift per env at the current decision -- w(turn) beta with the fixed line, or
-        (base + h(s)) beta with a learned gain -- recorded at buffer row `row` (None: the bootstrap, not stored), with
-        the learned gain's means by turn band and in near-even positions kept for the iteration's metrics."""
+        (base + h(s)) beta with a learned gain -- recorded at buffer row `row` (None: the bootstrap, not stored).
+        With a learned gain a stored row returns no shift: its beta, base and turn are kept, and the head is read for
+        the whole rollout at once before GAE (`_apply_gain_to_buffer`); only the bootstrap reads it here."""
         shape = (self.buffer.buffer_size, self.num_envs)
         if not self.gain_learned:
             shift_np = self._prior_shift_np(decision_players, turns)
@@ -1359,31 +1361,64 @@ class BaseNashPGTrainer:
         beta = torch.from_numpy(beta_np).to(self.device)
         base = torch.from_numpy(wline_np if self.critic_prior_gain_init == "line"
                                 else np.zeros_like(wline_np)).to(self.device)
-        has = beta_np != 0
-        g = base.clone()
-        if has.any():
-            idx = torch.from_numpy(np.flatnonzero(has)).to(self.device)
-            with torch.no_grad():
-                g.index_add_(0, idx, self._gain_head(obs_t.index_select(0, idx)).float())
         if row is not None:
             if self._prior_beta_rows is None or tuple(self._prior_beta_rows.shape) != shape:
                 self._prior_beta_rows = torch.zeros(shape, dtype=torch.float32, device=self.device)
                 self._prior_base_rows = torch.zeros(shape, dtype=torch.float32, device=self.device)
+                self._prior_turn_rows = np.zeros(shape, dtype=np.int16)
             self._prior_beta_rows[row] = beta
-            assert self._prior_base_rows is not None
+            assert self._prior_base_rows is not None and self._prior_turn_rows is not None
             self._prior_base_rows[row] = base
-            self._count_shift(beta_np * g.detach().cpu().numpy(), has)
-            if has.any():
-                g_np = g.detach().cpu().numpy()
-                t_np = np.asarray(turns)
-                p = np.clip((v_win_t.detach().cpu().numpy() + 1.0) * 0.5, 1e-4, 1 - 1e-4)
-                near = np.abs(np.log(p / (1 - p))) < 0.5
-                for name, sel in (("t1_3", t_np <= 3), ("t4_7", (t_np >= 4) & (t_np <= 7)), ("t8_10", t_np >= 8),
-                                  ("near_even", near)):
-                    s = has & sel
-                    if s.any():
-                        self._gain_stats.setdefault(name, []).extend(g_np[s].tolist())
+            self._prior_turn_rows[row] = np.asarray(turns)
+            return torch.zeros_like(beta)
+        g = base.clone()
+        has = beta_np != 0
+        if has.any():
+            idx = torch.from_numpy(np.flatnonzero(has)).to(self.device)
+            with torch.no_grad():
+                g.index_add_(0, idx, self._gain_head(obs_t.index_select(0, idx)).float())
         return beta * g
+
+    def _apply_gain_to_buffer(self) -> None:
+        """P46c: shift the rollout's stored win values on the rows with a prior by (base + h(s)) * beta, h read over
+        those rows only in chunks of 8,192, and keep the iteration's gain and shift statistics (g by turn band and in
+        near-even positions, near even = |logit of the raw value| < 0.5)."""
+        if self._prior_beta_rows is None or self._prior_base_rows is None or self._prior_turn_rows is None:
+            return
+        beta = self._prior_beta_rows.view(-1)
+        has = beta != 0
+        idx = torch.nonzero(has).squeeze(-1)
+        n_all = int(beta.numel())
+        has_np = has.cpu().numpy()
+        if not idx.numel():
+            self._count_shift(np.zeros(n_all, dtype=np.float32), has_np)
+            return
+        obs = self.buffer.obs.view(n_all, -1)
+        h = torch.empty(int(idx.numel()), dtype=torch.float32, device=self.device)
+        _was = self.active_net.training
+        self.active_net.eval()
+        with torch.no_grad():
+            for lo in range(0, int(idx.numel()), 8192):
+                sl = idx[lo:lo + 8192]
+                h[lo:lo + int(sl.numel())] = self._gain_head(obs.index_select(0, sl).float()).float()
+        self.active_net.train(_was)
+        b_sel = beta.index_select(0, idx)
+        g = self._prior_base_rows.view(-1).index_select(0, idx) + h
+        v = self.buffer.values_win.view(-1)
+        v_raw = v.index_select(0, idx)
+        v.index_copy_(0, idx, prior_apply(v_raw, g * b_sel, torch.ones_like(b_sel, dtype=torch.bool)))
+        idx_np = idx.cpu().numpy()
+        g_np = g.cpu().numpy()
+        shift_np = np.zeros(n_all, dtype=np.float32)
+        shift_np[idx_np] = g_np * b_sel.cpu().numpy()
+        self._count_shift(shift_np, has_np)
+        t_np = self._prior_turn_rows.reshape(-1)[idx_np]
+        p = np.clip((v_raw.cpu().numpy() + 1.0) * 0.5, 1e-4, 1 - 1e-4)
+        near = np.abs(np.log(p / (1 - p))) < 0.5
+        for name, sel in (("t1_3", t_np <= 3), ("t4_7", (t_np >= 4) & (t_np <= 7)), ("t8_10", t_np >= 8),
+                          ("near_even", near)):
+            if sel.any():
+                self._gain_stats.setdefault(name, []).extend(g_np[sel].tolist())
 
     def _gain_head(self, obs: torch.Tensor) -> torch.Tensor:
         """P46c: the learned part h(s) of the prior's gain, (B,), from the active network's prior-gain head."""
@@ -1739,9 +1774,11 @@ class BaseNashPGTrainer:
                 g_o.replay()
                 logits.index_copy_(0, idx, g_o.static_out[0].index_select(0, idx).float())
             else:
-                # P45: a league member on the rows of its own games, eagerly (graphs are per network
-                # and full-batch; a league game's rows are few).
-                logits.index_copy_(0, idx, net(obs_t.index_select(0, idx), masks_t.index_select(0, idx))[0].float())
+                # P45: a league member, or a per-game own-pool member (L6), on the rows of its own games: a graph
+                # at a small padded batch (GraphCache.bucket), one launch instead of an eager pass per member --
+                # eager, twelve members per step held a per-game run to 28k steps/s against 61k.
+                out = self._graphs.run_rows(net, obs_t.index_select(0, idx), masks_t.index_select(0, idx))
+                logits.index_copy_(0, idx, out.float())
         return logits, v_win_t, v_vp_t
 
     def _searched_opponent_moves(self, obs_t: torch.Tensor, masks_t: torch.Tensor, logits: torch.Tensor,
@@ -2209,6 +2246,9 @@ class BaseNashPGTrainer:
             self.active_net.eval()
             self.turn_credit.flush(self.active_net, self.device)
             self.active_net.train(_was)
+
+        if self.gain_learned:
+            self._apply_gain_to_buffer()
 
         # Evaluate last state for GAE bootstrapping
         last_obs_t = torch.from_numpy(self._obs_np).float().to(self.device)
