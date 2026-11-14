@@ -576,12 +576,12 @@ class OpponentPool:
         return self.prior_sp_us if side == 1 else 1.0 - self.prior_sp_us
 
     def prior_rate_of(self, oid: int, side: int) -> float:
-        """The learner's running score against member `oid` in `side`; a member without games starts at the
-        mean over the members that have some in that seat, or at the self-play score."""
+        """The learner's running score against member `oid` in `side`; a member without games starts at 50%:
+        it is the learner's snapshot from moments ago (P46, 2026-11-14 -- the members' mean, the first rule, is far
+        from even early in a run and took ~700 games to settle)."""
         key = (int(oid), int(side))
         if key not in self.prior_rate:
-            known = [v for (o, s_), v in self.prior_rate.items() if s_ == side and o in self.ids]
-            self.prior_rate[key] = float(np.mean(known)) if known else self._prior_self(side)
+            self.prior_rate[key] = 0.5
         return self.prior_rate[key]
 
     def prior_beta(self, oid: int, side: int) -> float:
@@ -611,6 +611,23 @@ class OpponentPool:
             b = self.prior_turn_w(int(turns[i])) * self.prior_beta(int(self.env_member[i]), side)
             out[i] = b if dp[i] == side else -b
         return out
+
+    def prior_terms(self, decision_players: np.ndarray, turns: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Per env, beta signed by the decider (+ learner, - member, 0 in self-play and games without a member)
+        and the turn line w(turn): the two factors of `prior_shift`, for a gain the critic learns (P46, arms A/B)."""
+        beta = np.zeros(self.num_envs, dtype=np.float32)
+        wline = np.zeros(self.num_envs, dtype=np.float32)
+        if not self.prior_window:
+            return beta, wline
+        dp = np.asarray(decision_players, dtype=np.int8)
+        for i in np.flatnonzero(self.is_mixed & (self.env_member >= 0)):
+            side = int(self.learner_side[i])
+            if dp[i] not in (side, -side):
+                continue
+            b = self.prior_beta(int(self.env_member[i]), side)
+            beta[i] = b if dp[i] == side else -b
+            wline[i] = self.prior_turn_w(int(turns[i]))
+        return beta, wline
 
     def prior_selfplay(self, victory_points: float) -> None:
         """Fold one self-play game's result into the running US score (draws count half)."""

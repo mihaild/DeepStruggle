@@ -1474,6 +1474,9 @@ def save_resume_state(path: str, model: nn.Module, trainer: Any, iteration: int,
                               if getattr(trainer, "searched_opp", None) is not None else None),
         # --head-l2-init-coef's theta_0 (P44): the heads' initial weights, which a resume cannot rebuild.
         "head_init_state": (dict(trainer.head_init) if getattr(trainer, "head_init", None) else None),
+        # P46: the learned gain on the critic's prior (--critic-prior-gain learned), its network and its own Adam.
+        "prior_gain_state": ({"net": trainer.gain_net.state_dict(), "opt": trainer.gain_opt.state_dict()}
+                             if getattr(trainer, "gain_net", None) is not None else None),
     }, path)
 
 
@@ -1734,6 +1737,17 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
                              "state has none (it was written without the term): its theta_0 is not known")
         trainer.set_head_init(_init)
         print(f"[resume] head L2-init: theta_0 restored for {len(_init)} head parameters", flush=True)
+    if getattr(trainer, "gain_net", None) is not None:
+        # P46: a learned gain continues where it was; a state written without one (a branch that adds the gain)
+        # keeps the fresh network, whose zero last layer starts the gain at its base.
+        _gain = blob.get("prior_gain_state")
+        if _gain is not None:
+            trainer.gain_net.load_state_dict(_gain["net"])
+            if trainer.gain_opt is not None:
+                trainer.gain_opt.load_state_dict(_gain["opt"])
+            print("[resume] critic prior: the learned gain restored", flush=True)
+        else:
+            print("[resume] critic prior: no learned gain in this state; it starts at its base", flush=True)
     trainer.total_env_steps = int(blob["total_env_steps"])
     if hasattr(trainer, "steps_since_ref_update"):
         saved_clock = blob.get("steps_since_ref_update")
@@ -2046,6 +2060,9 @@ def train_pipeline(
     opponent_per_game: bool = False,
     critic_prior_window: int = 0,
     critic_prior_turn_weight: Tuple[float, float] = (0.98, 0.46),
+    critic_prior_gain: str = "fixed",
+    critic_prior_gain_init: str = "line",
+    critic_prior_gain_lr: float = 3e-4,
     logit_gap: float = 7.0,
     setup_block_lambda: bool = False,
     block_lambda: str = "off",
@@ -2469,6 +2486,9 @@ def train_pipeline(
         "opponent_per_game": bool(opponent_per_game),
         "critic_prior_window": int(critic_prior_window),
         "critic_prior_turn_weight": [float(x) for x in critic_prior_turn_weight],
+        "critic_prior_gain": str(critic_prior_gain),
+        "critic_prior_gain_init": str(critic_prior_gain_init),
+        "critic_prior_gain_lr": float(critic_prior_gain_lr),
         "phase_lock": phase_lock,
         "token_chunk": int(token_chunk),
         "token_compile": bool(token_compile),
@@ -2863,6 +2883,9 @@ def train_pipeline(
         head_l2_init_coef=head_l2_init_coef,
         value_selfplay_only=value_selfplay_only,
         critic_prior=critic_prior_window > 0,
+        critic_prior_gain=critic_prior_gain,
+        critic_prior_gain_init=critic_prior_gain_init,
+        critic_prior_gain_lr=critic_prior_gain_lr,
         logit_gap=logit_gap,
         setup_block_lambda=setup_block_lambda,
         block_lambda=block_lambda,
@@ -3181,6 +3204,10 @@ def train_pipeline(
         print(f"[critic prior] pool games' win value shifted by w(turn) * beta(opponent, seat), running scores over "
               f"{critic_prior_window} games, w {critic_prior_turn_weight[0]:g} -> {critic_prior_turn_weight[1]:g} over "
               f"turns 1-10 (--critic-prior-window, P46b)", flush=True)
+        if critic_prior_gain == "learned":
+            print(f"[critic prior] the gain is learned: g(s) = {'the turn line' if critic_prior_gain_init == 'line' else '0'} "
+                  f"+ h(s), h a critic-only network on the observation at lr {critic_prior_gain_lr:g} "
+                  f"(--critic-prior-gain learned, P46)", flush=True)
     if value_selfplay_only:
         print("[value self-play only] the value heads train on self-play games' rows only; pool games still enter "
               "GAE and the policy loss (--value-selfplay-only, P44 diagnostic)", flush=True)
@@ -3579,7 +3606,8 @@ def train_pipeline(
         # silently dropped here -- caught by a smoke run, not by any test, because stats() was
         # correct and only the forwarding was not. A prefix cannot go stale the same way.
         for _ok, _ov in iteration_metrics.items():
-            if _ok.startswith("opp_") and isinstance(_ov, (int, float)):
+            # P46: the critic prior's metrics (prior_gain_*, prior_shift_*) by prefix too, for the same reason.
+            if (_ok.startswith("opp_") or _ok.startswith("prior_")) and isinstance(_ov, (int, float)):
                 step_metrics[_ok] = float(_ov)
         # Per-seat learning signal, by name pattern for the same reason: the buffer computed
         # adv_mean/std/n per seat on every iteration and this list dropped all six, so the

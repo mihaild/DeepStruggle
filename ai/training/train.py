@@ -1116,6 +1116,12 @@ def build_parser() -> argparse.ArgumentParser:
                         help="P46b (owner, 2026-11-14): > 0 shifts the critic's win probability in pool games by the pool's prior for that opponent and seat, beta = logit(the learner's running score against it) - logit(its self-play score in that seat), weighted by the turn (--critic-prior-turn-weight); the running scores average over this many games. Needs --opponent-per-game. 0 = off.")
     parser.add_argument("--critic-prior-turn-weight", type=float, nargs=2, default=[0.98, 0.46], metavar=("W1", "W10"),
                         help="P46b: the prior's weight at turn 1 and at turn 10, linear between (P46a's pooled fit: 0.98 -> 0.46; 1 1 is the plain log-odds shift).")
+    parser.add_argument("--critic-prior-gain", choices=["fixed", "learned"], default="fixed",
+                        help="P46 (owner, 2026-11-14): the weight on the critic's prior -- 'fixed' the turn line (--critic-prior-turn-weight), 'learned' g(s) = base + h(s), h a critic-only network on the observation trained by the value loss on pool rows.")
+    parser.add_argument("--critic-prior-gain-init", choices=["line", "zero"], default="line",
+                        help="P46: a learned gain's base and start -- the turn line (arm B) or 0 (arm A, the value unchanged at the branch point).")
+    parser.add_argument("--critic-prior-gain-lr", type=float, default=3e-4,
+                        help="P46: the learned gain network's own Adam rate.")
     parser.add_argument("--value-selfplay-only", action="store_true", default=False,
                         help="P44 diagnostic (2026-11-14): train the value heads on self-play games' rows only; pool games still enter GAE and the policy loss. Tests whether the critic's misjudgement of unfamiliar play (the side playing unlike the current self rated as losing) is learned from pool games.")
     parser.add_argument("--head-l2-init-coef", type=float, default=0.0,
@@ -1636,6 +1642,9 @@ def main():
             opponent_per_game=args.opponent_per_game,
             critic_prior_window=args.critic_prior_window,
             critic_prior_turn_weight=tuple(args.critic_prior_turn_weight),
+            critic_prior_gain=args.critic_prior_gain,
+            critic_prior_gain_init=args.critic_prior_gain_init,
+            critic_prior_gain_lr=args.critic_prior_gain_lr,
             zero_avoid_scope=args.zero_avoid_scope,
             zero_avoid_ramp_steps=args.zero_avoid_ramp_steps,
             logit_gap=args.logit_gap,

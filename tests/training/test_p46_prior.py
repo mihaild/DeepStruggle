@@ -12,7 +12,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from ai.training.nash_pg import prior_apply
+from ai.training.nash_pg import PriorGainNet, prior_apply
 from ai.training.opponent_pool import OpponentPool
 
 
@@ -109,11 +109,31 @@ def test_running_scores_and_beta() -> None:
     assert p.prior_beta(oid, side) == pytest.approx(lg(0.6) - lg(us_self))
 
 
-def test_a_new_member_starts_at_the_pools_mean_for_the_seat() -> None:
+def test_a_new_member_starts_at_fifty_percent() -> None:
+    """P46 (2026-11-14): a new member is the learner's snapshot from moments ago, so it starts even, whatever the
+    other members' scores are."""
     p = _pool(prior=9)
     p.prior_rate[(p.ids[0], 1)] = 0.7
     p.prior_rate[(p.ids[1], 1)] = 0.6
-    assert p.prior_rate_of(p.ids[2], 1) == pytest.approx(0.65)
+    assert p.prior_rate_of(p.ids[2], 1) == pytest.approx(0.5)
+
+
+def test_prior_terms_are_the_two_factors_of_the_shift() -> None:
+    p = _pool(prior=9, num_envs=8, frac=0.5, turn_weight=(0.98, 0.46))
+    for i in range(8):
+        if p.is_mixed[i]:
+            p.prior_rate[(int(p.env_member[i]), int(p.learner_side[i]))] = 0.7
+    turns = np.array([1, 3, 5, 7, 9, 10, 2, 4])
+    for dp in (p.learner_side.copy(), -p.learner_side.copy()):
+        beta, wline = p.prior_terms(dp, turns)
+        assert np.allclose(beta * wline, p.prior_shift(dp, turns), atol=1e-6)
+        assert (beta[~p.is_mixed] == 0).all() and (wline[~p.is_mixed] == 0).all()
+
+
+def test_the_learned_gain_starts_at_zero() -> None:
+    net = PriorGainNet(16)
+    out = net(torch.randn(5, 16))
+    assert out.shape == (5, 1) and torch.equal(out, torch.zeros(5, 1))
 
 
 def test_the_shift_is_signed_by_the_decider_and_weighted_by_the_turn() -> None:

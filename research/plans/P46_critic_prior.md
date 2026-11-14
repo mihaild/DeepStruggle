@@ -196,7 +196,7 @@ only.
   it; a member evicted mid-game hands its games to the iteration's opponent (`opp_own_orphaned_games`).
 * **P46b, `--critic-prior-window N`** (needs `--opponent-per-game`; excludes `--value-selfplay-only`): the pool keeps
   the learner's running score per (member, seat) and self-play's running US score (exponential averages over ~N
-  games; a new member starts at the members' mean for that seat) and returns per env
+  games; a new member starts at 50%, P46c's table setting) and returns per env
   `prior_shift = +- w(turn) * beta` (+ where the learner decides, - where the member does, 0 in self-play);
   `w(turn)` is linear from `--critic-prior-turn-weight W1 W10` (default P46a's pooled 0.98 -> 0.46). The trainer
   shifts the win value in log-odds (`prior_apply`) in the rollout's stored values (GAE), the bootstrap and the value
@@ -206,6 +206,25 @@ only.
   resume): every pool game had a whole-game member, priors tracked per member and seat. The running-average estimate
   of beta over 1,000 games was checked offline on P46a's games: median error 0.07, within 0.1 after ~700 games
   (`p46a_games_needed.py`).
+
+### Built: P46c (2026-11-14)
+
+* **`--critic-prior-gain learned`** (R128 = arm A with `--critic-prior-gain-init zero`, R129 = arm B, init `line`):
+  the win value on a row with a prior is `sigmoid(c(s) +- g(s) * beta)`, `c` the win head's logit as before and
+  `g(s) = base(turn) + h(s)`, base 0 (A) or the turn line (B). **`h` is a separate small critic-only network on the
+  observation** (3,824 -> 64 -> 1, GELU, last layer zero, so `g` starts exactly at its base and the value is
+  unchanged at the branch point), not a second output on the shared trunk as the plan words it: it loads into any
+  checkpoint without touching the network, plays no part in acting, and its gradient never reaches the trunk.
+  It has its own Adam (`--critic-prior-gain-lr`, default 3e-4, the main rate) and is saved in the resume state.
+  The stored rollout values, the bootstrap and the value loss use the same `g` (computed with gradient in the
+  update, on the rows' stored beta and base).
+* **The gradient at `g = 0`:** the shift is applied on every row with a prior (beta != 0), not only where the shift
+  is nonzero -- otherwise arm A's zero start would never move. Found by the smoke (`g` stuck at 0, no shifted rows).
+* **Logged:** `prior_gain_t1_3`, `_t4_7`, `_t8_10`, `_near_even` (mean `g` over the update's prior rows; near even =
+  |c| < 0.5), `prior_shift_rows_frac`, `prior_shift_abs_mean`.
+* **Checks:** `tests/training/test_p46_prior.py` (14: a new member at 50%, the two factors of the shift, the gain
+  starting at 0); CPU smoke from scratch with a resume: `g` from 0 to 1.25 / 0.96 / 0.89 (turns 1-3 / 4-7 / 8-10)
+  in 600k steps, half the rows shifted (the pool share), the gain restored on resume.
 
 ### The plan from here (owner, 2026-11-14)
 

@@ -519,6 +519,9 @@ class BaseNashPGTrainer:
         head_l2_init_coef: float = 0.0,  # P44: coef * sum ||theta - theta_0||^2 over the policy and value heads
         value_selfplay_only: bool = False,  # P44 diagnostic: the value loss on self-play games' rows only
         critic_prior: bool = False,  # P46b: the win head shifted by the pool's prior for the game's opponent
+        critic_prior_gain: str = "fixed",  # P46: 'fixed' (the turn line) or 'learned' (a critic-only gain g(s))
+        critic_prior_gain_init: str = "line",  # P46: a learned gain starts at the turn line or at zero
+        critic_prior_gain_lr: float = 3e-4,  # P46: the learned gain's own Adam rate
         setup_block_lambda: bool = False,
         block_lambda: str = "off",
         phase_lock_path: Optional[str] = None,
@@ -1137,6 +1140,27 @@ class BaseNashPGTrainer:
             raise ValueError("critic_prior and value_selfplay_only are alternative treatments of pool games; pick one")
         self.critic_prior = bool(critic_prior)
         self._prior_rows: Optional[torch.Tensor] = None
+        # P46 arms A / B (2026-11-14): the weight on the prior learned instead of the turn line. The win value is
+        # sigmoid(c(s) +- g(s) beta), c the win head's logit and g(s) = base(turn) + h(s), h a small critic-only network
+        # on the observation (its last layer zero, so g starts at base): base = the turn line ('line') or 0 ('zero').
+        # h has its own Adam (`critic_prior_gain_lr`) and is trained by the value loss on the rows with a prior; the
+        # rows keep beta and base so the update recomputes g with gradient.
+        if critic_prior_gain not in ("fixed", "learned"):
+            raise ValueError(f"critic_prior_gain must be 'fixed' or 'learned', got {critic_prior_gain!r}")
+        if critic_prior_gain_init not in ("line", "zero"):
+            raise ValueError(f"critic_prior_gain_init must be 'line' or 'zero', got {critic_prior_gain_init!r}")
+        self.critic_prior_gain = critic_prior_gain
+        self.critic_prior_gain_init = critic_prior_gain_init
+        self.gain_net: Optional[nn.Module] = None
+        self.gain_opt: Optional[torch.optim.Optimizer] = None
+        self._prior_beta_rows: Optional[torch.Tensor] = None
+        self._prior_base_rows: Optional[torch.Tensor] = None
+        self._gain_stats: Dict[str, List[float]] = {}
+        self._shift_stats = [0, 0, 0.0]   # rows seen, rows shifted, sum of |shift| over them (P46)
+        if self.critic_prior and critic_prior_gain == "learned":
+            _gn = PriorGainNet(int(self.buffer.obs_dim)).to(self.device)
+            self.gain_net = _gn
+            self.gain_opt = torch.optim.Adam(_gn.parameters(), lr=float(critic_prior_gain_lr))
         self._compiled_nets: Dict[int, nn.Module] = {}
         self._compiled_methods: Dict[Tuple[int, str], Tuple[nn.Module, Callable[..., Any]]] = {}
         #: --wolf-seat-weight. Each seat's PPO surrogate is scaled by `wolf_seat_weights`, driven by
@@ -1318,6 +1342,56 @@ class BaseNashPGTrainer:
                 continue
             c = self.ent_coef_seat[code] - self.entropy_ceiling_lr * (float(h) - self.entropy_ceiling)
             self.ent_coef_seat[code] = min(self.ent_coef, max(self.entropy_ceiling_min_coef, c))
+
+    def _prior_shift_rollout(self, obs_t: torch.Tensor, v_win_t: torch.Tensor, decision_players: Any, turns: Any,
+                             row: Optional[int]) -> torch.Tensor:
+        """P46b / P46: the log-odds shift per env at the current decision -- w(turn) beta with the fixed line, or
+        (base + h(s)) beta with a learned gain -- recorded at buffer row `row` (None: the bootstrap, not stored), with
+        the learned gain's means by turn band and in near-even positions kept for the iteration's metrics."""
+        shape = (self.buffer.buffer_size, self.num_envs)
+        if self.gain_net is None:
+            shift_np = self._prior_shift_np(decision_players, turns)
+            shift = torch.from_numpy(shift_np).to(self.device)
+            if row is not None:
+                self._count_shift(shift_np)
+                if self._prior_rows is None or tuple(self._prior_rows.shape) != shape:
+                    self._prior_rows = torch.zeros(shape, dtype=torch.float32, device=self.device)
+                self._prior_rows[row] = shift
+            return shift
+        assert self.opponent_pool is not None
+        beta_np, wline_np = self.opponent_pool.prior_terms(np.asarray(decision_players), np.asarray(turns))
+        beta = torch.from_numpy(beta_np).to(self.device)
+        base = torch.from_numpy(wline_np if self.critic_prior_gain_init == "line"
+                                else np.zeros_like(wline_np)).to(self.device)
+        with torch.no_grad():
+            g = base + self.gain_net(obs_t).squeeze(-1)
+        if row is not None:
+            if self._prior_beta_rows is None or tuple(self._prior_beta_rows.shape) != shape:
+                self._prior_beta_rows = torch.zeros(shape, dtype=torch.float32, device=self.device)
+                self._prior_base_rows = torch.zeros(shape, dtype=torch.float32, device=self.device)
+            self._prior_beta_rows[row] = beta
+            assert self._prior_base_rows is not None
+            self._prior_base_rows[row] = base
+            has = beta_np != 0
+            self._count_shift(beta_np * g.detach().cpu().numpy(), has)
+            if has.any():
+                g_np = g.detach().cpu().numpy()
+                t_np = np.asarray(turns)
+                p = np.clip((v_win_t.detach().cpu().numpy() + 1.0) * 0.5, 1e-4, 1 - 1e-4)
+                near = np.abs(np.log(p / (1 - p))) < 0.5
+                for name, sel in (("t1_3", t_np <= 3), ("t4_7", (t_np >= 4) & (t_np <= 7)), ("t8_10", t_np >= 8),
+                                  ("near_even", near)):
+                    s = has & sel
+                    if s.any():
+                        self._gain_stats.setdefault(name, []).extend(g_np[s].tolist())
+        return beta * g
+
+    def _count_shift(self, shift_np: np.ndarray, active: Optional[np.ndarray] = None) -> None:
+        """Rows seen, rows with a prior (`active`, default a nonzero shift) and their summed |shift|."""
+        nz = (shift_np != 0) if active is None else active
+        self._shift_stats[0] += int(shift_np.size)
+        self._shift_stats[1] += int(nz.sum())
+        self._shift_stats[2] += float(np.abs(shift_np[nz]).sum())
 
     def _prior_shift_np(self, decision_players: Any, turns: Any) -> np.ndarray:
         """P46b: the pool's log-odds shift per env at the current decision (zeros without a pool)."""
@@ -1799,14 +1873,9 @@ class BaseNashPGTrainer:
                 v_win_t = v_win_t.squeeze(-1)
                 v_vp_t = v_vp_t.squeeze(-1)
                 if self.critic_prior:
-                    _shift_np = self._prior_shift_np(_dp, np.asarray(self.env.runner.get_turns()))
-                    _shift_t = torch.from_numpy(_shift_np).to(self.device)
+                    _turns_np = np.asarray(self.env.runner.get_turns())
+                    _shift_t = self._prior_shift_rollout(obs_t, v_win_t, _dp, _turns_np, self.buffer.step)
                     v_win_t = prior_apply(v_win_t, _shift_t)
-                    if self._prior_rows is None or tuple(self._prior_rows.shape) != (self.buffer.buffer_size,
-                                                                                      self.num_envs):
-                        self._prior_rows = torch.zeros((self.buffer.buffer_size, self.num_envs), dtype=torch.float32,
-                                                       device=self.device)
-                    self._prior_rows[self.buffer.step] = _shift_t
 
                 # Multi-temperature exploration: Sample actions from temperature-scaled
                 # behavior distribution beta(a|s) = softmax(logits / tau) with stratified per-env
@@ -2146,8 +2215,9 @@ class BaseNashPGTrainer:
         _last_info = self.env._get_batch_info()
         last_players = torch.from_numpy(_last_info["decision_players"]).to(self.device)
         if self.critic_prior:
-            last_v_win = prior_apply(last_v_win.squeeze(-1), torch.from_numpy(
-                self._prior_shift_np(_last_info["decision_players"], _last_info["turns"])).to(self.device)).unsqueeze(-1)
+            last_v_win = prior_apply(last_v_win.squeeze(-1), self._prior_shift_rollout(
+                last_obs_t, last_v_win.squeeze(-1), _last_info["decision_players"], _last_info["turns"],
+                None)).unsqueeze(-1)
         self.buffer.compute_gae(
             last_v_win=last_v_win.squeeze(-1),
             last_v_vp=last_v_vp.squeeze(-1),
@@ -2236,6 +2306,15 @@ class BaseNashPGTrainer:
                 getattr(self, "search_dropped_visit_frac", 0.0))
             metrics["search_dropped_row_frac"] = float(
                 getattr(self, "search_dropped_row_frac", 0.0))
+        if self._gain_stats:
+            for name, vals in self._gain_stats.items():
+                metrics[f"prior_gain_{name}"] = float(np.mean(vals))
+            self._gain_stats = {}
+        if self.critic_prior and self._shift_stats[0]:
+            seen, shifted, total = self._shift_stats
+            metrics["prior_shift_rows_frac"] = shifted / seen
+            metrics["prior_shift_abs_mean"] = total / shifted if shifted else 0.0
+            self._shift_stats = [0, 0, 0.0]
         return metrics
 
     def train_step(self) -> Dict[str, float]:
@@ -2564,12 +2643,30 @@ class BaseNashPGTrainer:
         return combined
 
 
-def prior_apply(v_win: torch.Tensor, shift: torch.Tensor) -> torch.Tensor:
+class PriorGainNet(nn.Module):
+    """P46: the learned part h(s) of the prior's gain, a small critic-only network on the observation; its last layer
+    starts at zero so the gain starts at its base."""
+
+    def __init__(self, obs_dim: int, hidden: int = 64) -> None:
+        super().__init__()
+        self.body = nn.Sequential(nn.Linear(obs_dim, hidden), nn.GELU(), nn.Linear(hidden, 1))
+        last = self.body[2]
+        assert isinstance(last, nn.Linear)
+        nn.init.zeros_(last.weight)
+        nn.init.zeros_(last.bias)
+
+    def forward(self, obs: torch.Tensor) -> torch.Tensor:
+        return self.body(obs.float())
+
+
+def prior_apply(v_win: torch.Tensor, shift: torch.Tensor, active: Optional[torch.Tensor] = None) -> torch.Tensor:
     """P46b: the win value v in [-1, 1] read as a probability (v + 1) / 2, shifted in log-odds by `shift`, and
-    mapped back; rows with no shift are returned untouched."""
+    mapped back, on the rows `active` marks (default: the rows with a nonzero shift); the rest are returned
+    untouched. A learned gain passes the rows that have a prior (beta != 0): masking on the shift itself would give
+    a gain that is exactly 0 -- arm A's start -- no gradient, and it could never move."""
     p = ((v_win + 1.0) * 0.5).clamp(1e-4, 1.0 - 1e-4)
     shifted = 2.0 * torch.sigmoid(torch.log(p) - torch.log1p(-p) + shift.to(v_win.dtype)) - 1.0
-    return torch.where(shift != 0, shifted, v_win)
+    return torch.where(shift != 0 if active is None else active, shifted, v_win)
 
 
 def zero_avoid_kl(logits: torch.Tensor, mask: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
@@ -2865,7 +2962,13 @@ class NashPGTrainer(BaseNashPGTrainer):
                     cur_logits, cur_v_win, cur_v_vp = _act_fwd(b_obs, b_mask)
                     cur_risk = None
                 cur_v_win = cur_v_win.squeeze(-1)
-                if self.critic_prior and self._prior_rows is not None:
+                if self.critic_prior and self.gain_net is not None and self._prior_beta_rows is not None:
+                    _b = self._prior_beta_rows.view(-1).index_select(0, b_idx)
+                    _g = self.gain_net(b_obs).squeeze(-1)
+                    if self._prior_base_rows is not None:
+                        _g = _g + self._prior_base_rows.view(-1).index_select(0, b_idx)
+                    cur_v_win = prior_apply(cur_v_win, _g * _b, _b != 0)
+                elif self.critic_prior and self._prior_rows is not None:
                     cur_v_win = prior_apply(cur_v_win, self._prior_rows.view(-1).index_select(0, b_idx))
                 cur_v_vp = cur_v_vp.squeeze(-1)
 
@@ -3149,6 +3252,8 @@ class NashPGTrainer(BaseNashPGTrainer):
                     sg_batches += 1
 
                 self.optimizer.zero_grad()
+                if self.gain_opt is not None:
+                    self.gain_opt.zero_grad()
                 if self.search_ce_coef > 0.0 and float(search_ce) != 0.0:
                     # One extra backward on the CE term alone, retaining the graph, to see what
                     # share of the update it is claiming. Only while the term is active.
@@ -3183,6 +3288,9 @@ class NashPGTrainer(BaseNashPGTrainer):
                     total_norm_accum += float(total_norm)
                 nn.utils.clip_grad_norm_(self.active_net.parameters(), max_norm=self.max_grad_norm)
                 self.optimizer.step()
+                if self.gain_opt is not None and self.gain_net is not None:
+                    nn.utils.clip_grad_norm_(self.gain_net.parameters(), max_norm=self.max_grad_norm)
+                    self.gain_opt.step()
 
                 loss_t += loss.detach()
                 # NOTE: this is the PPO surrogate ALONE, not the assembled policy_loss. Kept as
