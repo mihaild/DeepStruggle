@@ -94,3 +94,42 @@ that game's advantages, `beta = 0` in self-play. 1,200M, read at R124's steps.
 * The VP head stays as in R124 (self-play rows) in this arm; a prior for it is a follow-up.
 
 ## Runs (filled in while running)
+
+### P46a (2026-11-14, CPU): W nearly passes, L and D fail
+
+R124's 12,320-12,400M SWA against the control's snapshots at 400 / 2,000 / 4,000 / 6,000 / 8,000 / 10,000 / 12,000M
+and against itself, one opponent a game, each seat, deal seeds 1-2,000 (the same for every opponent), T = 1 both sides:
+32,000 games, 6.9M decisions of the R124 side (`p46a_games.py`, `p46a_read.py` in the session's tmp; data
+`data/reports/p46a_games.npz`, full read `data/reports/p46a_read.txt`). Fit on odd seeds, read on even ones.
+R124's score falls from 92-95% against 400M to 54-62% against 12,000M; in self-play 49.2% as US, 53.5% as USSR.
+
+| read | M0 | D | L | W |
+|:---|:---|:---|:---|:---|
+| 2. log loss, pool games (L with beta fitted freely: 0.4623) | 0.5163 | 0.5371 | 0.4644 | **0.4612** |
+| 1. largest \|mean residual\| over (opponent, seat, turn band) cells, points (SE ~1.2-1.4) | 31.8 | 9.6 | 7.1 | **3.0** |
+| 1. the same over bands of \|logit p_f\| | 41.5 | 9.5 | 4.9 | 5.8 |
+
+* **D** is right in turns 1-3 (within ~4) and too low late (-5 to -10 in turns 8-10), as expected: the plain
+  difference over-predicts once the position has absorbed the opponent's weakness. **L** is right early and off by
+  up to 7 late in the same direction.
+* **3. beta from the rates is larger than the freely fitted constant beta:** gap -0.48 / -0.37 against 400M, -0.30 to
+  -0.42 against 2,000M, -0.02 to -0.15 from 4,000M on. The gap is the turn profile below, not noise: a constant beta
+  averages over turns.
+* **4. W's weight falls with the turn:** 0.99, 0.92, 0.87, 0.80, 0.75, 0.69, 0.61, 0.56, 0.51, 0.39 (turns 1-10).
+  The weak side's mistakes reach the board as the game goes on, so the self-play critic already sees part of the
+  edge late; with this profile, beta from the rates alone gives the best log loss of all forms.
+* **5.** W's largest cell, 3.0, against a self-play floor of 4.1 (the critic's US offset: -2.9 / -4.1 as US in
+  self-play): ratio 0.72. At the handover points (the R124 side's first decision of turn 2, the old checkpoint
+  continuing its side) W is within -2.0 to +3.1 against every opponent; the raw critic is off by +5 to +35.
+* **W's misses:** +4.5 (control 4,000M) and +5.8 (control 10,000M) points in the near-even band (|logit p_f| < 0.5)
+  with R124 as USSR (SE 1.3-1.4): near even positions carry more of the opponent's edge than the shift gives them.
+* **6. The control's critic, raw, on the same games:** +10 to +30 points under the result in turns 1-3 against old
+  snapshots, and still +10.4 / +8.7 against its own 12,000M checkpoint (R124 scores 54-62% there): it marks down
+  R124's side, whose play is now unlike its own, which is the style bias seen from the other side.
+
+**Against the pass rule:** W within 2.5 in every turn-band cell -- no, by 0.5 (3.0, within noise of 42 cells);
+within 2.5 in every |logit| cell -- no (5.8, 4.5); beta from the rates within 0.1 of the fitted constant -- no for
+L (0.48), and irrelevant to W, which uses the rates with the turn weight; read 5 under twice the floor -- yes (0.72).
+So no form passes cleanly. W is close: if P46b is built, it should carry W's position-dependent weight (fitted
+per turn here, a critic-only output there) and be read on the near-even band in particular. Whether that is
+enough, or the opponent should enter the critic as an input (P44's report, step 2), is the owner's call.
