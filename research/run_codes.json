@@ -2545,6 +2545,57 @@
     "no_blunder_window": true,
     "value_selfplay_only": true
    }
+  },
+  "R125": {
+   "description": "R102 (J1's recipe) with the value heads trained on self-play games' rows only (--value-selfplay-only): P44's openings test on J1 (owner, 2026-11-14) -- R124 brought the control's human setups back; does it bring back J1's West Germany and Yugoslavia/Austria, branched where J1 held neither (12,010M)?",
+   "first": "E8-A8-R102-S44@12010M+R125_20261114_095754",
+   "flags": {
+    "opponent_frac": 0.3,
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "value_selfplay_only": true
+   }
+  },
+  "R126": {
+   "description": "R119 with own-pool opponents held for the whole game (--opponent-per-game, P45's L6): P46's ablation arm B2 (owner, 2026-11-14) -- the pool change alone, beside B3's prior",
+   "first": null,
+   "flags": {
+    "reward_scheme": "terminal",
+    "opponent_frac": 0.3,
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true,
+    "opponent_per_game": true
+   }
+  },
+  "R127": {
+   "description": "R126 with the critic's prior per opponent and seat (--critic-prior-window 1000, turn weight 0.98 -> 0.46): P46b, the ablation's arm B3 (owner, 2026-11-14) -- pool games' win value shifted by w(turn) * beta, beta from running scores, the network trained on every row",
+   "first": null,
+   "flags": {
+    "reward_scheme": "terminal",
+    "opponent_frac": 0.3,
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true,
+    "opponent_per_game": true,
+    "critic_prior_window": 1000,
+    "critic_prior_turn_weight": [
+     0.98,
+     0.46
+    ]
+   }
   }
  },
  "views": {

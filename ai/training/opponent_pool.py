@@ -82,7 +82,7 @@ from __future__ import annotations
 
 import math
 import random
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -107,7 +107,8 @@ class OpponentPool:
                  seat_balance: bool = False, seat_balance_max_frac: float = 0.8,
                  groups: Optional[Sequence[str]] = None, league_capacity: int = 0,
                  league_frac: Optional[float] = None, obs_features: Optional[int] = None,
-                 seats: Optional[Sequence[Optional[int]]] = None) -> None:
+                 seats: Optional[Sequence[Optional[int]]] = None, per_game_own: bool = False,
+                 prior_window: int = 0, prior_turn_weight: Tuple[float, float] = (1.0, 1.0)) -> None:
         if not nets:
             raise ValueError("OpponentPool needs at least one frozen network")
         if capacity < 1:
@@ -122,6 +123,10 @@ class OpponentPool:
             raise ValueError(f"pfsp_prior must be positive, got {pfsp_prior}")
         if league_frac is not None and not 0.0 <= league_frac <= 1.0:
             raise ValueError(f"league_frac must be in [0, 1], got {league_frac}")
+        if prior_window < 0:
+            raise ValueError(f"prior_window must be >= 0, got {prior_window}")
+        if prior_window and not per_game_own:
+            raise ValueError("a critic prior per opponent (prior_window) needs one opponent per game (per_game_own)")
         if groups is not None:
             if len(groups) != len(nets):
                 raise ValueError("groups must give one group per seed net")
@@ -186,6 +191,20 @@ class OpponentPool:
         #: The league's own random stream: per-episode league draws never touch `self.rng`, so the
         #: own pool's sequence is unchanged whatever the league does.
         self.league_rng = random.Random((int(seed) * 1_000_003) ^ 0x1EA6)
+        #: P45's L6 (owner, 2026-11-14): own-pool members held for a whole game, drawn at the game's start from
+        #: their own stream, as league members are; off, the own pool keeps one opponent per iteration.
+        self.per_game_own = bool(per_game_own)
+        self.game_rng = random.Random((int(seed) * 7_919) ^ 0x46B)
+        self.own_orphaned_games = 0
+        #: P46b: the learner's running score against each member, per seat (an exponential average over an
+        #: effective window of `prior_window` games), and self-play's running US score; the critic's prior in a
+        #: pool game is beta = logit(score against that member in that seat) - logit(self-play score in it),
+        #: weighted by the turn (`prior_turn_weight`: the weight at turn 1 and at turn 10, linear between).
+        self.prior_window = int(prior_window)
+        self.prior_alpha = 2.0 / (self.prior_window + 1.0) if self.prior_window else 0.0
+        self.prior_turn_weight = (float(prior_turn_weight[0]), float(prior_turn_weight[1]))
+        self.prior_rate: Dict[tuple, float] = {}
+        self.prior_sp_us = 0.5
         #: Per environment, the id of the league member playing its current game; -1 for an own-pool
         #: game (the iteration's opponent) or self-play.
         self.env_member = np.full(num_envs, -1, dtype=np.int64)
@@ -431,6 +450,7 @@ class OpponentPool:
         return [i for i, g in enumerate(self.groups) if g == group]
 
     def _remove(self, victim: int) -> None:
+        group = self.groups[victim]
         self.nets.pop(victim)
         self.steps.pop(victim)
         self.paths.pop(victim)
@@ -439,13 +459,18 @@ class OpponentPool:
         self.groups.pop(victim)
         self.seats.pop(victim)
         dead = self.ids.pop(victim)
-        # A league member evicted mid-game: its games go to the own pool for the rest of the episode.
+        # A member evicted mid-game: its games go to the iteration's opponent for the rest of the episode.
         orphaned = self.env_member == dead
         if orphaned.any():
-            self.league_orphaned_games += int(orphaned.sum())
+            if group == "league":
+                self.league_orphaned_games += int(orphaned.sum())
+            else:
+                self.own_orphaned_games += int(orphaned.sum())
             self.env_member[orphaned] = -1
         self.wins.pop(dead, None)
         self.games.pop(dead, None)
+        for key in [k for k in self.prior_rate if k[0] == dead]:
+            del self.prior_rate[key]
         # Exposure to an evicted opponent is dropped rather than reattributed: the outcome
         # would otherwise be credited to a snapshot that is no longer in the pool.
         for env in self._exposure:
@@ -498,9 +523,14 @@ class OpponentPool:
         self.env_member[env_index] = -1
         if not self.is_mixed[env_index]:
             return
+        if not self._draw_league_member(env_index) and self.per_game_own:
+            self._assign_own(env_index)
+
+    def _draw_league_member(self, env_index: int) -> bool:
+        """The league draw of `_assign_league`, unchanged: True when a league member takes the game."""
         league = self._members("league")
         if not league:
-            return
+            return False
         own = self._members("self")
         if not own:
             p = 1.0
@@ -509,13 +539,86 @@ class OpponentPool:
         else:
             p = len(league) / len(self.nets)
         if self.league_rng.random() >= p:
-            return
+            return False
         side = int(self.learner_side[env_index])
         fits = [j for j in league if self.seats[j] is None or self.seats[j] == -side]
         if not fits:
-            return
+            return False
         j = fits[self.league_rng.randrange(len(fits))]
         self.env_member[env_index] = self.ids[j]
+        return True
+
+    def _assign_own(self, env_index: int) -> None:
+        """L6: an own-pool member for the whole of this env's game, drawn from the game stream with the pool's
+        own distribution (uniform, or PFSP / seat balancing restricted to the own members)."""
+        own = self._members("self")
+        if not own:
+            return
+        probs = self.sampling_probs()
+        if (self.pfsp or (self.seat_balance and self.pressure() > 0.0)) and probs:
+            sub = [probs[i] for i in own]
+            total = sum(sub)
+            if total > 0.0:
+                r = self.game_rng.random() * total
+                acc = 0.0
+                for i, q in zip(own, sub):
+                    acc += q
+                    if r < acc:
+                        self.env_member[env_index] = self.ids[i]
+                        return
+                self.env_member[env_index] = self.ids[own[-1]]
+                return
+        self.env_member[env_index] = self.ids[own[self.game_rng.randrange(len(own))]]
+
+    # ---- P46b: the critic's prior per opponent and seat -------------------------------------------
+
+    def _prior_self(self, side: int) -> float:
+        return self.prior_sp_us if side == 1 else 1.0 - self.prior_sp_us
+
+    def prior_rate_of(self, oid: int, side: int) -> float:
+        """The learner's running score against member `oid` in `side`; a member without games starts at the
+        mean over the members that have some in that seat, or at the self-play score."""
+        key = (int(oid), int(side))
+        if key not in self.prior_rate:
+            known = [v for (o, s_), v in self.prior_rate.items() if s_ == side and o in self.ids]
+            self.prior_rate[key] = float(np.mean(known)) if known else self._prior_self(side)
+        return self.prior_rate[key]
+
+    def prior_beta(self, oid: int, side: int) -> float:
+        """beta = logit(score against `oid` in `side`) - logit(self-play score in `side`), both clipped."""
+        def lg(q: float) -> float:
+            q = min(max(q, 0.01), 0.99)
+            return math.log(q / (1.0 - q))
+        return lg(self.prior_rate_of(oid, side)) - lg(self._prior_self(side))
+
+    def prior_turn_w(self, turn: int) -> float:
+        t = min(max(int(turn), 1), 10)
+        w1, w10 = self.prior_turn_weight
+        return w1 + (w10 - w1) * (t - 1) / 9.0
+
+    def prior_shift(self, decision_players: np.ndarray, turns: np.ndarray) -> np.ndarray:
+        """Per env, the log-odds shift on the critic's win probability at the current decision: +w(turn) beta
+        where the learner decides in a pool game with a whole-game member, -w(turn) beta where the member
+        decides (the critic reads from the decider's side), 0 in self-play and in games without a member."""
+        out = np.zeros(self.num_envs, dtype=np.float32)
+        if not self.prior_window:
+            return out
+        dp = np.asarray(decision_players, dtype=np.int8)
+        for i in np.flatnonzero(self.is_mixed & (self.env_member >= 0)):
+            side = int(self.learner_side[i])
+            if dp[i] not in (side, -side):
+                continue
+            b = self.prior_turn_w(int(turns[i])) * self.prior_beta(int(self.env_member[i]), side)
+            out[i] = b if dp[i] == side else -b
+        return out
+
+    def prior_selfplay(self, victory_points: float) -> None:
+        """Fold one self-play game's result into the running US score (draws count half)."""
+        if not self.prior_window:
+            return
+        vp = float(victory_points)
+        score = 0.5 if vp == 0.0 else (1.0 if vp > 0 else 0.0)
+        self.prior_sp_us += self.prior_alpha * (score - self.prior_sp_us)
 
     def _weighted_index(self, probs: Sequence[float]) -> int:
         r = self.rng.random()
@@ -564,6 +667,14 @@ class OpponentPool:
                     key = (oid, side)
                     self.side_games[key] = self.side_games.get(key, 0.0) + w
                     self.side_wins[key] = self.side_wins.get(key, 0.0) + w * score
+        if (self.prior_window and victory_points is not None and self.is_mixed[env_index] and member >= 0
+                and member in self.ids):
+            # P46b: the whole game was against `member` (L6), so its result moves that member's running score.
+            side = int(self.learner_side[env_index])
+            vp = float(victory_points)
+            score = 0.5 if vp == 0.0 else (1.0 if (vp > 0) == (side == 1) else 0.0)
+            r = self.prior_rate_of(member, side)
+            self.prior_rate[(member, side)] = r + self.prior_alpha * (score - r)
         self._exposure[env_index] = {}
         if self.seat_balance:
             # Mixed or self-play is re-drawn only at an episode boundary, so a game is never
@@ -621,6 +732,9 @@ class OpponentPool:
             "sp_us": float(self.sp_us),
             "side_wins": [[int(o), int(s), float(v)] for (o, s), v in side_wins.items()],
             "side_games": [[int(o), int(s), float(v)] for (o, s), v in side_games.items()],
+            # P46b's running scores, as [oid, side, value] rows, and self-play's running US score.
+            "prior_rate": [[int(o), int(s_), float(v)] for (o, s_), v in self.prior_rate.items() if o in set(ids)],
+            "prior_sp_us": float(self.prior_sp_us),
         }
 
     def load_state_dict(self, blob: Dict[str, Any], loaded_steps: Sequence[int],
@@ -677,6 +791,12 @@ class OpponentPool:
                 self.rng.setstate(rng)
             except (TypeError, ValueError):
                 pass
+        self.prior_rate = {(int(o), int(s_)): float(v) for o, s_, v in blob.get("prior_rate", []) if int(o) in keep}
+        self.prior_sp_us = float(blob.get("prior_sp_us", 0.5))
+        if self.per_game_own:
+            # Games in flight restart their opponent: the record of which member played them is not saved.
+            for i in range(self.num_envs):
+                self._assign_league(i)
         self.current = self.nets[0]
         self.current_id = self.ids[0]
         self.current_merged = self.merged[0]
@@ -725,6 +845,23 @@ class OpponentPool:
             out["opp_league_frac_envs"] = float((self.env_member >= 0).mean())
             out["opp_league_wrong_seat_games"] = float(self.league_wrong_seat_games)
             out["opp_league_orphaned_games"] = float(self.league_orphaned_games)
+        if self.per_game_own:
+            mixed = self.is_mixed
+            out["opp_per_game_frac"] = float((self.env_member[mixed] >= 0).mean()) if mixed.any() else 0.0
+            out["opp_own_orphaned_games"] = float(self.own_orphaned_games)
+        if self.prior_window:
+            out["opp_prior_sp_us"] = float(self.prior_sp_us)
+            betas = []
+            for i in self._members("self"):
+                oid = self.ids[i]
+                for side, name in ((1, "us"), (-1, "ussr")):
+                    if (oid, side) in self.prior_rate:
+                        b = self.prior_beta(oid, side)
+                        betas.append(abs(b))
+                        out[f"opp_prior_m{oid}_score_{name}"] = float(self.prior_rate[(oid, side)])
+                        out[f"opp_prior_m{oid}_beta_{name}"] = float(b)
+            if betas:
+                out["opp_prior_beta_abs_mean"] = float(sum(betas) / len(betas))
         rates = [self.win_rate(oid) for oid in self.ids]
         played = [self.games.get(oid, 0.0) for oid in self.ids]
         if rates:

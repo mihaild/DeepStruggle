@@ -1,6 +1,6 @@
 # P46 — the critic predicts the result relative to a prior for this opponent and side (2026-11-14)
 
-**Status:** proposed (owner's idea, 2026-11-14). P46a, a check that trains nothing, first; P46b is not built.
+**Status:** P46a run (see *Runs*); P46b and L6 built (owner, 2026-11-14): `--opponent-per-game`, `--critic-prior-window`, `--critic-prior-turn-weight` (recipe codes R126, R127). The ablation and the J1 openings test are under *Runs*.
 **Gate:** P46b waits for P46a's pass, for the owner's approval (it changes how the value is computed), and for
 one opponent per game in the own pool (P45's L6, the owner's call).
 **Needs approval:** P46a none. P46b: trainer-side only, no engine, bindings or observation change.
@@ -143,3 +143,33 @@ pooled 0.98 -> 0.46. The two best-determined opponents (largest beta) give the s
 within ~2 SE of the pooled one (their small beta leaves w loosely determined). One shared turn profile is enough
 for P46b; the 10,000M opponent's high early weight (1.8 SE) coincides with W's largest near-even miss (+5.8), a hint
 only.
+
+### Built (2026-11-14, owner: "build it")
+
+* **L6, `--opponent-per-game`** (`OpponentPool(per_game_own=True)`): an own-pool member is drawn at each game's start
+  from its own stream (`game_rng`, the pool's draw distribution restricted to the own members) into `env_member`, the
+  field P45 uses for league members, so the rollout's grouped opponent pass and the per-game crediting already serve
+  it; a member evicted mid-game hands its games to the iteration's opponent (`opp_own_orphaned_games`).
+* **P46b, `--critic-prior-window N`** (needs `--opponent-per-game`; excludes `--value-selfplay-only`): the pool keeps
+  the learner's running score per (member, seat) and self-play's running US score (exponential averages over ~N
+  games; a new member starts at the members' mean for that seat) and returns per env
+  `prior_shift = +- w(turn) * beta` (+ where the learner decides, - where the member does, 0 in self-play);
+  `w(turn)` is linear from `--critic-prior-turn-weight W1 W10` (default P46a's pooled 0.98 -> 0.46). The trainer
+  shifts the win value in log-odds (`prior_apply`) in the rollout's stored values (GAE), the bootstrap and the value
+  loss, recording each row's shift, so the network fits the self-play value on every row. Logged:
+  `opp_prior_m<id>_score_<seat>`, `..._beta_<seat>`, `opp_prior_sp_us`, `opp_per_game_frac`.
+* **Checks:** `tests/training/test_p46_prior.py` (12); CPU smoke of the real trainer (64 envs, half pool games, a
+  resume): every pool game had a whole-game member, priors tracked per member and seat. The running-average estimate
+  of beta over 1,000 games was checked offline on P46a's games: median error 0.07, within 0.1 after ~700 games
+  (`p46a_games_needed.py`).
+
+### The plan from here (owner, 2026-11-14)
+
+* **J1 openings test, running:** `E8-A8-R102-S44@12010M+R125` (J1's recipe with the value on self-play rows only),
+  from 12,010M where J1 held US Fra 3 Ita 3 Can 2 Iran 1 and USSR Fin 3 Pol 3, 1,600M; reads every 400M (setups,
+  both references, head to head against J1 at the same step). A first launch picked up the trainer's newer default
+  reward (terminal, no blunder window) instead of J1's and was voided (`..._VOID`).
+* **Ablation, from the control at 11,230M** where R124 branched, 1,200M each, one slot each as slots free:
+  B3 = R127 (one opponent per game + prior) when the control reaches 14,000M; B2 = R126 (one opponent per game,
+  standard critic) after the J1 test. B0 = the control and B1 = R124 (stopped at 13,200M) are the references.
+  B4 (one opponent per game + value on self-play rows) is decided later.

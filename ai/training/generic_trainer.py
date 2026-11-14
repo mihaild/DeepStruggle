@@ -2043,6 +2043,9 @@ def train_pipeline(
     zero_avoid_ramp_steps: int = 0,
     head_l2_init_coef: float = 0.0,
     value_selfplay_only: bool = False,
+    opponent_per_game: bool = False,
+    critic_prior_window: int = 0,
+    critic_prior_turn_weight: Tuple[float, float] = (0.98, 0.46),
     logit_gap: float = 7.0,
     setup_block_lambda: bool = False,
     block_lambda: str = "off",
@@ -2463,6 +2466,9 @@ def train_pipeline(
         "zero_avoid_ramp_steps": int(zero_avoid_ramp_steps),
         "head_l2_init_coef": float(head_l2_init_coef),
         "value_selfplay_only": bool(value_selfplay_only),
+        "opponent_per_game": bool(opponent_per_game),
+        "critic_prior_window": int(critic_prior_window),
+        "critic_prior_turn_weight": [float(x) for x in critic_prior_turn_weight],
         "phase_lock": phase_lock,
         "token_chunk": int(token_chunk),
         "token_compile": bool(token_compile),
@@ -2856,6 +2862,7 @@ def train_pipeline(
         zero_avoid_scope=zero_avoid_scope,
         head_l2_init_coef=head_l2_init_coef,
         value_selfplay_only=value_selfplay_only,
+        critic_prior=critic_prior_window > 0,
         logit_gap=logit_gap,
         setup_block_lambda=setup_block_lambda,
         block_lambda=block_lambda,
@@ -3075,6 +3082,9 @@ def train_pipeline(
             league_frac=league_frac,
             obs_features=trainer.obs_features,
             seats=_seed_seats,
+            per_game_own=bool(opponent_per_game),
+            prior_window=int(critic_prior_window),
+            prior_turn_weight=(float(critic_prior_turn_weight[0]), float(critic_prior_turn_weight[1])),
         )
         if any(_seed_merged) or any(_seed_macro) or merged_influence or macro_influence:
             print(f"[opponent pool] action views (P23 / P42): learner "
@@ -3160,6 +3170,17 @@ def train_pipeline(
     if z_loss_coef > 0.0:
         print(f"[z-loss] coef {z_loss_coef:g} on the policy logits' log-normaliser (--z-loss-coef)",
               flush=True)
+    if critic_prior_window > 0 and not opponent_per_game:
+        raise ValueError("--critic-prior-window needs --opponent-per-game: the prior is per opponent, so a game must "
+                         "have one")
+    if critic_prior_window > 0 and value_selfplay_only:
+        raise ValueError("--critic-prior-window and --value-selfplay-only are alternative treatments of pool games")
+    if opponent_per_game:
+        print("[opponent per game] own-pool opponents are held for the whole game (--opponent-per-game, P45 L6)", flush=True)
+    if critic_prior_window > 0:
+        print(f"[critic prior] pool games' win value shifted by w(turn) * beta(opponent, seat), running scores over "
+              f"{critic_prior_window} games, w {critic_prior_turn_weight[0]:g} -> {critic_prior_turn_weight[1]:g} over "
+              f"turns 1-10 (--critic-prior-window, P46b)", flush=True)
     if value_selfplay_only:
         print("[value self-play only] the value heads train on self-play games' rows only; pool games still enter "
               "GAE and the policy loss (--value-selfplay-only, P44 diagnostic)", flush=True)

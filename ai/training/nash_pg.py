@@ -518,6 +518,7 @@ class BaseNashPGTrainer:
         zero_avoid_scope: str = "all",  # 'setup': only the learner's setup placements (P41 exploiters)
         head_l2_init_coef: float = 0.0,  # P44: coef * sum ||theta - theta_0||^2 over the policy and value heads
         value_selfplay_only: bool = False,  # P44 diagnostic: the value loss on self-play games' rows only
+        critic_prior: bool = False,  # P46b: the win head shifted by the pool's prior for the game's opponent
         setup_block_lambda: bool = False,
         block_lambda: str = "off",
         phase_lock_path: Optional[str] = None,
@@ -1127,6 +1128,15 @@ class BaseNashPGTrainer:
         # game was self-play when the row was written.
         self.value_selfplay_only = bool(value_selfplay_only)
         self._value_rows: Optional[torch.Tensor] = None
+        # P46b (2026-11-14): in a pool game the critic's win probability is shifted in log-odds by the pool's prior
+        # for that opponent and seat (OpponentPool.prior_shift: w(turn) * beta, signed by whose decision it is), in
+        # the values GAE uses, in the bootstrap and in the value loss alike; self-play rows are unshifted. The
+        # network then learns the self-play value on every row, and the opponent's strength comes from the prior
+        # instead of being read from style. `_prior_rows` holds each buffer row's shift for the update.
+        if critic_prior and value_selfplay_only:
+            raise ValueError("critic_prior and value_selfplay_only are alternative treatments of pool games; pick one")
+        self.critic_prior = bool(critic_prior)
+        self._prior_rows: Optional[torch.Tensor] = None
         self._compiled_nets: Dict[int, nn.Module] = {}
         self._compiled_methods: Dict[Tuple[int, str], Tuple[nn.Module, Callable[..., Any]]] = {}
         #: --wolf-seat-weight. Each seat's PPO surrogate is scaled by `wolf_seat_weights`, driven by
@@ -1308,6 +1318,12 @@ class BaseNashPGTrainer:
                 continue
             c = self.ent_coef_seat[code] - self.entropy_ceiling_lr * (float(h) - self.entropy_ceiling)
             self.ent_coef_seat[code] = min(self.ent_coef, max(self.entropy_ceiling_min_coef, c))
+
+    def _prior_shift_np(self, decision_players: Any, turns: Any) -> np.ndarray:
+        """P46b: the pool's log-odds shift per env at the current decision (zeros without a pool)."""
+        if self.opponent_pool is None:
+            return np.zeros(self.num_envs, dtype=np.float32)
+        return self.opponent_pool.prior_shift(np.asarray(decision_players), np.asarray(turns))
 
     def _setup_mc_record(self, obs_t: torch.Tensor, masks_t: torch.Tensor, actions_t: torch.Tensor,
                          log_probs_t: torch.Tensor, v_win_t: torch.Tensor, learner_np: np.ndarray,
@@ -1782,6 +1798,15 @@ class BaseNashPGTrainer:
                         logits.index_copy_(0, opp_idx, opp_logits.float())
                 v_win_t = v_win_t.squeeze(-1)
                 v_vp_t = v_vp_t.squeeze(-1)
+                if self.critic_prior:
+                    _shift_np = self._prior_shift_np(_dp, np.asarray(self.env.runner.get_turns()))
+                    _shift_t = torch.from_numpy(_shift_np).to(self.device)
+                    v_win_t = prior_apply(v_win_t, _shift_t)
+                    if self._prior_rows is None or tuple(self._prior_rows.shape) != (self.buffer.buffer_size,
+                                                                                      self.num_envs):
+                        self._prior_rows = torch.zeros((self.buffer.buffer_size, self.num_envs), dtype=torch.float32,
+                                                       device=self.device)
+                    self._prior_rows[self.buffer.step] = _shift_t
 
                 # Multi-temperature exploration: Sample actions from temperature-scaled
                 # behavior distribution beta(a|s) = softmax(logits / tau) with stratified per-env
@@ -2062,6 +2087,8 @@ class BaseNashPGTrainer:
                 if self._selfplay_mask[_i]:
                     _vp = float(self._info["victory_points"][_i])
                     self.critic_tracker.resolve(_i, None if _vp == 0 else _vp > 0)
+                    if self.critic_prior and self.opponent_pool is not None:
+                        self.opponent_pool.prior_selfplay(_vp)
                     sp_games += 1.0
                     sp_us_wins += 1.0 if _vp > 0 else (0.5 if _vp == 0 else 0.0)
                 else:
@@ -2116,7 +2143,11 @@ class BaseNashPGTrainer:
         with torch.no_grad():
             _, last_v_win, last_v_vp = self.active_net(last_obs_t, last_masks_t)
 
-        last_players = torch.from_numpy(self.env._get_batch_info()["decision_players"]).to(self.device)
+        _last_info = self.env._get_batch_info()
+        last_players = torch.from_numpy(_last_info["decision_players"]).to(self.device)
+        if self.critic_prior:
+            last_v_win = prior_apply(last_v_win.squeeze(-1), torch.from_numpy(
+                self._prior_shift_np(_last_info["decision_players"], _last_info["turns"])).to(self.device)).unsqueeze(-1)
         self.buffer.compute_gae(
             last_v_win=last_v_win.squeeze(-1),
             last_v_vp=last_v_vp.squeeze(-1),
@@ -2533,6 +2564,14 @@ class BaseNashPGTrainer:
         return combined
 
 
+def prior_apply(v_win: torch.Tensor, shift: torch.Tensor) -> torch.Tensor:
+    """P46b: the win value v in [-1, 1] read as a probability (v + 1) / 2, shifted in log-odds by `shift`, and
+    mapped back; rows with no shift are returned untouched."""
+    p = ((v_win + 1.0) * 0.5).clamp(1e-4, 1.0 - 1e-4)
+    shifted = 2.0 * torch.sigmoid(torch.log(p) - torch.log1p(-p) + shift.to(v_win.dtype)) - 1.0
+    return torch.where(shift != 0, shifted, v_win)
+
+
 def zero_avoid_kl(logits: torch.Tensor, mask: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
     """P41 J1: the weighted mean over rows of KL(uniform || pi) on each row's legal moves,
     -mean_{legal a} log pi(a) - log|legal|: 0 at the uniform policy and at a forced move, growing without bound as
@@ -2826,6 +2865,8 @@ class NashPGTrainer(BaseNashPGTrainer):
                     cur_logits, cur_v_win, cur_v_vp = _act_fwd(b_obs, b_mask)
                     cur_risk = None
                 cur_v_win = cur_v_win.squeeze(-1)
+                if self.critic_prior and self._prior_rows is not None:
+                    cur_v_win = prior_apply(cur_v_win, self._prior_rows.view(-1).index_select(0, b_idx))
                 cur_v_vp = cur_v_vp.squeeze(-1)
 
                 # validate_args=False: the logits come straight from the network, and validation ran a

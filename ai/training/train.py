@@ -1110,6 +1110,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--logit-gap-coef", type=float, default=0.0,
                         help="Penalty coef * mean over legal moves of relu(top - logit - --logit-gap)^2 "
                              "(owner 2026-10-09): keeps a saturated policy learnable. 0 (default): off.")
+    parser.add_argument("--opponent-per-game", action="store_true", default=False,
+                        help="P45 L6 (owner, 2026-11-14): an own-pool opponent is held for the whole game, drawn at the game's start, instead of one opponent per iteration for every mixed env (3-5 snapshots within one game).")
+    parser.add_argument("--critic-prior-window", type=int, default=0,
+                        help="P46b (owner, 2026-11-14): > 0 shifts the critic's win probability in pool games by the pool's prior for that opponent and seat, beta = logit(the learner's running score against it) - logit(its self-play score in that seat), weighted by the turn (--critic-prior-turn-weight); the running scores average over this many games. Needs --opponent-per-game. 0 = off.")
+    parser.add_argument("--critic-prior-turn-weight", type=float, nargs=2, default=[0.98, 0.46], metavar=("W1", "W10"),
+                        help="P46b: the prior's weight at turn 1 and at turn 10, linear between (P46a's pooled fit: 0.98 -> 0.46; 1 1 is the plain log-odds shift).")
     parser.add_argument("--value-selfplay-only", action="store_true", default=False,
                         help="P44 diagnostic (2026-11-14): train the value heads on self-play games' rows only; pool games still enter GAE and the policy loss. Tests whether the critic's misjudgement of unfamiliar play (the side playing unlike the current self rated as losing) is learned from pool games.")
     parser.add_argument("--head-l2-init-coef", type=float, default=0.0,
@@ -1627,6 +1633,9 @@ def main():
             zero_avoid_coef=args.zero_avoid_coef,
             head_l2_init_coef=args.head_l2_init_coef,
             value_selfplay_only=args.value_selfplay_only,
+            opponent_per_game=args.opponent_per_game,
+            critic_prior_window=args.critic_prior_window,
+            critic_prior_turn_weight=tuple(args.critic_prior_turn_weight),
             zero_avoid_scope=args.zero_avoid_scope,
             zero_avoid_ramp_steps=args.zero_avoid_ramp_steps,
             logit_gap=args.logit_gap,
