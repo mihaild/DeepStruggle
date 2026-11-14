@@ -232,10 +232,22 @@ only.
 
 ### The plan from here (owner, 2026-11-14)
 
-* **J1 openings test, running:** `E8-A8-R102-S44@12010M+R125` (J1's recipe with the value on self-play rows only),
-  from 12,010M where J1 held US Fra 3 Ita 3 Can 2 Iran 1 and USSR Fin 3 Pol 3, 1,600M; reads every 400M (setups,
-  both references, head to head against J1 at the same step). A first launch picked up the trainer's newer default
-  reward (terminal, no blunder window) instead of J1's and was voided (`..._VOID`).
+* **J1 openings test, done (2026-11-14):** `E8-A8-R102-S44@12010M+R125` (J1's recipe with the value on self-play rows
+  only), from 12,010M where J1 held US Fra 3 Ita 3 Can 2 Iran 1 and USSR Fin 3 Pol 3, 1,600M. A first launch picked up
+  the trainer's newer default reward (terminal, no blunder window) instead of J1's and was voided (`..._VOID`).
+  **R124's result repeats on a second lineage: the play moves towards human setups and gets stronger.** SWA reads
+  (J1's own read at the same step in brackets):
+
+  | step | head to head vs J1, same step | old reference | J1's 13,600M SWA | US setup (top) | USSR setup (top) |
+  |---:|:---|:---|:---|:---|:---|
+  | 12,400M | **53.0** (USSR 53.1 / US 52.9) | 62.2 (62.5) | 51.2 (47.1) | Fra 3 Ita 3 Can 2 Iran 1 66% | Fin 3 Pol 3 100% |
+  | 12,800M | **53.0** (51.7 / 54.3) | 62.7 (60.0) | 52.3 (49.7) | Fra 3 WG 3 Ita 2 Iran 1 75% | Pol 4 Aus 1 Fin 1 74%; Pol 4 Aus 1 EG 1 24% |
+  | 13,200M | **54.8** (55.3 / 54.2) | 64.4 (59.7) | 54.6 (47.6) | Fra 3 WG 3 Ita 2 Iran 1 47%; WG 4 Fra 2 Ita 2 Iran 1 38% | **Pol 4 Aus 1 EG 1 91%** |
+  | 13,600M | **51.5** (52.5 / 50.4) | 63.4 (63.5) | 51.4 (50.0) | Fra 3 WG 3 Ita 2 Iran 1 82% | Pol 4 Aus 1 EG 1 67%; Pol 4 Aus 2 23% |
+
+  By 12,800M the USSR holds Austria (access to Italy) in every game, by 13,200M 91% play the human setup; the US drops
+  Canada for West Germany but keeps France 3 (humans: WG 4 Ita 3 Iran 2). Ahead of J1 at every step (53.0-54.8, SE
+  ~0.8) until 13,600M, J1's best step, where it is level (51.5).
 * **Order (owner, 2026-11-14, approved with B2 and arm A swapped):** B2 = R126 (one opponent per game, standard
   critic, from the control at 11,230M, 1,200M) when the control reaches 14,000M; P46c arm A = R128 (learned gain
   head from zero, from the control at 11,230M, 800M) when the J1 test ends; arm B = R129 (gain from the turn line,
