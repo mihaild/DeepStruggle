@@ -2598,7 +2598,7 @@
    }
   },
   "R128": {
-   "description": "R127 with the prior's weight learned from zero (--critic-prior-gain learned --critic-prior-gain-init zero): P46c arm A (owner, 2026-11-14) -- win value sigmoid(c(s) +- g(s) * beta), g(s) a critic-only network on the observation starting at 0, trained by the value loss",
+   "description": "R127 with the prior's weight learned from zero (--critic-prior-gain learned --critic-prior-gain-init zero): P46c arm A (owner, 2026-11-14) -- win value sigmoid(c(s) +- g(s) * beta), g(s) a critic head on the trunk starting at 0, trained by the value loss",
    "first": null,
    "flags": {
     "reward_scheme": "terminal",
@@ -2621,7 +2621,7 @@
    }
   },
   "R129": {
-   "description": "R127 with the prior's weight learned from the turn line (--critic-prior-gain learned, init line 0.98 -> 0.46): P46c arm B (owner, 2026-11-14) -- g(s) = line(turn) + h(s), h a critic-only network on the observation starting at 0",
+   "description": "R127 with the prior's weight learned from the turn line (--critic-prior-gain learned, init line 0.98 -> 0.46): P46c arm B (owner, 2026-11-14) -- g(s) = line(turn) + h(s), h a critic head on the trunk starting at 0",
    "first": null,
    "flags": {
     "reward_scheme": "terminal",

@@ -1120,8 +1120,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="P46 (owner, 2026-11-14): the weight on the critic's prior -- 'fixed' the turn line (--critic-prior-turn-weight), 'learned' g(s) = base + h(s), h a critic-only network on the observation trained by the value loss on pool rows.")
     parser.add_argument("--critic-prior-gain-init", choices=["line", "zero"], default="line",
                         help="P46: a learned gain's base and start -- the turn line (arm B) or 0 (arm A, the value unchanged at the branch point).")
-    parser.add_argument("--critic-prior-gain-lr", type=float, default=3e-4,
-                        help="P46: the learned gain network's own Adam rate.")
+    parser.add_argument("--critic-prior-gain-lr-mult", type=float, default=1.0,
+                        help="P46c: the prior-gain head's rate as a multiple of the main rate.")
     parser.add_argument("--value-selfplay-only", action="store_true", default=False,
                         help="P44 diagnostic (2026-11-14): train the value heads on self-play games' rows only; pool games still enter GAE and the policy loss. Tests whether the critic's misjudgement of unfamiliar play (the side playing unlike the current self rated as losing) is learned from pool games.")
     parser.add_argument("--head-l2-init-coef", type=float, default=0.0,
@@ -1644,7 +1644,7 @@ def main():
             critic_prior_turn_weight=tuple(args.critic_prior_turn_weight),
             critic_prior_gain=args.critic_prior_gain,
             critic_prior_gain_init=args.critic_prior_gain_init,
-            critic_prior_gain_lr=args.critic_prior_gain_lr,
+            critic_prior_gain_lr_mult=args.critic_prior_gain_lr_mult,
             zero_avoid_scope=args.zero_avoid_scope,
             zero_avoid_ramp_steps=args.zero_avoid_ramp_steps,
             logit_gap=args.logit_gap,

@@ -1474,9 +1474,6 @@ def save_resume_state(path: str, model: nn.Module, trainer: Any, iteration: int,
                               if getattr(trainer, "searched_opp", None) is not None else None),
         # --head-l2-init-coef's theta_0 (P44): the heads' initial weights, which a resume cannot rebuild.
         "head_init_state": (dict(trainer.head_init) if getattr(trainer, "head_init", None) else None),
-        # P46: the learned gain on the critic's prior (--critic-prior-gain learned), its network and its own Adam.
-        "prior_gain_state": ({"net": trainer.gain_net.state_dict(), "opt": trainer.gain_opt.state_dict()}
-                             if getattr(trainer, "gain_net", None) is not None else None),
     }, path)
 
 
@@ -1490,6 +1487,8 @@ ADDABLE_HEADS: Tuple[str, ...] = ("card_aux_head.", "aux_own_head.", "aux_vp_hea
                                  "region_attn.",
                                  # --ladder-head-norm: LayerNorms in the heads that have none, registered last
                                  "head_norms.",
+                                 # P46c's prior gain: a critic output forward() never reads, zero at the start
+                                 "prior_gain_head.",
                                  # --ladder-logit-cap: a constant, no weights; the greedy move is
                                  # unchanged and the sampled policy moves by the cap alone
                                  "logit_cap")
@@ -1737,17 +1736,6 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
                              "state has none (it was written without the term): its theta_0 is not known")
         trainer.set_head_init(_init)
         print(f"[resume] head L2-init: theta_0 restored for {len(_init)} head parameters", flush=True)
-    if getattr(trainer, "gain_net", None) is not None:
-        # P46: a learned gain continues where it was; a state written without one (a branch that adds the gain)
-        # keeps the fresh network, whose zero last layer starts the gain at its base.
-        _gain = blob.get("prior_gain_state")
-        if _gain is not None:
-            trainer.gain_net.load_state_dict(_gain["net"])
-            if trainer.gain_opt is not None:
-                trainer.gain_opt.load_state_dict(_gain["opt"])
-            print("[resume] critic prior: the learned gain restored", flush=True)
-        else:
-            print("[resume] critic prior: no learned gain in this state; it starts at its base", flush=True)
     trainer.total_env_steps = int(blob["total_env_steps"])
     if hasattr(trainer, "steps_since_ref_update"):
         saved_clock = blob.get("steps_since_ref_update")
@@ -2062,7 +2050,7 @@ def train_pipeline(
     critic_prior_turn_weight: Tuple[float, float] = (0.98, 0.46),
     critic_prior_gain: str = "fixed",
     critic_prior_gain_init: str = "line",
-    critic_prior_gain_lr: float = 3e-4,
+    critic_prior_gain_lr_mult: float = 1.0,
     logit_gap: float = 7.0,
     setup_block_lambda: bool = False,
     block_lambda: str = "off",
@@ -2273,6 +2261,7 @@ def train_pipeline(
                           or aux_vp_coef > 0.0) else {}),
                           **({"card_aux": True} if aux_card_coef > 0.0 else {}),
                           **({"opp_legal_aux": True} if aux_opp_legality > 0.0 else {}),
+                          **({"prior_gain": True} if critic_prior_gain == "learned" else {}),
                           **({"obs_features": int(obs_features)} if obs_features else {})} if ladder_config else None),
         # Each defaults to `seed`; recorded resolved so a run says which streams it actually used.
         "seed_init": (seed if seed_init is None else int(seed_init)),
@@ -2488,7 +2477,7 @@ def train_pipeline(
         "critic_prior_turn_weight": [float(x) for x in critic_prior_turn_weight],
         "critic_prior_gain": str(critic_prior_gain),
         "critic_prior_gain_init": str(critic_prior_gain_init),
-        "critic_prior_gain_lr": float(critic_prior_gain_lr),
+        "critic_prior_gain_lr_mult": float(critic_prior_gain_lr_mult),
         "phase_lock": phase_lock,
         "token_chunk": int(token_chunk),
         "token_compile": bool(token_compile),
@@ -2559,6 +2548,7 @@ def train_pipeline(
         model = create_ladder_net(dev, categorical_value=categorical_value,
                                   **{**ladder_config, "aux_heads": _aux, "card_aux": aux_card_coef > 0.0,
                                      "opp_legal_aux": aux_opp_legality > 0.0,
+                                     "prior_gain": critic_prior_gain == "learned",
                                      "obs_features": int(obs_features)})
         if token_chunk:
             if not getattr(model, "token_layers", 0):
@@ -2725,7 +2715,10 @@ def train_pipeline(
         print(f"[mup] rates against widths {mup_base_proj_dim} / {mup_base_hidden_dim}: {len(_mup_mults)} matrices "
               f"scaled ({min(_mup_mults.values(), default=1.0):.3f}-{max(_mup_mults.values(), default=1.0):.3f}); "
               f"readouts zeroed: {_zeroed or 'none (restored weights)'}", flush=True)
-    _lr_mults = combine_lr_mults(_mup_mults, policy_head_lr_mults(model, float(policy_head_lr_mult)))
+    # P46c: the prior-gain head may learn faster than the rest (the plan allows it; recorded in metadata).
+    _gain_mults = ({n: float(critic_prior_gain_lr_mult) for n, _ in model.named_parameters()
+                    if n.startswith("prior_gain_head.")} if critic_prior_gain_lr_mult != 1.0 else None)
+    _lr_mults = combine_lr_mults(_mup_mults, policy_head_lr_mults(model, float(policy_head_lr_mult)), _gain_mults)
     if adam_beta2 != 0.999 or adam_eps != 1e-8 or policy_head_lr_mult != 1.0:
         print(f"[optimiser] AdamW betas (0.9, {adam_beta2}), eps {adam_eps:g}, policy heads at x{policy_head_lr_mult} "
               f"the rate", flush=True)
@@ -2885,7 +2878,7 @@ def train_pipeline(
         critic_prior=critic_prior_window > 0,
         critic_prior_gain=critic_prior_gain,
         critic_prior_gain_init=critic_prior_gain_init,
-        critic_prior_gain_lr=critic_prior_gain_lr,
+
         logit_gap=logit_gap,
         setup_block_lambda=setup_block_lambda,
         block_lambda=block_lambda,
@@ -3206,8 +3199,8 @@ def train_pipeline(
               f"turns 1-10 (--critic-prior-window, P46b)", flush=True)
         if critic_prior_gain == "learned":
             print(f"[critic prior] the gain is learned: g(s) = {'the turn line' if critic_prior_gain_init == 'line' else '0'} "
-                  f"+ h(s), h a critic-only network on the observation at lr {critic_prior_gain_lr:g} "
-                  f"(--critic-prior-gain learned, P46)", flush=True)
+                  f"+ h(s), h a critic head on the trunk (prior_gain_head, zero at the start) at x{critic_prior_gain_lr_mult:g} "
+                  f"the rate (--critic-prior-gain learned, P46c)", flush=True)
     if value_selfplay_only:
         print("[value self-play only] the value heads train on self-play games' rows only; pool games still enter "
               "GAE and the policy loss (--value-selfplay-only, P44 diagnostic)", flush=True)

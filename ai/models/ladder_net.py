@@ -200,6 +200,7 @@ class LadderNet(ColdWarNetV2):
                  aux_heads: bool = False,
                  card_aux: bool = False,
                  opp_legal_aux: bool = False,
+                 prior_gain: bool = False,
                  branch_head: bool = False,
                  play_mode_head: bool = False,
                  obs_features: int = 0,
@@ -704,6 +705,20 @@ class LadderNet(ColdWarNetV2):
             if not norms:
                 raise ValueError("head_norm normalises the per-entity, branch and play-mode heads; this network has none")
             self.head_norms = nn.ModuleDict(norms)
+        # P46c (owner, 2026-11-14; --critic-prior-gain learned): the gain g(s) on the critic's prior per opponent and
+        # seat, a second critic output read off the trunk like the win head. In pool games the win value is
+        # sigmoid(c(s) +- (base(turn) + g(s)) * beta); g is trained by the value loss on those rows, and its gradient
+        # reaches the trunk as the value's does. Never read by forward() -- the policy and the value are unchanged --
+        # and its last layer starts at zero, so a network given the head plays and values exactly as before.
+        # Registered last, so a state written without it resumes into it (generic_trainer.ADDABLE_HEADS); recovered
+        # from the weights (`prior_gain_head.*`).
+        self.prior_gain = bool(prior_gain)
+        if self.prior_gain:
+            self.prior_gain_head = nn.Sequential(nn.Linear(hidden_dim, 128), nn.GELU(), nn.Linear(128, 1))
+            _last = self.prior_gain_head[2]
+            assert isinstance(_last, nn.Linear)
+            nn.init.zeros_(_last.weight)
+            nn.init.zeros_(_last.bias)
 
     def _head_norm(self, name: str) -> nn.Module | None:
         norms = self.head_norms
@@ -735,6 +750,13 @@ class LadderNet(ColdWarNetV2):
             raise RuntimeError("this network was built without the opponent-legality head (--aux-opp-legality)")
         h, _attn, _tokens = self._encode(obs)
         return self.opp_legal_head(h).view(-1, 84, 2)
+
+    def forward_prior_gain(self, obs: torch.Tensor) -> torch.Tensor:
+        """P46c: the learned part of the prior's gain, (B, 1), read off the trunk."""
+        if not self.prior_gain:
+            raise RuntimeError("this network was built without the prior-gain head (--critic-prior-gain learned)")
+        h, _attn, _tokens = self._encode(obs)
+        return self.prior_gain_head(h)
 
     def forward_aux(self, obs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """The auxiliary predictions: ownership logits (B, 84, 3) -- mine / opponent's / neither --
@@ -920,6 +942,7 @@ class LadderNet(ColdWarNetV2):
                if self.sphere is not None and self.sphere.out_scale != 1.0 else {}),
             **({"sphere_carry_norm": True} if self.sphere is not None and self.sphere.carry_norm else {}),
             **({"head_norm": True} if self.head_norms is not None else {}),
+            **({"prior_gain": True} if self.prior_gain else {}),
             **({"logit_cap_grad": self.logit_cap_grad} if self.logit_cap_grad != "tanh" else {}),
             **({"logit_cap_leak": self.logit_cap_leak} if self.logit_cap_leak > 0.0 else {}),
             **({"logit_cap_leak_up": self.logit_cap_leak_up} if self.logit_cap_leak_up > 0.0 else {}),
@@ -1304,6 +1327,7 @@ def ladder_config_from_state_dict(sd: Dict[str, Any]) -> Dict[str, Any] | None:
         **({"sphere_out_scale": float(sd["sphere.out_scale_buf"])} if "sphere.out_scale_buf" in sd else {}),
         **({"sphere_carry_norm": True} if "sphere.carry_norm_buf" in sd else {}),
         **({"head_norm": True} if any(k.startswith("head_norms.") for k in sd) else {}),
+        **({"prior_gain": True} if any(k.startswith("prior_gain_head.") for k in sd) else {}),
         **({"region_attn_dim": int(sd["region_attn.qkv.weight"].shape[0]) // 3,
             "region_attn_heads": int(sd["region_attn.n_heads"])} if "region_attn.qkv.weight" in sd else {}),
         **({"token_main": True, "token_heads": int(sd["tok_main.heads_buf"]),

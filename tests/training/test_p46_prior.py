@@ -12,8 +12,13 @@ import pytest
 import torch
 import torch.nn as nn
 
-from ai.training.nash_pg import PriorGainNet, prior_apply
+from ai.models.ladder_net import create_ladder_net, ladder_config_from_state_dict
+from ai.training import NashPGTrainer
+from ai.training.generic_trainer import load_resume_state, save_resume_state
+from ai.training.nash_pg import prior_apply
 from ai.training.opponent_pool import OpponentPool
+from bindings.ts_env import TsVectorizedEnv
+from tests.training.test_branch_arms import SHALLOW
 
 
 class _Tiny(nn.Module):
@@ -130,10 +135,51 @@ def test_prior_terms_are_the_two_factors_of_the_shift() -> None:
         assert (beta[~p.is_mixed] == 0).all() and (wline[~p.is_mixed] == 0).all()
 
 
-def test_the_learned_gain_starts_at_zero() -> None:
-    net = PriorGainNet(16)
-    out = net(torch.randn(5, 16))
+def test_the_gain_head_starts_at_zero_and_is_read_from_the_weights() -> None:
+    """P46c (owner, 2026-11-14): g is a critic head on the trunk, zero at the start, recovered from the weights."""
+    torch.manual_seed(0)
+    net = create_ladder_net("cpu", **SHALLOW, prior_gain=True)
+    obs = torch.rand(5, int(getattr(net, "TOTAL_OBS_SIZE")))
+    out = net.forward_prior_gain(obs)
     assert out.shape == (5, 1) and torch.equal(out, torch.zeros(5, 1))
+    cfg = ladder_config_from_state_dict(net.state_dict())
+    assert cfg is not None and cfg.get("prior_gain") is True and net.ladder_config().get("prior_gain") is True
+    plain = create_ladder_net("cpu", **SHALLOW)
+    assert "prior_gain" not in (ladder_config_from_state_dict(plain.state_dict()) or {})
+    with pytest.raises(RuntimeError, match="prior-gain head"):
+        plain.forward_prior_gain(obs)
+
+
+def _trainer(prior_gain: bool, **kw: Any) -> NashPGTrainer:
+    torch.manual_seed(0)
+    dev = torch.device("cpu")
+    model = create_ladder_net(dev, **SHALLOW, prior_gain=prior_gain)
+    env = TsVectorizedEnv(num_envs=8, base_seed=123)
+    return NashPGTrainer(active_net=model, env=env, num_envs=8, buffer_size=16, lr=3e-4, eta=0.1,
+                         ref_update_freq=500, cuda_graphs=False, device=dev, **kw)
+
+
+def test_a_branch_adds_the_gain_head_and_plays_as_saved(tmp_path: Any) -> None:
+    a = _trainer(False)
+    a.train_iteration()
+    path = str(tmp_path / "resume.pt")
+    save_resume_state(path, a.active_net, a, iteration=1, total_env_steps=128, elapsed_seconds=1.0, seed=0)
+    b = _trainer(True)
+    load_resume_state(path, b.active_net, b, seed=0)
+    sa, sb = a.active_net.state_dict(), b.active_net.state_dict()
+    assert all(torch.equal(sa[k], sb[k]) for k in sa)
+    assert any(k.startswith("prior_gain_head.") for k in sb)
+    obs = torch.rand(4, int(getattr(a.active_net, "TOTAL_OBS_SIZE")))
+    mask = torch.ones(4, 220, dtype=torch.bool)
+    with torch.no_grad():
+        for x, y in zip(a.active_net(obs, mask), b.active_net(obs, mask)):
+            assert torch.allclose(x, y)
+        assert torch.equal(getattr(b.active_net, "forward_prior_gain")(obs), torch.zeros(4, 1))
+
+
+def test_a_learned_gain_needs_the_head() -> None:
+    with pytest.raises(ValueError, match="prior-gain head"):
+        _trainer(False, critic_prior=True, critic_prior_gain="learned")
 
 
 def test_the_shift_is_signed_by_the_decider_and_weighted_by_the_turn() -> None:

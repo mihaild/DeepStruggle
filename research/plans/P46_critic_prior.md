@@ -211,20 +211,24 @@ only.
 
 * **`--critic-prior-gain learned`** (R128 = arm A with `--critic-prior-gain-init zero`, R129 = arm B, init `line`):
   the win value on a row with a prior is `sigmoid(c(s) +- g(s) * beta)`, `c` the win head's logit as before and
-  `g(s) = base(turn) + h(s)`, base 0 (A) or the turn line (B). **`h` is a separate small critic-only network on the
-  observation** (3,824 -> 64 -> 1, GELU, last layer zero, so `g` starts exactly at its base and the value is
-  unchanged at the branch point), not a second output on the shared trunk as the plan words it: it loads into any
-  checkpoint without touching the network, plays no part in acting, and its gradient never reaches the trunk.
-  It has its own Adam (`--critic-prior-gain-lr`, default 3e-4, the main rate) and is saved in the resume state.
-  The stored rollout values, the bootstrap and the value loss use the same `g` (computed with gradient in the
-  update, on the rows' stored beta and base).
+  `g(s) = base(turn) + h(s)`, base 0 (A) or the turn line (B). **`h` is a critic head on the shared trunk**
+  (LadderNet's `prior_gain_head`: trunk -> 128 -> 1, GELU, last layer zero, so `g` starts exactly at its base and the
+  value is unchanged at the branch point; owner, 2026-11-14, over a first build as a separate network on the
+  observation). forward() never reads it, so acting and the value are untouched; it is trained with the network by
+  the value loss on the rows with a prior, its gradient reaching the trunk as the value's does, in the main AdamW
+  (`--critic-prior-gain-lr-mult`, default 1: the main rate). A state written without it resumes into it
+  (`ADDABLE_HEADS`, fresh head, every other weight and moment restored); checkpoints carry it and it is read back
+  from the weights. The head reads the trunk in a second pass, on the rows with a prior only (the pool share,
+  ~30%), in the rollout and in the update. The stored rollout values, the bootstrap and the value loss use the
+  same `g` (computed with gradient in the update, on the rows' stored beta and base).
 * **The gradient at `g = 0`:** the shift is applied on every row with a prior (beta != 0), not only where the shift
   is nonzero -- otherwise arm A's zero start would never move. Found by the smoke (`g` stuck at 0, no shifted rows).
 * **Logged:** `prior_gain_t1_3`, `_t4_7`, `_t8_10`, `_near_even` (mean `g` over the update's prior rows; near even =
   |c| < 0.5), `prior_shift_rows_frac`, `prior_shift_abs_mean`.
-* **Checks:** `tests/training/test_p46_prior.py` (14: a new member at 50%, the two factors of the shift, the gain
-  starting at 0); CPU smoke from scratch with a resume: `g` from 0 to 1.25 / 0.96 / 0.89 (turns 1-3 / 4-7 / 8-10)
-  in 600k steps, half the rows shifted (the pool share), the gain restored on resume.
+* **Checks:** `tests/training/test_p46_prior.py` (16: a new member at 50%, the two factors of the shift, the head
+  zero at the start and read from the weights, a branch adding the head plays and values as saved, a learned gain
+  refused without the head); CPU smoke from scratch with a resume (the separate-network build: `g` from 0 to
+  1.25 / 0.96 / 0.89 in turns 1-3 / 4-7 / 8-10 in 600k steps, half the rows shifted; the head build: `g` from 0 to 1.37 / 1.22 / 1.18 in 600k steps, continuous across the resume).
 
 ### The plan from here (owner, 2026-11-14)
 
