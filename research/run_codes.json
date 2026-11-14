@@ -2590,11 +2590,7 @@
     "batch_size": 16384,
     "no_blunder_window": true,
     "opponent_per_game": true,
-    "critic_prior_window": 1000,
-    "critic_prior_turn_weight": [
-     0.98,
-     0.46
-    ]
+    "critic_prior_window": 1000
    }
   },
   "R128": {
@@ -2612,10 +2608,6 @@
     "no_blunder_window": true,
     "opponent_per_game": true,
     "critic_prior_window": 1000,
-    "critic_prior_turn_weight": [
-     0.98,
-     0.46
-    ],
     "critic_prior_gain": "learned",
     "critic_prior_gain_init": "zero"
    }
@@ -2635,10 +2627,6 @@
     "no_blunder_window": true,
     "opponent_per_game": true,
     "critic_prior_window": 1000,
-    "critic_prior_turn_weight": [
-     0.98,
-     0.46
-    ],
     "critic_prior_gain": "learned"
    }
   }
