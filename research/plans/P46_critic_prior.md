@@ -133,3 +133,13 @@ L (0.48), and irrelevant to W, which uses the rates with the turn weight; read 5
 So no form passes cleanly. W is close: if P46b is built, it should carry W's position-dependent weight (fitted
 per turn here, a critic-only output there) and be read on the near-even band in particular. Whether that is
 enough, or the opponent should enter the critic as an input (P44's report, step 2), is the owner's call.
+
+**Does W's turn weight depend on the opponent? (owner, 2026-11-14) -- no, not measurably.** A line
+w(t) = w1 + (w10 - w1)(t - 1)/9 fitted per opponent (both seats, all deals, beta from the fit half's rates), standard
+errors from a 30-sample game bootstrap (`p46a_w_by_opp.py`; `data/reports/p46a_w_by_opp.txt`): 400M 0.96 +- 0.02 ->
+0.46 +- 0.04; 2,000M 0.96 +- 0.02 -> 0.40 +- 0.04; 4,000M 1.03 +- 0.04 -> 0.56 +- 0.07; 6,000M 1.06 +- 0.06 -> 0.51 +-
+0.09; 8,000M 0.94 +- 0.06 -> 0.41 +- 0.11; 10,000M 1.16 +- 0.10 -> 0.56 +- 0.15; 12,000M 0.88 +- 0.14 -> 0.12 +- 0.21;
+pooled 0.98 -> 0.46. The two best-determined opponents (largest beta) give the same line, and the others sit
+within ~2 SE of the pooled one (their small beta leaves w loosely determined). One shared turn profile is enough
+for P46b; the 10,000M opponent's high early weight (1.8 SE) coincides with W's largest near-even miss (+5.8), a hint
+only.
