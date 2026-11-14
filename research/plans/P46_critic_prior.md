@@ -236,7 +236,9 @@ only.
   from 12,010M where J1 held US Fra 3 Ita 3 Can 2 Iran 1 and USSR Fin 3 Pol 3, 1,600M; reads every 400M (setups,
   both references, head to head against J1 at the same step). A first launch picked up the trainer's newer default
   reward (terminal, no blunder window) instead of J1's and was voided (`..._VOID`).
-* **Ablation, from the control at 11,230M** where R124 branched, 1,200M each, one slot each as slots free:
-  B3 = R127 (one opponent per game + prior) when the control reaches 14,000M; B2 = R126 (one opponent per game,
-  standard critic) after the J1 test. B0 = the control and B1 = R124 (stopped at 13,200M) are the references.
-  B4 (one opponent per game + value on self-play rows) is decided later.
+* **Order (owner, 2026-11-14, approved with B2 and arm A swapped):** B2 = R126 (one opponent per game, standard
+  critic, from the control at 11,230M, 1,200M) when the control reaches 14,000M; P46c arm A = R128 (learned gain
+  head from zero, from the control at 11,230M, 800M) when the J1 test ends; arm B = R129 (gain from the turn line,
+  from R124's ~13,200M state, 800M) in the next free slot. B3 = R127 (the fixed line on the control's critic) is
+  dropped: arm A answers its question with a learned gain. B0 = the control and B1 = R124 (stopped at 13,200M) are
+  the references. B4 (one opponent per game + value on self-play rows) is decided later.
