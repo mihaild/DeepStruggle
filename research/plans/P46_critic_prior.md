@@ -93,6 +93,50 @@ that game's advantages, `beta = 0` in self-play. 1,200M, read at R124's steps.
   level, pool games are calibrated, and strength is not below R124's on the old reference or head to head.
 * The VP head stays as in R124 (self-play rows) in this arm; a prior for it is a follow-up.
 
+## P46c — the weight on the prior is learned (owner, 2026-11-14)
+
+P46b as built (R127) weights the prior by a fixed line in the turn, 0.98 -> 0.46, fitted in P46a on one
+critic at 12,400M. P46c lets the critic learn the weight. **The only quantity from outside the network is the
+prior**; how much of it applies is learned with the correction, by the same value loss.
+
+**The form.** Two critic outputs, both functions of the position only: a correction `c(s)` (today's win
+logit) and a gain `g(s)`. Win value = `sigmoid(c(s) +- g(s) * beta)`, `beta` the pool's prior for that member
+and seat as built (+ on the learner's rows, - on the member's, 0 in self-play), applied in the stored values,
+the bootstrap and the value loss as now.
+
+**Why.** A correction that sees only the position cannot be right for every opponent: late in a game the
+board already shows most of a weak opponent's mistakes, so only part of `beta` should still count, and how
+much depends on `beta` itself -- which a position-only output can know only by reading style. P46a measured
+it: the plain log-odds shift is off by up to 7 points late, the turn line by 3.0 with 4.5-5.8 left in
+near-even positions, so the turn alone is not the right variable. From scratch the profile early in training
+is not known at all.
+
+| arm | from | start | question |
+|:---|:---|:---|:---|
+| A | the control's 11,230M state (R124's and R127's branch point) | `g = 0` everywhere, `c` the current output: the value is unchanged at the branch point | does a critic that has the style shortcut unlearn it when given the prior? |
+| B | R124's 13,200M state, whose critic is already clean (P46a's W form was measured on it) | `g` at P46a's line, trained from there | what does the prior add over the value on self-play rows only? |
+
+800M each, after R127. If one slot is free, A first: it also says whether the prior can be applied to a
+checkpoint such as J1. A higher rate on the gain output is allowed if it moves slowly, and is recorded.
+
+**Reads**, at +400M and +800M, beside R127 and R124 at the same step:
+
+1. the handover error (the control -8.4 / -11.4, R124 +0.1 / -1.9);
+2. the learned `g` by turn against 0.98 -> 0.46, and in the near-even band;
+3. the critic's calibration in pool games by opponent (R124's is off by the opponent's edge by construction);
+4. setups by step, the old reference, head to head.
+
+**Prediction.** A: handover error under 3 points by +400M, with `g` within 0.15 of the line in turns 1-5.
+B: pool games calibrated within 3 points from the first read, strength not below R124's.
+**Rule.** In A, `g` under 0.3 with the handover error still above 5 at +400M -> the critic kept the shortcut
+and a zero start is not enough; start `g` at the line, as R127 does. Otherwise the learned gain replaces the
+fixed line in every later arm, from scratch included.
+
+**The prior table, for every arm:** a new own-pool member starts at 50%, not at the members' mean for its
+seat. It is the learner's snapshot from moments ago; early in a from-scratch run the mean is far from even,
+and the running average needs about 700 games to settle. The window and this starting value are the table's
+two settings.
+
 ## Runs (filled in while running)
 
 ### P46a (2026-11-14, CPU): W nearly passes, L and D fail
