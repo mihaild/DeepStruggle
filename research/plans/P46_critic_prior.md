@@ -279,6 +279,19 @@ The control's handover error is -8.3 / +11.4, R124's +0.2 / +2.0, B2's -9.4 / +1
   Finland, but most deals now without the Yugoslavia/Austria point; US Fra 3 WG 3 Ita 2 Iran 1.
 * Throughput ~37-44k steps/s (one opponent per game; beside another trainer).
 
+**Extended to 12,830M (2026-11-15), read at R124's steps:**
+
+| step | vs control, same step | vs R124, same step | old reference | J1's 13,600M SWA | handover error | g t1-3 / t4-7 / t8-10 | USSR setup |
+|---:|:---|:---|:---|:---|:---|:---|:---|
+| 12,400M | **54.1** (USSR 57.1 / US 51.0) | 49.2 | 61.9 (control 59.2) | 52.2 (48.9) | -- | 0.92 / 0.70 / 0.45 | Pol 4 EG 1 Yug 1 78%; Pol 4 Cze 1 Yug 1 22% |
+| 12,800M | **55.0** (57.5 / 52.6) | 49.4 | 62.7 (59.9) | 52.0 (49.4) | -0.7 / +1.1 | 0.86 / 0.72 / 0.55 | **Pol 4 EG 1 Yug 1 95%** |
+
+* **Level with R124** (49.2 / 49.4, within ~1 SE) and as far ahead of the control as R124 was (R124 54.1% at 12,400M;
+  arm A 54.1 / 55.0%). The prior's critic gives the same strength as training the value on self-play rows only.
+* **The USSR plays the human setup** (Pol 4 EG 1 Yug 1, 95% at 12,800M); the US stays on Fra 3 WG 3 Ita 2 Iran 1.
+* The style error stays clean (-0.7 / +1.1); a uniform offset returned (critic +3.7 on the US in self-play positions,
+  slope 1.11; +3.8 at 11,600M, +1.0 at 12,000M). Whole-setup preference -1.8 points.
+
 ### P46c arm B (R129, R124 at 13,200M with the gain from the turn line): done (2026-11-15)
 
 `E8.1-A8-R119-S45@11230M+R124@13200M+R129`, R124's 13,200M state (its critic trained on self-play rows only) with one
