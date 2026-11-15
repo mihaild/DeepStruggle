@@ -53,8 +53,23 @@ span only 0.49-0.74, where x(1-x) is 0.19-0.25 -- nearly flat. The arm was a cop
 **PFSP needs a windowed win rate** (e.g. the critic prior's running score per member, `prior_rate`, over ~1,000 games)
 before it can test anything; the same lag sits under `opp_win_rate_*`, which are lifetime figures too.
 
-### Arm 2, recent window (R131): running since 06:45 UTC
+### Arm 2, recent window (R131): level with the spread pool, no style bias without the prior (2026-11-15)
 
 `E8.1-A8-R119-S45@11230M+R131`, arm A's recipe + `--opponent-pool-eviction recent`, from the control at 11,230M, 800M:
-the oldest member goes at each admission (every 5M), so after ~60M the pool is the newest 12 (~60M of history). Reads at
-11,600 / 12,000M against arm A (the same recipe, spread pool), the control and R124.
+the oldest member goes at each admission (every 5M), so after ~60M the pool is the newest 12 (~55M of history). Alone on
+the GPU after 06:45 it ran at ~72k steps/s.
+
+| step | vs arm A (spread pool), same step | vs control | vs R124 | old reference | J1's 13,600M SWA | handover error (US old / USSR old) | win rate vs pool | USSR setup (top) |
+|---:|:---|:---|:---|:---|:---|:---|:---|:---|
+| 11,600M | 49.5 | 52.4 | 50.4 | 62.8 | 50.8 | -0.3 / +2.9 | 0.50 | Fin 3 Pol 3 100% |
+| 12,000M | 49.5 (USSR 48.8 / US 50.2) | 51.7 | 50.6 | 62.5 | 52.0 | +0.2 / +1.0 | 0.50 | Pol 4 Aus 1 EG 1 36%, the rest with Finland 1 |
+
+Whole-setup preference at 12,000M: -0.3 points.
+
+* **Strength: level with arm A and R124** (49.5 / 50.4-50.6) and 1.7-2.4 ahead of the control: dropping the old members
+  costs nothing measurable in 800M.
+* **The prior has nothing to do:** against a pool of recent selves the learner scores 0.50 (min 0.46, max 0.53), so every
+  beta is ~0 and the shift is ~0.02-0.07 (arm A: ~0.45); the learned g wanders (-0.2 / -0.6 / -1.0 at 11,600M, 0.24 /
+  0.13 / -0.05 at 12,000M) because nothing pins it. The critic is clean anyway: the style bias came from the old
+  members, and a recent window removes its source.
+* The USSR setup is moving off Finland 3 Poland 3 by 12,000M (the Austria point in 55%), more slowly than arm A's.
