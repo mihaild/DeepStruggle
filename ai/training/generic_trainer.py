@@ -1959,6 +1959,7 @@ def train_pipeline(
     opponent_pfsp: bool = False,
     opponent_pfsp_weighting: str = "var",
     opponent_pfsp_uniform_mix: float = 0.25,
+    opponent_pool_eviction: str = "spread",
     seat_balance: bool = False,
     seat_balance_max_frac: float = 0.8,
     league_dirs: Optional[List[str]] = None,
@@ -2334,6 +2335,7 @@ def train_pipeline(
         "opponent_pfsp": bool(opponent_pfsp),
         "opponent_pfsp_weighting": opponent_pfsp_weighting,
         "opponent_pfsp_uniform_mix": float(opponent_pfsp_uniform_mix),
+        "opponent_pool_eviction": str(opponent_pool_eviction),
         "curriculum_switch_steps": (None if curriculum_switch_steps is None
                                     else int(curriculum_switch_steps)),
         "num_envs": num_envs,
@@ -3101,6 +3103,7 @@ def train_pipeline(
             per_game_own=bool(opponent_per_game),
             prior_window=int(critic_prior_window),
             prior_turn_weight=(float(critic_prior_turn_weight[0]), float(critic_prior_turn_weight[1])),
+            eviction=str(opponent_pool_eviction),
         )
         if any(_seed_merged) or any(_seed_macro) or merged_influence or macro_influence:
             print(f"[opponent pool] action views (P23 / P42): learner "
@@ -3125,6 +3128,7 @@ def train_pipeline(
               f"{opponent_lock_side or 'alternating'}, "
               f"draw={'PFSP-' + opponent_pfsp_weighting if opponent_pfsp else 'uniform'}"
               + (f" (uniform floor {opponent_pfsp_uniform_mix})" if opponent_pfsp else "")
+              + (f", eviction={opponent_pool_eviction}" if opponent_pool_eviction != "spread" else "")
               + (f", seat-balance=on (max frac {seat_balance_max_frac})" if seat_balance else ""))
         if league_dirs:
             print(f"[league] dirs={', '.join(league_dirs)}, capacity={league_pool_size}, "

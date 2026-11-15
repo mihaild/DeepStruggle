@@ -91,6 +91,10 @@ from bindings.ts_env import check_obs_width
 from tools.lib.player_agent import NeuralAgent
 
 
+#: P47: own-pool eviction rules (OpponentPool._eviction_victim).
+EVICTION_MODES: Tuple[str, ...] = ("spread", "recent", "unpinned")
+
+
 class OpponentPool:
     """A set of frozen policies, plus the per-environment assignment of who plays whom.
 
@@ -108,7 +112,8 @@ class OpponentPool:
                  groups: Optional[Sequence[str]] = None, league_capacity: int = 0,
                  league_frac: Optional[float] = None, obs_features: Optional[int] = None,
                  seats: Optional[Sequence[Optional[int]]] = None, per_game_own: bool = False,
-                 prior_window: int = 0, prior_turn_weight: Tuple[float, float] = (1.0, 1.0)) -> None:
+                 prior_window: int = 0, prior_turn_weight: Tuple[float, float] = (1.0, 1.0),
+                 eviction: str = "spread") -> None:
         if not nets:
             raise ValueError("OpponentPool needs at least one frozen network")
         if capacity < 1:
@@ -125,6 +130,8 @@ class OpponentPool:
             raise ValueError(f"league_frac must be in [0, 1], got {league_frac}")
         if prior_window < 0:
             raise ValueError(f"prior_window must be >= 0, got {prior_window}")
+        if eviction not in EVICTION_MODES:
+            raise ValueError(f"eviction must be one of {EVICTION_MODES}, got {eviction!r}")
         if prior_window and not per_game_own:
             raise ValueError("a critic prior per opponent (prior_window) needs one opponent per game (per_game_own)")
         if groups is not None:
@@ -142,6 +149,8 @@ class OpponentPool:
         for net in self.nets:
             self._check_obs_features(net)
         self.capacity = capacity
+        #: P47: which own-pool member goes when the pool is over capacity (EVICTION_MODES).
+        self.eviction = eviction
         self.pfsp = bool(pfsp)
         self.pfsp_weighting = pfsp_weighting
         self.pfsp_uniform_mix = float(pfsp_uniform_mix)
@@ -424,19 +433,7 @@ class OpponentPool:
         self._register()
 
         while len(self._members("self")) > self.capacity:
-            # Keep the endpoints; drop the interior snapshot whose neighbours are closest
-            # together, which is the one carrying the least information about the run's span.
-            order = sorted(self._members("self"), key=lambda i: self.steps[i])
-            victim = None
-            best_gap = None
-            for pos in range(1, len(order) - 1):
-                i = order[pos]
-                gap = self.steps[order[pos + 1]] - self.steps[order[pos - 1]]
-                if best_gap is None or gap < best_gap:
-                    best_gap, victim = gap, i
-            if victim is None:  # capacity < 3: fall back to dropping the oldest
-                victim = order[0]
-            self._remove(victim)
+            self._remove(self._eviction_victim())
         # Oldest-added first: ids are issued in arrival order. P45: `league_capacity` holds per seat, so a
         # new US exploiter generation evicts the oldest US member and never a USSR one; members without
         # a seat share one group, as every member did before.
@@ -444,6 +441,30 @@ class OpponentPool:
         while len([i for i in self._members("league") if self.seats[i] == seat]) > self.league_capacity:
             self._remove(min((i for i in self._members("league") if self.seats[i] == seat),
                              key=lambda i: self.ids[i]))
+
+    def _eviction_victim(self) -> int:
+        """The own-pool member to evict, by `self.eviction`:
+
+        * 'spread' (every run before P47): keep the endpoints; drop the interior snapshot whose neighbours are closest
+          together, the one carrying the least information about the run's span. The oldest member is never evicted.
+        * 'recent': drop the oldest -- the pool is a window of the newest `capacity` members.
+        * 'unpinned': 'spread' with the oldest a candidate too, scored by twice the gap to its one neighbour (the span
+          its removal loses, on the scale of an interior member's two-sided gap); the newest is still kept.
+        """
+        order = sorted(self._members("self"), key=lambda i: self.steps[i])
+        if self.eviction == "recent" or len(order) < 3:
+            return order[0]
+        victim = None
+        best_gap = None
+        if self.eviction == "unpinned":
+            best_gap, victim = 2 * (self.steps[order[1]] - self.steps[order[0]]), order[0]
+        for pos in range(1, len(order) - 1):
+            i = order[pos]
+            gap = self.steps[order[pos + 1]] - self.steps[order[pos - 1]]
+            if best_gap is None or gap < best_gap:
+                best_gap, victim = gap, i
+        assert victim is not None
+        return victim
 
     def _members(self, group: str) -> List[int]:
         """Indices, in `self.nets` order, of the members in one group."""

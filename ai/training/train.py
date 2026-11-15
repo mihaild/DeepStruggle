@@ -1349,6 +1349,11 @@ def build_parser() -> argparse.ArgumentParser:
                              "peaks on opponents beating the learner. Default var, because among "
                              "past selves there is usually nothing beating the learner and 'hard' "
                              "then degenerates to 'most recent'.")
+    parser.add_argument("--opponent-pool-eviction", choices=["spread", "recent", "unpinned"], default="spread",
+                        help="P47: which own-pool member goes when the pool is full. 'spread' (default, every run "
+                             "before P47) keeps the oldest and the newest and evicts the interior member with the "
+                             "closest neighbours; 'recent' evicts the oldest (a window of the newest members); "
+                             "'unpinned' is 'spread' with the oldest member a candidate too.")
     parser.add_argument("--opponent-pfsp-uniform-mix", type=float, default=0.25,
                         help="Floor of uniform probability mixed under the PFSP weights, so no "
                              "pool member can be driven to zero. The pool's value is its spread.")
@@ -1520,6 +1525,7 @@ def main():
             opponent_pfsp=args.opponent_pfsp,
             opponent_pfsp_weighting=args.opponent_pfsp_weighting,
             opponent_pfsp_uniform_mix=args.opponent_pfsp_uniform_mix,
+            opponent_pool_eviction=args.opponent_pool_eviction,
             start_pool_frac=args.start_pool_frac,
             start_pool_capacity=args.start_pool_capacity,
             start_pool_episodes=args.start_pool_episodes,

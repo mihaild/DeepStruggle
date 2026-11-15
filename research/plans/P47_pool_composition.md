@@ -1,6 +1,6 @@
 # P47 — who is in the opponent pool, and how often each plays (2026-11-14)
 
-**Status:** queued (owner, 2026-11-14): **next after P46**, once its arms have answered whether one opponent per game
+**Status (2026-11-15):** arm 1 (PFSP, R130) running since 05:24 UTC; `--opponent-pool-eviction {spread, recent, unpinned}` built for the window and unpinned arms (tests `tests/training/test_pool_eviction.py`, CPU smoke). Was: queued (owner, 2026-11-14): **next after P46**, once its arms have answered whether one opponent per game
 works (B2, R126) and whether the critic prior works (P46c arm A, R128; arm B, R129). Nothing built or launched.
 **Needs approval:** each arm's launch; trainer-side only, no engine, bindings or observation change.
 
