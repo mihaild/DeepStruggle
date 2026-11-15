@@ -2671,11 +2671,10 @@
    }
   },
   "R132": {
-   "description": "R119 with no opponent pool (--opponent-frac 0, pure self-play): P47's B5 (owner, 2026-11-15, the explicit go invariant 14 needs) -- pi_ref unchanged (200k), no prior (no pool games to apply it to)",
+   "description": "R119 with no opponent pool (--opponent-frac 0, pure self-play): P47's B5 (owner, 2026-11-15, the explicit go invariant 14 needs) -- pi_ref unchanged (200k), no prior (no pool games to apply it to) (the pool fraction 0 is the trainer default, so the signature carries opponent_self_pool without opponent_frac)",
    "first": null,
    "flags": {
     "reward_scheme": "terminal",
-    "opponent_frac": 0.0,
     "opponent_self_pool": true,
     "clip_eps": 0.1,
     "zero_avoid_coef": 0.01,
