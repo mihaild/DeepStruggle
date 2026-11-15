@@ -279,6 +279,23 @@ The control's handover error is -8.3 / +11.4, R124's +0.2 / +2.0, B2's -9.4 / +1
   Finland, but most deals now without the Yugoslavia/Austria point; US Fra 3 WG 3 Ita 2 Iran 1.
 * Throughput ~37-44k steps/s (one opponent per game; beside another trainer).
 
+### P46c arm B (R129, R124 at 13,200M with the gain from the turn line): done (2026-11-15)
+
+`E8.1-A8-R119-S45@11230M+R124@13200M+R129`, R124's 13,200M state (its critic trained on self-play rows only) with one
+opponent per game, the prior and the gain head starting at the turn line, the value trained on every row again; 800M.
+
+| step | vs control, same step | vs R124 at 13,200M (its start) | old reference | J1's 13,600M SWA | handover error (US old / USSR old) | g t1-3 / t4-7 / t8-10 | USSR setup |
+|---:|:---|:---|:---|:---|:---|:---|:---|
+| 13,600M | 53.5 (USSR 55.8 / US 51.3) | 49.6 | 63.7 (control 61.0) | **55.7** (49.2) | -0.6 / +1.7 | 0.91 / 0.69 / 0.43 | Pol 4 Aus 1 EG 1 56%; Pol 4 Aus 1 Yug 1 44% |
+| 14,000M | 52.5 (52.3 / 52.8) | 50.2 | 62.0 (62.4) | 52.1 (51.7) | -0.2 / +1.0 | 0.88 / 0.68 / 0.51 | Pol 3 EG 2 Yug 1 73%; Pol 4 EG 1 Yug 1 26% |
+
+Whole-setup preference at 14,000M: -1.7 points (the human setup preferred, as arm A's).
+
+* **Training the value on pool games again, with the prior, keeps R124's clean critic:** the handover error stays
+  under 2, the gain stays on the line, and the USSR keeps the Yugoslavia/Austria point in every deal.
+* **No gain over its own start in 800M** (49.6 / 50.2% against R124 at 13,200M); ahead of the control at the same steps
+  by 2.5-3.5. What the prior adds over value-on-self-play-only is not measurable here.
+
 ### The plan from here (owner, 2026-11-14)
 
 * **J1 openings test, done (2026-11-14):** `E8-A8-R102-S44@12010M+R125` (J1's recipe with the value on self-play rows
