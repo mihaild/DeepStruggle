@@ -230,6 +230,28 @@ only.
   refused without the head); CPU smoke from scratch with a resume (the separate-network build: `g` from 0 to
   1.25 / 0.96 / 0.89 in turns 1-3 / 4-7 / 8-10 in 600k steps, half the rows shifted; the head build: `g` from 0 to 1.37 / 1.22 / 1.18 in 600k steps, continuous across the resume).
 
+### B2 (R126, one opponent per game, standard critic): done (2026-11-14)
+
+`E8.1-A8-R119-S45@11230M+R126`, the control branched at 11,230M with `--opponent-per-game`, 1,200M (continued in
+place at 11,320M once the per-game members ran as CUDA graphs: 28k -> 42k steps/s; the control ran at 61k). SWA reads,
+the control's own read at the same step in brackets:
+
+| step | vs control, same step | vs R124, same step | old reference | J1's 13,600M SWA | US setup (top) | USSR setup |
+|---:|:---|:---|:---|:---|:---|:---|
+| 11,600M | 51.2 (USSR 55.8 / US 46.6) | 49.0 | 61.3 (58.9) | 50.8 (50.1) | WG 4 Ita 3 Fra 1 Iran 1 66% | Fin 3 Pol 3 100% |
+| 12,000M | 50.8 (54.7 / 46.9) | 48.9 | 61.7 (60.6) | 50.4 (50.6) | WG 4 Ita 3 Fra 1 Iran 1 82% | Fin 3 Pol 3 100% |
+| 12,400M | 51.8 (55.5 / 48.2) | 48.6 | 60.1 (59.2) | 50.0 (48.9) | WG 4 Ita 3 Fra 1 Iran 1 84% | Fin 3 Pol 3 100% |
+
+Critic at 12,400M: handover error **-9.4 / +10.8** (the control -8.3 / +11.4, R124 +0.2 / +2.0); whole-setup preference
+Fin 3 Pol 3 over Pol 4 EG 1 Yug 1 **+9.7 points** (the control +5.6, R124 -0.2).
+
+* **Strength: at most a small gain** -- 1-2 points over the control at every read, each under 2 SE (~0.8), and 1-1.4
+  behind R124.
+* **The style bias is untouched (larger, if anything):** it comes from the value fitting pool games, however their
+  opponents are assigned -- the prior's job (arm A) or R124's.
+* **The US setup moved anyway**, to WG 4 Ita 3 Fra 1 Iran 1, the nearest to the human US setup (WG 4 Ita 3 Iran 2) of
+  any run; the USSR, which the bias steers, stays on Finland 3 Poland 3.
+
 ### The plan from here (owner, 2026-11-14)
 
 * **J1 openings test, done (2026-11-14):** `E8-A8-R102-S44@12010M+R125` (J1's recipe with the value on self-play rows
