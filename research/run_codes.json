@@ -2631,7 +2631,7 @@
    }
   },
   "R130": {
-   "description": "R128 with PFSP on the pool draw (--opponent-pfsp, var weighting x(1-x), 25% uniform floor): P47's first arm (2026-11-15) -- members the learner beats ~90% of the time get about a third of an even member's weight, with P46's adopted one opponent per game and learned prior",
+   "description": "R128 with PFSP on the pool draw (--opponent-pfsp, var weighting x(1-x), 25% uniform floor): P47's first arm (2026-11-15) -- members the learner beats ~90% of the time get about a third of an even member's weight, with P46's adopted one opponent per game and learned prior -- stopped at 11,400M (2026-11-15): PFSP weights by each member's lifetime win rate, which lags (the 475M member reads 0.74 lifetime against ~0.92 now), so x(1-x) over 0.49-0.74 left the draw uniform (entropy 0.999, max prob 0.088 vs 0.083)",
    "first": null,
    "flags": {
     "reward_scheme": "terminal",
@@ -2648,6 +2648,26 @@
     "critic_prior_gain": "learned",
     "critic_prior_gain_init": "zero",
     "opponent_pfsp": true
+   }
+  },
+  "R131": {
+   "description": "R128 with a recent-window pool (--opponent-pool-eviction recent: the oldest member goes, so the pool is the newest 12, ~60M of history): P47 arm 2 (2026-11-15), in place of arm 1 (PFSP, R130), whose weights from lifetime win rates left the draw uniform",
+   "first": null,
+   "flags": {
+    "reward_scheme": "terminal",
+    "opponent_frac": 0.3,
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true,
+    "opponent_per_game": true,
+    "critic_prior_window": 1000,
+    "critic_prior_gain": "learned",
+    "critic_prior_gain_init": "zero",
+    "opponent_pool_eviction": "recent"
    }
   }
  },
