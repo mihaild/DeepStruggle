@@ -2669,6 +2669,21 @@
     "critic_prior_gain_init": "zero",
     "opponent_pool_eviction": "recent"
    }
+  },
+  "R132": {
+   "description": "R119 with no opponent pool (--opponent-frac 0, pure self-play): P47's B5 (owner, 2026-11-15, the explicit go invariant 14 needs) -- pi_ref unchanged (200k), no prior (no pool games to apply it to)",
+   "first": null,
+   "flags": {
+    "reward_scheme": "terminal",
+    "opponent_frac": 0.0,
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
   }
  },
  "views": {
