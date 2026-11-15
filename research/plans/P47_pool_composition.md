@@ -134,4 +134,21 @@ Self-play US share by 25M window, 0-400M: B6 0.44-0.49 throughout (0.46 0.47 0.4
   zero-avoiding term (KL(uniform || pi) over legal moves, 0.01), which keeps the trailing seat exploring; the A8
   architecture; and four engine epochs of rules fixes (the collapse always hit the US). One seed only.
 * Healthy by the owner's rule (the side split inside [0.30, 0.70] in every window to 410M), so continued in place to
-  810M; reads at 600 / 800M.
+  810M.
+
+**To 810M (2026-11-15):**
+
+| step | head to head vs control, same step | old reference: B6 (control, J1) | J1's 13,600M SWA: B6 (control, J1) |
+|---:|:---|:---|:---|
+| 600M | **60.7** (USSR 59.3 / US 62.1) | 30.1: US 28.2 / USSR 31.4 (23.2, --) | 22.3: US 23.1 / USSR 20.2 (17.2, --) |
+| 800M | **61.3** (USSR 56.6 / US 65.9) | **34.9**: US 33.8 / USSR 34.8 (26.6, 30.4) | **27.5**: US 27.9 / USSR 25.6 (21.6, 21.2) |
+
+Self-play US share by 25M window, 400-800M: B6 0.46-0.49 (rising slightly to 0.49 by 800M); the control 0.44-0.47.
+Setups at 800M: US with West Germany 4 in ~75% (WG 4 Fra 2 Ita 2 Iran 1 33%, WG 4 Fra 3 Ita 2 33%, WG 4 Ita 3 Fra 1
+Iran 1 9%); USSR Pol 5 Yug 1 41%, **Pol 4 EG 1 Yug 1 32%**, Pol 3 Yug 3 20% -- the Yugoslavia point in ~96%.
+
+* **Healthy to 800M**, both seats level against both references; the split never left 0.44-0.49.
+* **Ahead of the pooled control at every read** (66.1 / 56.7 / 60.7 / 61.3) and **ahead of J1 itself at 800M** on both
+  yardsticks (34.9 vs 30.4, 27.5 vs 21.2) -- the leaderboard's lineage, with its blunder-window reward.
+* Its openings are the nearest to the human setups of any run at this stage: West Germany 4 for the US, the Yugoslavia
+  point for the USSR.
