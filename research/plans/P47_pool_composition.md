@@ -40,3 +40,21 @@ unchanged at 11-14B steps:
 Reads as P46's: both references, head to head against the control at the same step, setups, the handover check,
 and the fixed-reference per-seat check every 400M so a seat runaway shows early. Which arms, and in what order, is
 the owner's call when P46 lands; whatever P46 adopts (one opponent per game, the prior) is carried into every arm.
+
+## Runs (filled in while running)
+
+### Arm 1, PFSP (R130): stopped at 11,400M -- the draw stayed uniform (2026-11-15)
+
+`E8.1-A8-R119-S45@11230M+R130`, arm A's recipe (R128) + `--opponent-pfsp`, launched 05:24 UTC. After 170M the draw was
+uniform in all but name: `opp_pfsp_entropy` 0.999, `opp_pfsp_max_prob` 0.088 against 1/12 = 0.083. **PFSP weights each
+member by its lifetime win rate** (`OpponentPool.win_rate`: all wins and games since the member joined, Beta-smoothed),
+which lags far behind the learner: the 475M member reads 0.74 lifetime against ~0.92 measured now (P46a), and the rates
+span only 0.49-0.74, where x(1-x) is 0.19-0.25 -- nearly flat. The arm was a copy of arm A and was stopped by PID.
+**PFSP needs a windowed win rate** (e.g. the critic prior's running score per member, `prior_rate`, over ~1,000 games)
+before it can test anything; the same lag sits under `opp_win_rate_*`, which are lifetime figures too.
+
+### Arm 2, recent window (R131): running since 06:45 UTC
+
+`E8.1-A8-R119-S45@11230M+R131`, arm A's recipe + `--opponent-pool-eviction recent`, from the control at 11,230M, 800M:
+the oldest member goes at each admission (every 5M), so after ~60M the pool is the newest 12 (~60M of history). Reads at
+11,600 / 12,000M against arm A (the same recipe, spread pool), the control and R124.
