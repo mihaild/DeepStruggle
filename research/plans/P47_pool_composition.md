@@ -73,3 +73,27 @@ Whole-setup preference at 12,000M: -0.3 points.
   0.13 / -0.05 at 12,000M) because nothing pins it. The critic is clean anyway: the style bias came from the old
   members, and a recent window removes its source.
 * The USSR setup is moving off Finland 3 Poland 3 by 12,000M (the Austria point in 55%), more slowly than arm A's.
+
+### B5, pure self-play (R132): level with every bias-fixed arm at 400M, no runaway (2026-11-15)
+
+`E8.1-A8-R119-S45@11230M+R132` (owner, 2026-11-15, the explicit go invariant 14 needs): the control at 11,230M with
+`--opponent-frac 0` -- every game the learner against its current self; pi_ref unchanged (200k), no prior; 400M.
+
+| 11,600M | B5 | (control at 11,600M) |
+|:---|:---|:---|
+| vs control, same step | **52.2** (USSR 53.4 / US 51.0) | -- |
+| vs R124 / vs arm A, same step | **50.3 / 50.5** | -- |
+| old reference / J1's 13,600M SWA | 62.0 / 51.0 | 58.9 / 50.1 |
+| handover error (US old / USSR old) | -0.7 / +1.6 | -8.3 / +11.4 |
+| whole-setup preference (Fin 3 Pol 3 over Pol 4 EG 1 Yug 1) | +0.2 points | +5.6 |
+| USSR setup | Pol 4 Fin 2 40%; Pol 4 Aus 1 Fin 1 28%; Fin 3 Pol 3 18%; Pol 3 Fin 2 Aus 1 14% | Fin 3 Pol 3 100% |
+| US setup | Fra 3 WG 3 Ita 2 Iran 1 56%; WG 4 Ita 3 Fra 1 Iran 1 14% | Fra 3 Ita 3 Can 2 Iran 1 |
+
+Self-play US win rate by 50M window: 0.452, 0.468, 0.468, 0.465, 0.463, 0.468, 0.473, 0.470 -- flat, no seat running away.
+
+* **At 400M the pool earns nothing:** pure self-play is level with R124 and arm A and as far ahead of the control as
+  every arm that removed the critic's style bias -- which it does by having no old opponents to learn it from.
+* **No sign of the E3/E4 failure** in 400M; that collapse built over 120-184M on a far weaker setup, but a longer run is
+  what would show it.
+* The USSR leaves Finland 3 Poland 3 but keeps Finland points; the Yugoslavia/Austria point in 42% of deals, slower than
+  R124's or arm A's move to the human setup.
