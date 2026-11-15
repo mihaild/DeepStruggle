@@ -2629,6 +2629,26 @@
     "critic_prior_window": 1000,
     "critic_prior_gain": "learned"
    }
+  },
+  "R130": {
+   "description": "R128 with PFSP on the pool draw (--opponent-pfsp, var weighting x(1-x), 25% uniform floor): P47's first arm (2026-11-15) -- members the learner beats ~90% of the time get about a third of an even member's weight, with P46's adopted one opponent per game and learned prior",
+   "first": null,
+   "flags": {
+    "reward_scheme": "terminal",
+    "opponent_frac": 0.3,
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true,
+    "opponent_per_game": true,
+    "critic_prior_window": 1000,
+    "critic_prior_gain": "learned",
+    "critic_prior_gain_init": "zero",
+    "opponent_pfsp": true
+   }
   }
  },
  "views": {
