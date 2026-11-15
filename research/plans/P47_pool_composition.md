@@ -74,6 +74,18 @@ Whole-setup preference at 12,000M: -0.3 points.
   members, and a recent window removes its source.
 * The USSR setup is moving off Finland 3 Poland 3 by 12,000M (the Austria point in 55%), more slowly than arm A's.
 
+**Extended to 12,830M (2026-11-15; resumed in place at 12,050M after two host restarts):**
+
+| step | vs arm A, same step | vs control | vs R124 | old reference | J1's 13,600M SWA | handover error | USSR setup (top) |
+|---:|:---|:---|:---|:---|:---|:---|:---|
+| 12,400M | 51.5 | 53.5 | 49.9 | 62.9 | 51.1 | -- | Pol 4 Aus 1 Fin 1 73%; Pol 4 Aus 1 Yug 1 27% |
+| 12,800M | 49.7 (USSR 48.2 / US 51.3) | 54.6 | 50.9 | **65.4** | 51.7 | -0.1 / +0.3 | **Pol 4 Aus 1 Yug 1 59%; Pol 4 EG 1 Yug 1 37%** |
+
+Level with arm A and R124 at every read (49.5-51.5), and as far ahead of the control (53.5 / 54.6) as they were; by
+12,800M the USSR holds the Yugoslavia/Austria point in every deal and Finland is gone. Whole-setup preference -1.4
+points. **The recent window does what the prior does, without the prior** -- the critic is clean because there are no
+old opponents for it to learn style from.
+
 ### B5, pure self-play (R132): level with every bias-fixed arm at 400M, no runaway (2026-11-15)
 
 `E8.1-A8-R119-S45@11230M+R132` (owner, 2026-11-15, the explicit go invariant 14 needs): the control at 11,230M with
@@ -97,3 +109,29 @@ Self-play US win rate by 50M window: 0.452, 0.468, 0.468, 0.465, 0.463, 0.468, 0
   what would show it.
 * The USSR leaves Finland 3 Poland 3 but keeps Finland points; the Yugoslavia/Austria point in 42% of deals, slower than
   R124's or arm A's move to the human setup.
+
+### B6, no pool from scratch (E8.1-A8-R132-S45): no side loss through 400M, ahead of the pooled control (2026-11-15)
+
+The step 1 control's recipe and seed 45 (R119) with `--opponent-frac 0`, from scratch (owner, 2026-11-15: does the
+current architecture still lose a seat without a pool?). Earlier: E4-01-01's self-play US share eroded from ~120M to 0.006
+at 184M; E3's unpooled seeds' side gaps grew 12.5 -> 33.2 pp over 80 -> 160M. A first launch with the launcher's seed
+streams at 44 was stopped within a minute (`..._135414_VOID`).
+
+| step | head to head vs control, same step | old reference (control) | J1's 13,600M SWA (control) |
+|---:|:---|:---|:---|
+| 200M | **66.1** (USSR 68.3 / US 63.9) | 14.2: US 12.8 / USSR 14.9 (11.3) | 11.2: US 11.9 / USSR 9.9 (5.6) |
+| 400M | **56.7** (USSR 56.7 / US 56.6) | 24.5: US 20.6 / USSR 27.3 (18.6) | 16.4: US 15.5 / USSR 16.7 (12.5) |
+
+Self-play US share by 25M window, 0-400M: B6 0.44-0.49 throughout (0.46 0.47 0.49 0.47 0.48 0.45 0.44 0.46 0.45 0.44
+0.46 0.46 0.45 0.48 0.46 0.47); the pooled control 0.42-0.56.
+
+* **No side loss through 400M**, more than twice E4-01-01's collapse step; the split is flatter than the pooled
+  control's and B6 wins by the same margin in either seat.
+* **Ahead of the pooled control at the same step**, by less at 400M than at 200M: the pool looks like an early cost in
+  sample efficiency (30% of games against older selves), not a cap.
+* What changed since E3/E4 that plausibly prevents the old arrest (not attributed): a much tighter, less noisy update
+  (minibatch 4,096 -> 16,384, PPO clip 0.2 -> 0.1, muP) where loosening the update was what brought collapses on; the
+  zero-avoiding term (KL(uniform || pi) over legal moves, 0.01), which keeps the trailing seat exploring; the A8
+  architecture; and four engine epochs of rules fixes (the collapse always hit the US). One seed only.
+* Healthy by the owner's rule (the side split inside [0.30, 0.70] in every window to 410M), so continued in place to
+  810M; reads at 600 / 800M.
