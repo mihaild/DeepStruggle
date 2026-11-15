@@ -252,6 +252,33 @@ Fin 3 Pol 3 over Pol 4 EG 1 Yug 1 **+9.7 points** (the control +5.6, R124 -0.2).
 * **The US setup moved anyway**, to WG 4 Ita 3 Fra 1 Iran 1, the nearest to the human US setup (WG 4 Ita 3 Iran 2) of
   any run; the USSR, which the bias steers, stays on Finland 3 Poland 3.
 
+### P46c arm A (R128, learned gain head from zero): both predictions met (2026-11-15)
+
+`E8.1-A8-R119-S45@11230M+R128`, the control branched at 11,230M with one opponent per game, the prior over ~1,000 games
+(every member starting at 50%) and the gain head added at zero, 800M; extended in place to 12,830M to read it at
+R124's 12,400 / 12,800M steps.
+
+| step | vs control, same step | vs R124, same step | old reference | J1's 13,600M SWA | handover error (US old / USSR old) | g t1-3 / t4-7 / t8-10 |
+|---:|:---|:---|:---|:---|:---|:---|
+| 11,600M | 51.8 | 49.7 | 62.9 (control 58.9, R124 61.5) | 49.8 (50.1, 50.8) | **-0.2 / +1.2** | 0.90 / 0.75 / 0.55 |
+| 12,000M | 51.8 (USSR 52.9 / US 50.6) | 50.2 | 60.9 (60.6, 60.5) | 52.4 (50.6, 50.5) | **-0.1 / +1.7** | 0.84 / 0.77 / 0.49 |
+
+The control's handover error is -8.3 / +11.4, R124's +0.2 / +2.0, B2's -9.4 / +10.8; P46a's turn line is
+0.92 / 0.72 / 0.52.
+
+* **Prediction met:** the handover error is under 3 points by the first read, and g is within 0.15 of the line -- within
+  0.08 in every band at both reads. Started at zero, the gain overshot to ~2.5 in the first 5M steps while every
+  member's beta was still near 0 (the table starts empty at a branch), and settled onto the line as the table filled.
+  **By the rule, the learned gain replaces the fixed line in every later arm.**
+* **The critic gives up the shortcut while still training on pool games:** as clean as R124's, and the whole-setup
+  preference (Fin 3 Pol 3 over Pol 4 EG 1 Yug 1) is -1.7 points at 12,000M (control +5.6, B2 +9.7, R124 -0.2). A uniform
+  offset (the critic +3.8 on the US in self-play positions at 11,600M) fell to +1.0 by 12,000M.
+* **Strength:** level with R124, 1-2 points ahead of the control (under 2 SE); best of the arms against J1's 13,600M SWA
+  at 12,000M (52.4).
+* **Setups:** USSR Pol 4 Aus 1 Fin 1 94% at 11,600M, then **Pol 4 EG 2 83% / Pol 4 EG 1 Yug 1 17%** at 12,000M -- off
+  Finland, but most deals now without the Yugoslavia/Austria point; US Fra 3 WG 3 Ita 2 Iran 1.
+* Throughput ~37-44k steps/s (one opponent per game; beside another trainer).
+
 ### The plan from here (owner, 2026-11-14)
 
 * **J1 openings test, done (2026-11-14):** `E8-A8-R102-S44@12010M+R125` (J1's recipe with the value on self-play rows
