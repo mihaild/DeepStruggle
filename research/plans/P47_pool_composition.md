@@ -165,6 +165,21 @@ SWA reads, head to head at the same step and the two references (J1's and the co
 | 2,800M | 62.9 | 59.5 | 51.8 (43.4 / 39.9) | 41.0 (30.0 / 30.1) | 0.45-0.47 |
 | 3,200M | 59.2 | 57.9 | 50.2 (45.0 / 39.8) | 41.8 (32.9 / 32.2) | 0.45-0.47 |
 | 3,600M | 58.3 | 58.0 | 53.3 (47.4 / 42.8) | 43.0 (34.7 / 35.8) | 0.46-0.47 |
+| 4,000M | 58.9 | 57.4 | 56.6 (47.8 / 44.8) | 44.8 (36.1 / 34.8) | 0.45-0.47 |
+| 4,400M | 58.3 | 56.5 | 57.4 (48.7 / 47.4) | 46.8 (35.9 / 37.9) | 0.45-0.47 |
+| 4,800M | 54.5 | 57.6 | 56.5 (51.8 / 50.6) | 46.1 (36.0 / 39.0) | 0.45-0.47 |
+| 5,200M | 57.8 | 58.6 | 59.4 (52.0 / 50.5) | 47.4 (37.1 / 38.5) | 0.45-0.47 |
+| 5,600M | 55.3 | 56.5 | 58.5 (52.9 / 50.3) | 46.8 (38.0 / 42.6) | 0.44-0.47 |
+| 6,000M | 56.3 | 59.1 | 58.8 (51.2 / 52.0) | **49.7** (41.0 / 40.0) | 0.45-0.47 |
+| 6,400M | 57.0 | 58.8 | 59.6 (52.8 / 53.8) | 48.8 (39.9 / 44.4) | 0.45-0.47 |
+| 6,800M | 54.6 | 60.8 | **61.5** (49.5 / 55.6) | 49.6 (40.2 / 44.6) | 0.45-0.46 |
+
+By 6,000M level with J1's 13,600M SWA (the leaderboard's top network) at under half its steps. Setups drift: the US
+from West Germany 4 (~97% at 1,200-2,000M) to Fra 3 WG 3 Ita 2 Iran 1 (61% at 4,000M) and back to WG 4 Fra 2 Ita 2 Iran 1
+(43% at 6,000M); the USSR off the Yugoslavia point in 20% of deals at 4,000M (Pol 5 EG 1), on it in every deal again at
+6,000M. Behaviour at 5,200M beside the control and J1 (16,384 games each): side balance level in all three (US 48.4 /
+48.9 / 48.5%); held-scoring-card losses 1.4% (2.8, 3.2); USSR Europe Control wins 250 (432, 755); 20 VP 51.3% (48.3,
+45.7); US event shares Nuclear Subs 35% (32, 39), Chernobyl 3% (1, 1), Our Man in Tehran 2% (1, 1).
 
 Both seats win in every pairing; no side loss. Setups: US West Germany 4 in ~97% from 1,200M (Iran in 40-55%), USSR the
 Yugoslavia point in every deal (Pol 3 Yug 3 54-77% at 1,600-2,000M, East Germany rare).
