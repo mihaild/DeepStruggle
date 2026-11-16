@@ -152,3 +152,25 @@ Iran 1 9%); USSR Pol 5 Yug 1 41%, **Pol 4 EG 1 Yug 1 32%**, Pol 3 Yug 3 20% -- t
   yardsticks (34.9 vs 30.4, 27.5 vs 21.2) -- the leaderboard's lineage, with its blunder-window reward.
 * Its openings are the nearest to the human setups of any run at this stage: West Germany 4 for the US, the Yugoslavia
   point for the USSR.
+
+**Continued toward saturation (owner, 2026-11-15; resumed in place at 810M, 20,000M budget, ~105k steps/s alone).**
+SWA reads, head to head at the same step and the two references (J1's and the control's own reads in brackets):
+
+| step | vs control | vs J1 | old reference: B6 (J1 / control) | J1's 13,600M SWA: B6 (J1 / control) | self-play US share |
+|---:|:---|:---|:---|:---|:---|
+| 1,200M | 59.3 | 58.3 | 42.5 (33.5 / 28.8) | 32.1 (23.7 / 21.8) | 0.46-0.48 |
+| 1,600M | 59.0 | 54.2 | 36.4 (35.5 / 28.0) | 28.7 (23.6 / 21.9) | 0.47-0.51 |
+| 2,000M | 60.3 | 57.8 | 45.3 (38.6 / 35.0) | 35.7 (26.6 / 25.2) | 0.46-0.48 |
+| 2,400M | 62.6 | 58.1 | 49.8 (41.0 / 38.1) | 40.6 (30.7 / 27.2) | 0.46-0.47 |
+| 2,800M | 62.9 | 59.5 | 51.8 (43.4 / 39.9) | 41.0 (30.0 / 30.1) | 0.45-0.47 |
+| 3,200M | 59.2 | 57.9 | 50.2 (45.0 / 39.8) | 41.8 (32.9 / 32.2) | 0.45-0.47 |
+| 3,600M | 58.3 | 58.0 | 53.3 (47.4 / 42.8) | 43.0 (34.7 / 35.8) | 0.46-0.47 |
+
+Both seats win in every pairing; no side loss. Setups: US West Germany 4 in ~97% from 1,200M (Iran in 40-55%), USSR the
+Yugoslavia point in every deal (Pol 3 Yug 3 54-77% at 1,600-2,000M, East Germany rare).
+
+**Behaviour at 1,600M against the control and J1 at the same step** (16,384 greedy self-play games each): the US wins
+51.5% (control 45.8, J1 48.9); 20 VP 55.4% of games (49.7, 47.9); final scoring 20.1% (23.5, 24.3); USSR Europe Control
+wins 197 (517, 519). US event shares: Nuclear Subs 34% (31, 18), Chernobyl 3% (2, 5), Our Man in Tehran 2% (1, 2). At the
+late checkpoints of the control, J1 and every P46/P47 arm (8,192 games each) the same three read 32-46%, 3-9% and 1-4%:
+no critic or pool change moves them.
