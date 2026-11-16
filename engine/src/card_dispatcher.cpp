@@ -1603,7 +1603,8 @@ bool CardHandlers::run_event_step(GameState& state, const MicroAction& action) n
                     if (draw_cnt > 0) {
                         uint32_t chosen_idx = Prng::random_index(state.rng_state, draw_cnt);
                         uint8_t drawn = draw_cards[chosen_idx];
-                        state.card_locations[drawn] = hand_of(Player::US);
+                        // Face up under Aldrich Ames, which reveals the hand for the rest of the turn.
+                        state.card_locations[drawn] = drawn_hand_location(state, Player::US);
                         if (draw_cnt == 1) run_out();   // that was the deck's last card
                     }
                 }

@@ -5,7 +5,8 @@ Five things reveal a card in Twilight Struggle, and the engine now records all o
 * **CIA Created** -- "The USSR reveals their hand of cards for this turn."
 * **"Lone Gunman"** -- "The US reveals their hand of cards."
 * **Aldrich Ames Remix** -- "The US reveals their hand of cards, face-up, for the remainder of
-  the turn."
+  the turn." The one standing reveal: a card the US draws that turn (Ask Not) is face up too,
+  and the next turn's deal is not.
 * **SALT Negotiations** -- the retrieved card is revealed to the opponent before it is taken.
 * **the draw deck running out** -- at that moment every card is in a hand, the discard, removed,
   in play, or never in the game, and all of those but the hands are public, so each player can
@@ -27,9 +28,11 @@ import numpy as np
 import pytest
 
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 
 CIA_CREATED = 26
 LONE_GUNMAN = 62
+ASK_NOT = 77
 ALDRICH_AMES = 98
 
 
@@ -146,6 +149,93 @@ def test_aldrich_ames_reveal_survives_into_the_observation() -> None:
     for c in (20, 21, 22):
         assert after[board + (c - 1) * features + known_slot] == 1.0, (
             f"the USSR should be able to name US card {c} after Aldrich Ames")
+
+
+
+def _step_randomly(state: ts.GameState, rng: np.random.Generator) -> bool:
+    """One random legal decision, then any dice. False when the game has nowhere to go."""
+    legal = np.flatnonzero(np.asarray(ActionEncoder.get_legal_mask(state)))
+    if legal.size == 0:
+        return False
+    ts.Engine.step_flat(state, int(rng.choice(legal)))
+    while (not ts.Engine.is_terminal(state)
+           and state.ctx().decision_player == ts.Player.NONE
+           and state.ctx().decision_type == ts.DecisionType.ROLL_DIE):
+        ts.Engine.step(state, ts.MicroAction(ts.DecisionType.ROLL_DIE, 0, 0, 0))
+    return True
+
+
+def _deck_size(state: ts.GameState) -> int:
+    return sum(state.get_card_location(c) == ts.CardLocation.DRAW_DECK for c in range(1, 111))
+
+
+def _ask_not_redraw_under_aldrich_ames() -> ts.GameState:
+    """Ask Not resolved -- two US cards discarded and replaced -- with Aldrich Ames in force.
+
+    Ask Not's discard prompt is reached by play; Ames is then given exactly what it leaves in a
+    state (its flag, and the US hand marked public), since the two meeting in one random game is
+    too rare to search for. The deck holds more than the redraw, so the cards are not public
+    merely because it ran out.
+    """
+    rng = np.random.default_rng(23)
+    for g in range(1500):
+        state = _fresh(120000 + g)
+        for _ in range(4000):
+            if ts.Engine.is_terminal(state):
+                break
+            ctx = state.ctx()
+            if (int(ctx.resolving_card) == ASK_NOT
+                    and ctx.decision_type == ts.DecisionType.SELECT_CARD
+                    and len(_hand(state, ts.Player.US)) >= 3 and _deck_size(state) > 2):
+                state.set_flag(ts.EffectBits.ALDRICH_AMES_ACTIVE)
+                ts.reveal_hand(state, ts.Player.US)
+                for c in _hand(state, ts.Player.US)[:2]:
+                    ts.Engine.step(state, ts.MicroAction(ts.DecisionType.SELECT_CARD, c, 0, 0))
+                ts.Engine.step_flat(state, ActionEncoder.CONFIRM_DONE_INDEX)
+                return state
+            if not _step_randomly(state, rng):
+                break
+    pytest.fail("no random game reached Ask Not's discard with a deck to redraw from")
+
+
+def test_ask_not_replacements_under_aldrich_ames_are_known() -> None:
+    """The reveal lasts the turn, so the cards Ask Not draws are face up as well."""
+    state = _ask_not_redraw_under_aldrich_ames()
+    assert state.has_flag(ts.EffectBits.ALDRICH_AMES_ACTIVE), "still the Ames turn"
+    hand = _hand(state, ts.Player.US)
+    assert _known(state, ts.Player.US) == set(hand), (
+        "every US card, the two replacements included, should be face up under Aldrich Ames")
+    assert _known(state, ts.Player.USSR) == set(), "the deck did not run out; the USSR hand is hidden"
+
+    board, features, known_slot = 84 * 26, 14, 2
+    obs = np.asarray(ts.extract_observation(state, ts.Player.USSR))
+    for c in hand:
+        assert obs[board + (c - 1) * features + known_slot] == 1.0, (
+            f"the USSR should be able to name US card {c}")
+
+
+def test_aldrich_ames_does_not_reach_the_next_turns_deal() -> None:
+    """Ames ends with its turn: the flag is cleared before the deal, which comes in hidden."""
+    state = _ask_not_redraw_under_aldrich_ames()
+    rng = np.random.default_rng(7)
+    turn = state.turn
+    before: Set[int] = set()
+    before_ussr: Set[int] = set()
+    deck = 0
+    while state.turn == turn:
+        assert not ts.Engine.is_terminal(state), "the game ended inside the Ames turn"
+        before = set(_hand(state, ts.Player.US))
+        before_ussr = set(_hand(state, ts.Player.USSR))
+        deck = _deck_size(state)
+        assert _step_randomly(state, rng)
+    assert not state.has_flag(ts.EffectBits.ALDRICH_AMES_ACTIVE), "the flag outlived its turn"
+
+    dealt = set(_hand(state, ts.Player.US)) - before
+    dealt_ussr = set(_hand(state, ts.Player.USSR)) - before_ussr
+    assert dealt, "the US was dealt nothing"
+    assert deck > len(dealt) + len(dealt_ussr), "the deck ran out at the deal, which reveals both hands"
+    assert not (dealt & _known(state, ts.Player.US)), (
+        f"cards dealt after the Ames turn are visible to the USSR: {sorted(dealt & _known(state, ts.Player.US))}")
 
 
 

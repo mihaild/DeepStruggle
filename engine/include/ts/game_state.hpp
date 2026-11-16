@@ -748,6 +748,16 @@ inline void reveal_hand(GameState& state, Player p) noexcept {
     }
 }
 
+// Where a card `p` draws from the deck lands. Hidden, except while Aldrich Ames Remix is in force
+// for the US: "The US reveals their hand of cards, face-up, for the remainder of the turn" -- a
+// standing reveal, not a one-off, so a card the US draws that turn (Ask Not's replacements) enters
+// face up. ALDRICH_AMES_ACTIVE is in TURN_CLEANUP_MASK and cleared in finish_end_turn before
+// start_turn deals, so the next turn's deal is hidden again. Every draw goes through here, so the
+// rule has one home.
+inline CardLocation drawn_hand_location(const GameState& state, Player p) noexcept {
+    return hand_of(p, p == Player::US && state.has_flag(effect_bits::ALDRICH_AMES_ACTIVE));
+}
+
 // Both hands become public. Used where the deduction is symmetric -- see the draw deck running
 // out in StateMachine::deal_cards_to_hands.
 inline void reveal_both_hands(GameState& state) noexcept {

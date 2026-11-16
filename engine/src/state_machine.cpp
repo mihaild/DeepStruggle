@@ -114,7 +114,8 @@ void StateMachine::deal_cards_to_hands(GameState& state) noexcept {
             const uint32_t chosen_idx = Prng::random_index(state.rng_state, draw_count);
             chosen_card = draw_cards[chosen_idx];
         }
-        state.card_locations[chosen_card] = hand_of(p);
+        // Hidden: the turn-end cleanup has already cleared Aldrich Ames's reveal.
+        state.card_locations[chosen_card] = drawn_hand_location(state, p);
         if (draw_count == 1) {
             // That was the last card in the deck; same deduction as above, and it covers
             // the card just drawn too, since the opponent can see the deck is now empty.

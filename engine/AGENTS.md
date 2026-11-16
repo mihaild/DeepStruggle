@@ -427,6 +427,13 @@ and left the reshuffle to the next deal: in the human corpus, at turn 7 AR2 of t
   every card not in a hand is. Ask Not does the same (`reveal_both_hands`). Tehran reveals the USSR
   hand only: the US sees the peek and can name the USSR hand, but the USSR cannot tell the US hand
   from the cards being looked at. A card drawn after the reveal is hidden again, as at the deal.
+* **Aldrich Ames is a standing reveal, the others are one-offs.** It shows the US hand "for the
+  remainder of the turn", so a card the US draws while `ALDRICH_AMES_ACTIVE` is set -- Ask Not's
+  replacements -- enters `HAND_US_KNOWN`. Every draw takes its location from
+  `drawn_hand_location`; the flag is in `TURN_CLEANUP_MASK`, cleared before the next turn's deal,
+  so that deal is hidden. Cards the USSR saw and the US keeps stay known, like any seen card.
+  Tests: `test_hand_knowledge_triggers.py::test_ask_not_replacements_under_aldrich_ames_are_known`,
+  `::test_aldrich_ames_does_not_reach_the_next_turns_deal`.
 * **The PRNG stream is untouched unless the deck runs out.** The pool is rebuilt only after a draw
   empties it, so a deck holding more than Tehran's five, or more than Ask Not's redraws, is drawn
   exactly as before. This still moves the engine's behaviour digest (`runner`, `rollout` and `mcts`
