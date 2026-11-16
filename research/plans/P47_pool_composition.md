@@ -173,6 +173,21 @@ SWA reads, head to head at the same step and the two references (J1's and the co
 | 6,000M | 56.3 | 59.1 | 58.8 (51.2 / 52.0) | **49.7** (41.0 / 40.0) | 0.45-0.47 |
 | 6,400M | 57.0 | 58.8 | 59.6 (52.8 / 53.8) | 48.8 (39.9 / 44.4) | 0.45-0.47 |
 | 6,800M | 54.6 | 60.8 | **61.5** (49.5 / 55.6) | 49.6 (40.2 / 44.6) | 0.45-0.46 |
+| 7,200M | 55.6 | 57.1 | 59.2 (53.6 / 55.6) | 50.2 (43.7 / 44.1) | 0.46-0.47 |
+| 7,600M | 55.1 | 62.4 | 62.3 (51.1 / 56.0) | 51.6 (37.6 / 45.7) | 0.46-0.47 |
+| 8,000M | 55.3 | 60.1 | 61.5 (51.8 / 56.8) | 49.0 (36.8 / 45.7) | 0.45-0.47 |
+| 8,400M | 54.1 | 58.2 | 62.3 (55.8 / 60.3) | 50.0 (44.0 / 47.1) | 0.45-0.46 |
+| 8,800M | 53.8 | 58.5 | 61.7 (56.6 / 58.7) | 50.5 (40.4 / 47.5) | 0.45-0.47 |
+| 9,200M | 54.4 | 58.1 | 61.1 (57.6 / 58.6) | 52.5 (45.1 / 48.1) | 0.46-0.47 |
+| 9,600M | 53.7 | 56.5 | 62.8 (58.4 / 58.2) | 52.4 (45.0 / 46.7) | 0.46-0.47 |
+| 10,000M | 55.6 | 58.8 | **63.9** (56.3 / 59.5) | 51.9 (44.7 / 47.6) | 0.45-0.47 |
+
+From 7,600M a plateau at J1's best level (old reference 61-64%, J1's 13,600M SWA 49-52.5%); still 54-56% against the
+control and 56-62% against J1 at the same step. Setups at 9,600-10,000M: USSR Pol 3 Yug 3 96-99% (the Yugoslavia point
+in every deal); US mixed, WG 4 in about two thirds (WG 4 Ita 3 Fra 1 Iran 1 22% at 10,000M) -- the control at 9,600M
+back on Finland 3 Poland 3, J1 on Fra 3 Can 2 Ita 2 Iran 1 Panama 1. Behaviour at 7,200 and 9,600M beside them: held-
+scoring-card losses 1.5 / 1.2% (control 2.8 / 3.0, J1 3.5 / 3.4); every other ending within a point or two; US event
+shares unchanged by any recipe (Nuclear Subs 33-44%, Chernobyl 1-9% almost all as a headline, Our Man in Tehran 1-3%).
 
 By 6,000M level with J1's 13,600M SWA (the leaderboard's top network) at under half its steps. Setups drift: the US
 from West Germany 4 (~97% at 1,200-2,000M) to Fra 3 WG 3 Ita 2 Iran 1 (61% at 4,000M) and back to WG 4 Fra 2 Ita 2 Iran 1
