@@ -120,3 +120,75 @@ the follow-ups below and is not adopted. Turns 1-3 worse by 2 points or more -> 
   critic slowly.
 
 ## Runs (filled in while running)
+
+### P48a (2026-11-16): the game stays open late; the critic is the test, near its ceiling to turn 7
+
+B6's 7,920-8,000M SWA (`E8.1-A8-R132-S45`), both sides, T = 1. 2,000 turn-boundary positions for each of turns 3-10,
+captured as `start_pool.harvest` does (the state at the last decision before the turn rolls over, so pre-deal), one
+per game per turn; 16 reseeded continuations each (256,000 partial games). Scripts `p48a_games.py`, `p48a_read.py`,
+`p48a_oracle.py` (the session's tmp); data `data/reports/p48a_games.npz`, full read `data/reports/p48a_read.txt`.
+Win = the US's result, a draw 1/2. Deviations agreed with the plans session: the value head has no spread, so (c)
+is the VP head's predicted margin; every test is read on the half of positions not used to fit (d), against the
+label of continuations 9-16 (B), and (d) is fitted on continuations 1-8 (A).
+
+**Read 1 -- how decided the game is** (beta-binomial fit to the 16 results, which removes their noise):
+
+| turn | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|:---|---:|---:|---:|---:|---:|---:|---:|---:|
+| open: true US win p inside 0.2-0.8 | 80.8% | 76.9% | 69.7% | 65.4% | 59.9% | **56.0%** | 53.0% | **43.7%** |
+| result variance fixed by the position | 18% | 21% | 26% | 29% | 33% | 36% | 38% | 47% |
+| mean US win | 0.45 | 0.47 | 0.48 | 0.52 | 0.54 | 0.55 | 0.56 | 0.57 |
+
+Most of the game is still open late: over half the positions at turn 8 and 44% at turn 10, and even at turn 10 the
+position fixes under half the variance of the result. Every turn is worth restarting from; turns 8-10 hold the most
+open positions per game step (a game from turn 8 is about a third of a whole one).
+
+**Read 2 -- tests for 'undecided'** (AUC / share of restarts wasted on decided positions at 80% recall; target: the
+B label inside 0.2-0.8). The ceiling is the AUC of a test that knew each position's true win probability, against the
+same noisy 8-result label, simulated from read 1's fit; the 8-result A label itself scores well below it (0.64-0.82),
+so it is not a ceiling.
+
+| turn | open (B) | ceiling (true p) | **(a) critic** | (b1) `is_salvageable` | (b2) \|VP\| | (b3) regions | (c) VP head | (d) best two |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 3 | 70% | 0.797 | **0.782** / 16% | 0.567 / 27% | 0.615 / 24% | 0.661 / 23% | 0.625 / 25% | 0.779 / 16% |
+| 4 | 68% | 0.817 | **0.789** / 17% | 0.614 / 24% | 0.651 / 24% | 0.590 / 26% | 0.667 / 22% | 0.789 / 17% |
+| 5 | 61% | 0.834 | **0.820** / 20% | 0.594 / 33% | 0.620 / 34% | 0.628 / 34% | 0.631 / 33% | 0.816 / 19% |
+| 6 | 58% | 0.850 | **0.820** / 23% | 0.614 / 36% | 0.628 / 37% | 0.654 / 35% | 0.641 / 35% | 0.819 / 23% |
+| 7 | 52% | 0.864 | **0.843** / 22% | 0.618 / 39% | 0.669 / 38% | 0.592 / 42% | 0.690 / 36% | 0.843 / 22% |
+| 8 | 50% | 0.873 | **0.829** / 23% | 0.652 / 38% | 0.691 / 37% | 0.619 / 42% | 0.703 / 35% | 0.828 / 22% |
+| 9 | 45% | 0.887 | **0.821** / 33% | 0.611 / 49% | 0.641 / 49% | 0.567 / 53% | 0.667 / 48% | 0.810 / 34% |
+| 10 | 39% | 0.905 | **0.843** / 34% | 0.586 / 55% | 0.607 / 55% | 0.607 / 58% | 0.643 / 53% | 0.843 / 35% |
+
+* **The critic is the test.** It beats the existing rule by 0.17-0.26 AUC at every turn and wastes a third to a half
+  as many restarts. Nothing adds to it: the best pair (critic with the VP head, or with VP) is the critic alone.
+* **Within 0.03 of the ceiling at turns 3-7** (0.015-0.030), not at turns 8-10 (0.044, 0.066, 0.062) -- the turns
+  P48b would weight most. Against the plan's absolute 0.85 it falls short everywhere (0.78-0.84); judged against the
+  ceiling, it is near-optimal to turn 7 and falls short late.
+* `is_salvageable` is barely better than chance (0.57-0.65), worse than VP alone.
+
+**Read 3 -- where the critic is wrong** (against the mean of all 16 results; points of US win probability):
+
+| turn | critic - result | RMS beyond 16-result noise | the worst tenth of positions holds | open positions the critic calls decided (outside 0.2-0.8) |
+|---:|---:|---:|---:|---:|
+| 3 | -1.7 | 4.9 | 44% | 61 (4.2% of open) |
+| 4 | -1.6 | 4.3 | 46% | 97 (7.0%) |
+| 5 | -1.0 | 5.8 | 49% | 85 (6.8%) |
+| 6 | -1.4 | 6.3 | 51% | 107 (9.2%) |
+| 7 | -1.0 | 6.3 | 49% | 107 (10.3%) |
+| 8 | -1.2 | 6.9 | 53% | 146 (14.4%) |
+| 9 | -1.0 | 7.5 | 54% | 114 (12.6%) |
+| 10 | -0.5 | 9.2 | 57% | 124 (15.9%) |
+
+The critic's error beyond noise doubles from turn 3 to turn 10 (4.9 -> 9.2 points), is concentrated (the worst tenth
+holds about half of it), and is larger on open positions (RMS 17-18 against 13-14 on decided ones, turns 6-10). It is
+mildly underconfident: about +2 points where the US is losing badly and -2 where it is winning. A critic-based test
+would never restart 4-10% of the open positions at turns 3-7 and 13-16% at turns 8-10.
+
+**Read 4 -- Europe as the USSR** (turns 7-10): 6.9% of positions see a US Europe Control win in at least one of 16
+continuations, 0.66% of continuations end that way, and those are positions the critic rates the US behind in (US
+win p 0.42 against 0.55 elsewhere) -- Europe Control is a US comeback route from losing positions, and rare in
+self-play.
+
+**Against the registered expectation:** more of the game is open than expected (turn 8: 56%, not under half; turn
+10: 44%, not under a third); the critic beats the VP-and-region rule by far more than 0.05-0.10 (0.17-0.26) but does
+not reach 0.85 absolute; it misses under 10% of open positions only to turn 6, 10-16% from turn 7.
