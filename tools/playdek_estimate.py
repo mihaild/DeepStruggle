@@ -23,8 +23,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 from tools.lib.engine_fingerprint import fingerprint as engine_fingerprint, require_fresh
 from tools.lib.game_stats import SubmissionDict, rated_game, rating_check
 from tools.lib.leaderboard import LeaderboardError, ROOT, load
-from tools.lib.playdek_estimate import (DEFAULT_CONFIG_SD, DEFAULT_NETWORK_SD, KEYED_DEFAULT_COMMIT, Estimate, PlayedGame,
-                                        estimate)
+from tools.lib.playdek_estimate import (DEFAULT_PRIOR_GAMES, KEYED_DEFAULT_COMMIT, PRIOR_GAMES_CHOICES, Estimate,
+                                        PlayedGame, estimate)
 
 #: The D1 database's name in web/stats_worker/wrangler.toml.
 DATABASE = "ts-game-stats"
@@ -88,8 +88,11 @@ def build_precedes_keyed_default(cache: Dict[str, Optional[bool]], commit: str) 
 
 def summary(est: Estimate) -> str:
     excluded = ", ".join(f"{n} {why}" for why, n in sorted(est["excluded"].items())) or "none"
+    k = est["prior_games"]
+    weight = "" if k is None else f"games between models worth {k:g} against people: "
     lines = [f"playdek: {est['games']} games against {est['humans']} people, to {est['as_of']}; left out: {excluded}",
-             f"playdek: offset {est['offset']:+.1f} on {est['reference_epoch']}'s scale, network sd {est['network_sd']:g}, configuration sd {est['config_sd']:g}"]
+             f"playdek: {weight}offset {est['offset']:+.1f} on {est['reference_epoch']}'s scale, "
+             f"network sd {est['network_sd']:g}, configuration sd {est['config_sd']:g}"]
     played = [(pid, p) for pid, p in est["players"].items() if p["games"]]
     for pid, p in sorted(played, key=lambda x: -x[1]["rating"]):
         lines.append(f"  {p['rating']:6.0f} +- {p['se']:3.0f}  {p['w']}-{p['d']}-{p['l']:<3d} {pid}")
@@ -102,11 +105,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--output", required=True, help="where to write the estimate (JSON, aggregates only)")
     ap.add_argument("--export", default=None, help="a dump of the games table with received_at and body, "
                                                    "instead of reading the database")
-    ap.add_argument("--network-sd", type=float, default=DEFAULT_NETWORK_SD,
-                    help="how far a network may stray from its leaderboard rating, in rating points")
-    ap.add_argument("--config-sd", type=float, default=DEFAULT_CONFIG_SD,
-                    help="how far one of its configurations may stray further, in rating points")
+    ap.add_argument("--prior-games", type=float, nargs="+", default=list(PRIOR_GAMES_CHOICES),
+                    help="the weights to fit: how many games against people the games between models count as "
+                         "(tools/lib/playdek_estimate.sds_for_prior_games); the page offers each")
+    ap.add_argument("--default-prior-games", type=float, default=float(DEFAULT_PRIOR_GAMES),
+                    help="the weight the page opens on, and the one written at the top level (one of --prior-games)")
     a = ap.parse_args(argv)
+    if a.default_prior_games not in a.prior_games:
+        ap.error("--default-prior-games must be one of --prior-games")
     try:
         if a.export:
             with open(a.export, encoding="utf-8") as f:
@@ -117,15 +123,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             raise LeaderboardError("the database holds no games")
         played, left_out = counted_games(rows, engine_fingerprint())
         cache: Dict[str, Optional[bool]] = {}
-        est = estimate(played, left_out, max(r[0] for r in rows), load(),
-                       lambda c: build_precedes_keyed_default(cache, c), network_sd=a.network_sd,
-                       config_sd=a.config_sd)
+        board = load()
+        fits: Dict[str, Estimate] = {}
+        for k in a.prior_games:
+            fits[f"{k:g}"] = estimate(played, left_out, max(r[0] for r in rows), board,
+                                      lambda c: build_precedes_keyed_default(cache, c), prior_games=k)
+        est = fits[f"{a.default_prior_games:g}"]
     except LeaderboardError as e:
         print(f"playdek_estimate: {e}", file=sys.stderr)
         return 1
     os.makedirs(os.path.dirname(os.path.abspath(a.output)), exist_ok=True)
     with open(a.output, "w", encoding="utf-8") as f:
-        json.dump(est, f, indent=1, ensure_ascii=False)
+        # The default fit at the top level, as before, and every weight's fit for the page's choice.
+        json.dump({**est, "by_prior_games": fits}, f, indent=1, ensure_ascii=False)
         f.write("\n")
     print(summary(est))
     return 0

@@ -67,8 +67,11 @@ web/ui/
 │   │                           # players twilightstruggle.app offers as its AI's levels, and adds the
 │   │                           # site's description to their card, read the same way from
 │   │                           # site_models.json (none if it cannot be read); with an estimate in its data
-│   │                           # (tools/playdek_estimate.py, via TS_PLAYDEK_ESTIMATE) a switch shows the
-│   │                           # players on Playdek's scale, in that scale's order (?scale=playdek)
+│   │                           # (tools/playdek_estimate.py, via TS_PLAYDEK_ESTIMATE) the page opens on
+│   │                           # the players on Playdek's scale, in that scale's order (?scale=anchor for
+│   │                           # the anchored Elo), with every player shown (?view=main|lineage for
+│   │                           # fewer; owner, 2026-11-17); a select picks the weight of the games
+│   │                           # between models, in games against people (by_prior_games, ?prior=)
 │   ├── types.ts                # TypeScript interface mirrors of engine GameState and MicroAction
 │   └── i18n/                   # the page's languages (i18next): index.ts, enums.ts (engine names), locales/<lang>/<namespace>.json
 ├── public/engine/              # ts_engine.mjs + .wasm, not committed (tools/scripts/build_web.sh)

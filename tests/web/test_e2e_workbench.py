@@ -623,9 +623,9 @@ def test_a_repo_with_models_json_is_not_listed(browser: Any, static_site: str, o
 
 def test_the_leaderboard_page_filters_one_fit(browser: Any, static_site: str) -> None:
     """leaderboard.html shows the leaderboard.json that build_web.sh fitted from leaderboard/: the
-    newest epoch with games in it (a new engine epoch starts with its anchor alone), the main players
-    by default, every player under "All", each with the same rating in both views; a row opens its
-    head-to-head results, and the view is kept in the link."""
+    newest epoch with games in it (a new engine epoch starts with its anchor alone), every player by
+    default (owner, 2026-11-17), the main players under "Main", each with the same rating in both views;
+    a row opens its head-to-head results, and the view is kept in the link."""
     with open(os.path.join(DIST, "leaderboard.json")) as f:
         data = json.load(f)
     with open(os.path.join(REPO, "leaderboard", "epochs.json")) as f:
@@ -649,17 +649,19 @@ def test_the_leaderboard_page_filters_one_fit(browser: Any, static_site: str) ->
             "#lb-body tr", "rs => rs.map(r => [r.dataset.player, r.querySelector('.lb-elo').textContent])")
         return dict(rows)
 
-    mains = shown()
-    assert list(mains) == [r["player"] for r in ep["ratings"] if r["main"]]
-    page.check("input[name=lb-view][value=all]")
     every = shown()
     assert list(every) == [r["player"] for r in ep["ratings"]]
+    page.check("input[name=lb-view][value=main]")
+    mains = shown()
+    assert list(mains) == [r["player"] for r in ep["ratings"] if r["main"]]
     assert all(every[p] == mains[p] for p in mains), "a view filters the fit; it never refits"
+    assert "view=main" in page.url
+    page.check("input[name=lb-view][value=all]")
     page.click(f"#lb-body tr[data-player='{ep['anchor']}']")
     assert page.inner_text("#lb-detail h2") == ep["anchor"]
     anchor = next(r for r in ep["ratings"] if r["player"] == ep["anchor"])
     assert page.eval_on_selector_all("#lb-detail tbody tr", "rs => rs.length") == anchor["opponents"]
-    assert "view=all" in page.url
+    assert "view=" not in page.url
     # The codes tab: the recipes and architectures of the networks on the board, from the same fit; the
     # selected player's codes link to their rows.
     pid = next(p for p, pl in data["players"].items() if pl["network"] and data["codes"]["by_network"][pl["network"]]["recipe"]
@@ -679,44 +681,54 @@ def test_the_leaderboard_page_filters_one_fit(browser: Any, static_site: str) ->
 
 def test_the_leaderboard_switches_to_the_playdek_estimate(browser: Any, static_site: str) -> None:
     """The estimate comes with the build only if it could read the stats database, so a synthetic one
-    is served here. No estimate: no switch. With one: its numbers, in its own order, kept in the link."""
+    is served here. No estimate: no switch, the anchor scale. With one: the page opens on it (owner,
+    2026-11-17), its numbers in its own order, the anchor scale a link's choice; the weight of the games
+    between models picks among the fits, and is kept in the link."""
     data, epoch, rated = _leaderboard_data()
     data.pop("playdek", None)
     players = sorted(rated)
-    estimate = {p: {"rating": 1000.0 + 10 * k, "se": 40.0, "lo": 900.0, "hi": 1100.0, "games": k, "humans": 1,
-                    "w": k, "d": 0, "l": 0} for k, p in enumerate(players)}
-    with_estimate = {**data, "playdek": {"as_of": "2026-10-31", "games": 7, "humans": 3, "excluded": {}, "offset": 1.0,
-                                         "network_sd": 100.0, "config_sd": 50.0, "reference_epoch": epoch, "players": estimate}}
+
+    def fit(k: int, step: float) -> Dict[str, Any]:
+        est = {p: {"rating": 1000.0 + step * i, "se": 40.0, "lo": 900.0, "hi": 1100.0, "games": i, "humans": 1,
+                   "w": i, "d": 0, "l": 0} for i, p in enumerate(players)}
+        return {"as_of": "2026-10-31", "games": 7, "humans": 3, "excluded": {}, "offset": 1.0, "network_sd": 69.5,
+                "config_sd": 34.7, "prior_games": k, "reference_epoch": epoch, "players": est}
+
+    at20, at5 = fit(20, 10.0), fit(5, -10.0)
+    with_estimate = {**data, "playdek": {**at20, "by_prior_games": {"5": at5, "20": at20}}}
     served = {"body": json.dumps(data)}
     page = browser.new_page(viewport={"width": 1280, "height": 900})
     errors: List[str] = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.route("**/leaderboard.json", lambda route: route.fulfill(content_type="application/json", body=served["body"]))
-    page.goto(static_site + f"/leaderboard.html?epoch={epoch}&view=all&scale=playdek")
+    page.goto(static_site + f"/leaderboard.html?epoch={epoch}")
     page.wait_for_selector("#lb-body tr")
     assert not page.is_visible("#lb-scale-mode")
-    assert page.text_content("#lb-th-elo") == "Elo" and "scale=playdek" not in page.url
+    assert page.text_content("#lb-th-elo") == "Elo" and "scale=" not in page.url
+    assert page.is_checked("input[name=lb-view][value=all]") and "view=" not in page.url, "every player by default"
+    assert page.eval_on_selector_all("#lb-body tr", "rs => rs.length") == len(rated)
     assert "Playdek estimate" not in page.inner_text("#lb-note"), "no pointer to a switch the page does not have"
 
     served["body"] = json.dumps(with_estimate)
-    page.goto(static_site + f"/leaderboard.html?epoch={epoch}&view=all")
+    page.goto(static_site + f"/leaderboard.html?epoch={epoch}")
     page.wait_for_selector("#lb-body tr")
-    assert page.is_visible("#lb-scale-mode") and page.text_content("#lb-th-elo") == "Elo"
-    ep = data["epochs"][epoch]
-    scale = page.inner_text("#lb-scale")
-    assert scale.startswith(f"Anchor {ep['anchor']} = {ep['anchor_elo']:.0f}.")
-    assert ep["description"] not in scale and "fitted" not in scale and "seat" not in scale
-    assert "The Playdek estimate switch" in page.inner_text("#lb-note")
-    page.check("input[name=lb-mode][value=playdek]")
-    assert page.text_content("#lb-th-elo") == "Playdek est."
+    assert page.is_visible("#lb-scale-mode") and page.text_content("#lb-th-elo") == "Playdek est.", "the estimate by default"
     rows = page.eval_on_selector_all(
         "#lb-body tr", "rs => rs.map(r => [r.dataset.player, r.querySelector('.lb-elo').textContent])")
-    assert rows == [[p, f"{estimate[p]['rating']:.0f}"] for p in reversed(players)]
+    assert rows == [[p, f"{at20['players'][p]['rating']:.0f}"] for p in reversed(players)]
     note = page.inner_text("#lb-note")
     assert note.startswith("Estimates based on self-reported human ratings, not ratings from the Playdek app")
     assert "a model's rating there could differ" in note and "7 clean games against 3 people" in note
-    assert "scale=playdek" in page.url
+    assert "count here as 20 games against people" in note and "±78" in note
+    assert "scale=" not in page.url and "prior=" not in page.url
     assert "anchor" not in page.inner_text("#lb-scale").lower()
+    assert page.is_visible("#lb-prior") and page.input_value("#lb-prior-games") == "20"
+    page.select_option("#lb-prior-games", "5")
+    rows = page.eval_on_selector_all(
+        "#lb-body tr", "rs => rs.map(r => [r.dataset.player, r.querySelector('.lb-elo').textContent])")
+    assert rows == [[p, f"{at5['players'][p]['rating']:.0f}"] for p in players], "the fit at the chosen weight, in its order"
+    assert "count here as 5 games against people" in page.inner_text("#lb-note") and "prior=5" in page.url
+    ep = data["epochs"][epoch]
     page.click(f"#lb-body tr[data-player='{ep['anchor']}']")
     assert "the anchor" not in page.inner_text("#lb-detail")
     assert "anchor" not in page.inner_text("#lb-table").lower()
@@ -724,9 +736,17 @@ def test_the_leaderboard_switches_to_the_playdek_estimate(browser: Any, static_s
     assert "Playdek estimate" in page.inner_text("#lb-detail")
     page.reload()
     page.wait_for_selector("#lb-body tr")
-    assert page.is_checked("input[name=lb-mode][value=playdek]"), "the scale is kept in the link"
+    assert page.input_value("#lb-prior-games") == "5", "the weight is kept in the link"
     page.check("input[name=lb-mode][value=anchor]")
-    assert page.text_content("#lb-th-elo") == "Elo" and "scale=playdek" not in page.url
+    assert page.text_content("#lb-th-elo") == "Elo" and "scale=anchor" in page.url
+    assert not page.is_visible("#lb-prior")
+    scale = page.inner_text("#lb-scale")
+    assert scale.startswith(f"Anchor {ep['anchor']} = {ep['anchor_elo']:.0f}.")
+    assert ep["description"] not in scale and "fitted" not in scale and "seat" not in scale
+    assert "The Playdek estimate switch" in page.inner_text("#lb-note")
+    page.reload()
+    page.wait_for_selector("#lb-body tr")
+    assert page.is_checked("input[name=lb-mode][value=anchor]"), "the anchor scale is kept in the link"
     assert not errors
 
 

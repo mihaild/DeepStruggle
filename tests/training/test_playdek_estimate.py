@@ -4,6 +4,7 @@ database and its logins are private, so no test reads them."""
 from __future__ import annotations
 
 import json
+import math
 import pathlib
 from typing import Any, Dict, List, Optional
 
@@ -14,7 +15,7 @@ from tools import playdek_estimate as cli
 from tools.lib import leaderboard as lb
 from tools.lib.game_stats import RatedGame, RatingCheck, SubmissionDict, _map_rating
 from tools.lib.playdek_estimate import (KEYED_DEFAULT_SEARCH, OLD_DEFAULT_SEARCH, HumanGame, PlayedGame, estimate, fit,
-                                        player_index, positions, rated_games)
+                                        player_index, positions, rated_games, sds_for_prior_games)
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 NET = "E7-A8-R1-S44@6400M+(R34,R34-S45,R34-S46)@7120..7200M"
@@ -214,3 +215,28 @@ def test_only_the_fit_step_of_the_pages_workflow_has_the_token() -> None:
     for job, spec in flow["jobs"].items():
         assert "secrets." not in json.dumps({k: v for k, v in spec.items() if k != "steps"}), job
     assert "secrets." not in json.dumps(flow.get("env", {}))
+
+
+def test_a_weight_is_the_sd_its_games_would_measure() -> None:
+    net, cfg = sds_for_prior_games(20)
+    total = math.hypot(net, cfg)
+    # k games at even odds carry k C^2 / 4 of information: the prior's precision.
+    assert abs(1.0 / total ** 2 - 20 * (math.log(10) / 400) ** 2 / 4) < 1e-12
+    assert abs(net ** 2 / total ** 2 - 0.8) < 1e-12
+    assert round(total) == 78
+    with pytest.raises(ValueError):
+        sds_for_prior_games(0)
+
+
+def test_more_weight_holds_a_played_player_nearer_its_leaderboard_gap() -> None:
+    position = {"a": 1600.0, "b": 1600.0}
+    network_of = {"a": "na", "b": "nb"}
+    # People beat a much more than b, though the leaderboard puts them level.
+    games = [HumanGame(f"p{i}", 1600.0, 1.0, "a") for i in range(30)] + \
+            [HumanGame(f"q{i}", 1600.0, 0.0 if i % 2 else 1.0, "b") for i in range(30)]
+    gaps = []
+    for k in (5, 20, 500):
+        n_sd, c_sd = sds_for_prior_games(k)
+        f = fit(games, position, network_of, n_sd, c_sd)
+        gaps.append(abs((f.networks["na"] + f.configs["a"]) - (f.networks["nb"] + f.configs["b"])))
+    assert gaps[0] > gaps[1] > gaps[2]

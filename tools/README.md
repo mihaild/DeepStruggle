@@ -511,9 +511,15 @@ PYTHONPATH=.:build/release python tools/game_stats.py rating data/game_stats/gam
   replay here also counts if the Worker stamped it before `UNVERIFIED_BEFORE`: E7's games are wanted,
   and nothing new can claim to predate that. A player's estimate is its leaderboard Elo on the newest
   epoch's scale (an older epoch's through the newer one's anchor) + one shared offset + a deviation
-  shared by its network, N(0, `--network-sd`^2, default 20) + its own, N(0, `--config-sd`^2, default
-  10): many games against people can move a player and its network's other players, and one cannot
-  override a gap the leaderboard measured (removing any one game moves a gap by about 3 points), and a player with none takes its network's deviation, with the priors in its uncertainty.
+  shared by its network + its own. Their priors are set by a weight (owner, 2026-11-17): the games
+  between models count as `k` games against people, so the deviation's sd is what `k` games at even
+  odds measure, 2 / (C sqrt(k)) with C = ln 10 / 400 -- 78 points at the default 20 -- split 80 : 20 in
+  variance between the network and the configuration (`sds_for_prior_games`). A player few people have
+  played sits near its leaderboard rating with a wide interval; one many have played moves to what
+  they measured, and a player with none takes its network's deviation, with the priors in its
+  uncertainty. Every weight of `--prior-games` (default 5, 10, 20, 50, 100, 200, 500) is fitted and
+  published (`by_prior_games`) for the page's choice, the `--default-prior-games` one (20) also at the
+  top level. (Until 2026-11-17 the sds were fixed at 20 and 10, about `k` = 240.)
   There is no seat term: how a model plays each seat is part of its strength. The ± and interval are
   a bootstrap over the people. The output
   and the log hold aggregates only; the logins stay in memory.

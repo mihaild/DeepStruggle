@@ -46,6 +46,14 @@ _C = math.log(10.0) / 400.0
 #: and 50, one loss took a player from 50 points above another to 26 below (owner, 2026-10-31).
 DEFAULT_NETWORK_SD = 20.0
 DEFAULT_CONFIG_SD = 10.0
+#: The page's fits are set by a weight instead (owner, 2026-11-17): the games between models count as `k` games against
+#: people. The prior on a player's deviation from its leaderboard position is then what k games at even odds measure,
+#: sd = 2 / (C sqrt(k)) -- 78 points at 20 -- so a player few people have played sits near its leaderboard rating with a
+#: wide interval, and one many have played moves to what they measured. The network takes NETWORK_SHARE of that
+#: variance and the configuration the rest, the 20 / 10 split above (which is k = 240).
+DEFAULT_PRIOR_GAMES = 20
+PRIOR_GAMES_CHOICES = (5, 10, 20, 50, 100, 200, 500)
+NETWORK_SHARE = 0.8
 #: The prior on the offset, around the mean of (human rating - position).
 OFFSET_PRIOR_SD = 400.0
 BOOTSTRAP = 1000
@@ -82,6 +90,8 @@ class Estimate(TypedDict):
     offset: float
     network_sd: float
     config_sd: float
+    #: The weight the sds came from (sds_for_prior_games), None when they were given directly.
+    prior_games: Optional[float]
     #: The epoch whose scale `position` is on.
     reference_epoch: str
     players: Dict[str, PlayerEstimate]
@@ -115,6 +125,15 @@ class Fit:
     #: Only what has games in the fit.
     networks: Dict[str, float]
     configs: Dict[str, float]
+
+
+def sds_for_prior_games(k: float) -> Tuple[float, float]:
+    """(network_sd, config_sd) for games between models worth `k` games against people: the deviation's sd is what k
+    games at even odds measure (their information is k C^2 / 4), split NETWORK_SHARE : 1 - NETWORK_SHARE in variance."""
+    if k <= 0:
+        raise ValueError(f"the weight must be a positive number of games, got {k}")
+    sd = 2.0 / (_C * math.sqrt(k))
+    return sd * math.sqrt(NETWORK_SHARE), sd * math.sqrt(1.0 - NETWORK_SHARE)
 
 
 def positions(board: Board) -> Tuple[str, Dict[str, float]]:
@@ -228,9 +247,13 @@ def _networks(board: Board, players: Iterable[str]) -> Dict[str, str]:
 
 def estimate(played: Sequence[PlayedGame], left_out: Mapping[str, int], as_of: str, board: Board,
              is_before_keyed_default: Callable[[str], Optional[bool]], network_sd: float = DEFAULT_NETWORK_SD,
-             config_sd: float = DEFAULT_CONFIG_SD, bootstrap: int = BOOTSTRAP, seed: int = 0) -> Estimate:
+             config_sd: float = DEFAULT_CONFIG_SD, bootstrap: int = BOOTSTRAP, seed: int = 0,
+             prior_games: Optional[float] = None) -> Estimate:
     """Every player the newest epoch's scale reaches, on Playdek's scale. `left_out` counts the games
-    that did not pass the check, by reason. Raises when no game counts."""
+    that did not pass the check, by reason. Raises when no game counts. `prior_games` sets both sds
+    (sds_for_prior_games) in place of `network_sd` and `config_sd`."""
+    if prior_games is not None:
+        network_sd, config_sd = sds_for_prior_games(prior_games)
     reference, position = positions(board)
     games, excluded = rated_games(played, board, is_before_keyed_default)
     excluded = {**left_out, **excluded}
@@ -273,5 +296,5 @@ def estimate(played: Sequence[PlayedGame], left_out: Mapping[str, int], as_of: s
             "l": sum(g.score == 1.0 for g in mine),
         }
     return {"as_of": as_of[:10], "games": len(placed), "humans": len(logins),
-            "excluded": excluded, "offset": round(point.offset, 1), "network_sd": network_sd, "config_sd": config_sd,
-            "reference_epoch": reference, "players": players}
+            "excluded": excluded, "offset": round(point.offset, 1), "network_sd": round(network_sd, 1),
+            "config_sd": round(config_sd, 1), "prior_games": prior_games, "reference_epoch": reference, "players": players}

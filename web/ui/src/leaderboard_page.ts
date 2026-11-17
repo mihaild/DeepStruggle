@@ -20,6 +20,9 @@
  * Playdek's scale (tools/lib/playdek_estimate.py), and a switch shows those in the table. It is one
  * estimate per player whatever the epoch shown, and is not the anchored Elo shifted: games against
  * people move a player and, more loosely, its network's other players away from their leaderboard gaps.
+ * How far is a weight the reader picks: the games between models count as that many games against
+ * people (tools/lib/playdek_estimate.sds_for_prior_games), each weight fitted at build time. The page
+ * opens on every player and on the Playdek scale (owner, 2026-11-17); a link names any other choice.
  */
 
 import { SiteLevel, fetchSiteLevels, hfCatalog } from "./analysis/hf_catalog";
@@ -117,8 +120,13 @@ interface PlaydekEstimate {
   offset: number;
   network_sd: number;
   config_sd: number;
+  /** How many games against people the games between models count as (the sds above follow from it); absent
+   *  from an estimate fitted before 2026-11-17, whose sds were set directly. */
+  prior_games?: number | null;
   reference_epoch: string;
   players: Record<string, PlayerEstimate>;
+  /** The same fit at each weight the page offers, keyed by the weight; the top level is the default one. */
+  by_prior_games?: Record<string, PlaydekEstimate>;
 }
 
 interface LeaderboardData {
@@ -191,6 +199,8 @@ class LeaderboardPage {
   private tab: Tab = "ratings";
   private allCodes = false;
   private mode: Mode = "anchor";
+  /** The weight of the Playdek fit shown: a key of `by_prior_games`, "" for the top-level fit. */
+  private priorGames = "";
   /** The Hugging Face repo's default model (an .onnx path), once read; null until then or if none. */
   private hfDefault: string | null = null;
   /** Its default search (null: the policy): the repo's, else the workbench's built-in one. */
@@ -202,18 +212,25 @@ class LeaderboardPage {
     const params = new URLSearchParams(location.search);
     const names = Object.keys(data.epochs);
     this.epoch = names.includes(params.get("epoch") ?? "") ? params.get("epoch")! : defaultEpoch(data.epochs);
+    // Every player and the Playdek scale by default (owner, 2026-11-17); a link names the others.
     const v = params.get("view");
-    this.view = v === "lineage" || v === "all" ? v : "main";
+    this.view = v === "lineage" || v === "main" ? v : "all";
     for (const l of (params.get("lineage") ?? "").split(",")) if (l) this.lineages.add(l);
     this.selected = params.get("player");
     this.tab = params.get("tab") === "codes" ? "codes" : "ratings";
     this.allCodes = params.get("codes") === "all";
-    this.mode = data.playdek && params.get("scale") === "playdek" ? "playdek" : "anchor";
+    this.mode = data.playdek && params.get("scale") !== "anchor" ? "playdek" : "anchor";
     $("lb-scale-mode").hidden = !data.playdek;
     for (const r of document.querySelectorAll<HTMLInputElement>("input[name=lb-mode]")) {
       r.checked = r.value === this.mode;
       r.addEventListener("change", () => { if (r.checked) { this.mode = r.value as Mode; this.render(); } });
     }
+    const weights = this.priorWeights();
+    this.priorGames = weights.includes(params.get("prior") ?? "") ? params.get("prior")! : this.defaultPrior();
+    const prior = $<HTMLSelectElement>("lb-prior-games");
+    prior.innerHTML = weights.map(w => `<option value="${esc(w)}">${esc(w)}</option>`).join("");
+    prior.value = this.priorGames;
+    prior.addEventListener("change", () => { this.priorGames = prior.value; this.render(); });
 
     const sel = $<HTMLSelectElement>("lb-epoch");
     sel.innerHTML = names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
@@ -324,8 +341,26 @@ class LeaderboardPage {
     return [...shown].sort((x, y) => at(y) - at(x));
   }
 
+  /** The weights the estimate was fitted at, smallest first; none for an estimate fitted at one only. */
+  private priorWeights(): string[] {
+    return Object.keys(this.data.playdek?.by_prior_games ?? {}).sort((a, b) => Number(a) - Number(b));
+  }
+
+  /** The weight the page opens on: the top-level fit's. */
+  private defaultPrior(): string {
+    const pg = this.data.playdek?.prior_games;
+    const weights = this.priorWeights();
+    return pg != null && weights.includes(String(pg)) ? String(pg) : (weights[0] ?? "");
+  }
+
+  /** The Playdek fit at the chosen weight (the top-level fit when the estimate has only that one). */
+  private playdekFit(): PlaydekEstimate | undefined {
+    const pd = this.data.playdek;
+    return pd?.by_prior_games?.[this.priorGames] ?? pd;
+  }
+
   private estimateOf(pid: string): PlayerEstimate | undefined {
-    return this.data.playdek?.players[pid];
+    return this.playdekFit()?.players[pid];
   }
 
   private links(pid: string): string {
@@ -499,9 +534,11 @@ class LeaderboardPage {
 
   private renderScale(): void {
     const ep = this.ep;
-    const pd = this.data.playdek;
+    const pd = this.playdekFit();
+    $("lb-prior").hidden = this.mode !== "playdek" || this.priorWeights().length === 0;
     $("lb-note").textContent = this.mode === "playdek" && pd
       ? t("leaderboard:note.playdek", { games: pd.games, humans: pd.humans, asOf: pd.as_of })
+        + (pd.prior_games != null ? " " + t("leaderboard:note.priorGames", { k: pd.prior_games, sd: Math.round(Math.hypot(pd.network_sd, pd.config_sd)) }) : "")
       : t("leaderboard:note.anchor") + (pd ? " " + t("leaderboard:note.estimatePointer") : "");
     const anchor = this.mode === "playdek" ? "" : t("leaderboard:scale.anchor", { anchor: esc(ep.anchor), elo: ep.anchor_elo.toFixed(0) }) + " ";
     $("lb-scale").innerHTML = `${anchor}${t("leaderboard:scale.clickRow")}`
@@ -537,10 +574,11 @@ class LeaderboardPage {
     if (this.tab === "codes") params.set("tab", "codes");
     if (this.allCodes) params.set("codes", "all");
     params.set("epoch", this.epoch);
-    if (this.view !== "main") params.set("view", this.view);
+    if (this.view !== "all") params.set("view", this.view);
     if (this.view === "lineage" && this.lineages.size) params.set("lineage", [...this.lineages].sort().join(","));
     if (this.selected) params.set("player", this.selected);
-    if (this.mode === "playdek") params.set("scale", "playdek");
+    if (this.data.playdek && this.mode === "anchor") params.set("scale", "anchor");
+    if (this.mode === "playdek" && this.priorGames && this.priorGames !== this.defaultPrior()) params.set("prior", this.priorGames);
     const lang = new URLSearchParams(location.search).get("lang");
     if (lang) params.set("lang", lang);
     history.replaceState(null, "", `?${params}`);

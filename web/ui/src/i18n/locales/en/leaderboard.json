@@ -15,7 +15,10 @@
     "scaleAnchor": "Anchor scale",
     "scalePlaydek": "Playdek estimate",
     "thPlayer": "Player",
-    "thLinks": "Links"
+    "thLinks": "Links",
+    "priorGamesBefore": "Games between models count as",
+    "priorGamesAfter": "games against people",
+    "priorGamesTitle": "How much the games between models weigh against games people played: few games against people leave a player near its leaderboard rating with a wide ±, many move it to what they measured"
   },
   "tag": {
     "main": "MAIN",
@@ -53,7 +56,8 @@
   "note": {
     "anchor": "These ratings come only from games between the models listed here, on a scale anchored at one of them. They do not correspond to human Elo ratings, such as those of the Playdek Twilight Struggle app.",
     "estimatePointer": "The Playdek estimate switch shows an estimate of that scale, from games people played against these models on this site.",
-    "playdek": "Estimates based on self-reported human ratings, not ratings from the Playdek app: each person typed in their own Playdek rating, the games were played on this site rather than in the app, and a model's rating there could differ. They come from {{games}} clean games against {{humans}} people to {{asOf}}, with takebacks allowed. Each player starts from its leaderboard gaps to the others; games against people then move it and, more loosely, the other players on its network. One whose network nobody has faced keeps its gaps alone, so its ± is wider."
+    "playdek": "Estimates based on self-reported human ratings, not ratings from the Playdek app: each person typed in their own Playdek rating, the games were played on this site rather than in the app, and a model's rating there could differ. They come from {{games}} clean games against {{humans}} people to {{asOf}}, with takebacks allowed. Each player starts from its leaderboard gaps to the others; games against people then move it and, more loosely, the other players on its network. One whose network nobody has faced keeps its gaps alone, so its ± is wider.",
+    "priorGames": "Games between models count here as {{k}} games against people: a player may stray from its leaderboard rating by about ±{{sd}} before games against people move it."
   },
   "scale": {
     "anchor": "Anchor <code>{{anchor}}</code> = {{elo}}.",

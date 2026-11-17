@@ -31,13 +31,14 @@
     <section class="lb-controls">
       <label><span data-i18n="leaderboard:page.epoch">Engine epoch</span> <select id="lb-epoch"></select></label>
       <div class="lb-view" role="radiogroup" aria-label="Which players to show" data-i18n-aria-label="leaderboard:page.whichPlayers">
-        <label><input type="radio" name="lb-view" value="main" checked> <span data-i18n="leaderboard:page.viewMain">Main players</span></label>
+        <label><input type="radio" name="lb-view" value="main"> <span data-i18n="leaderboard:page.viewMain">Main players</span></label>
         <label><input type="radio" name="lb-view" value="lineage"> <span data-i18n="leaderboard:page.viewLineage">Main + lineages</span></label>
-        <label><input type="radio" name="lb-view" value="all"> <span data-i18n="leaderboard:page.viewAll">All players</span></label>
+        <label><input type="radio" name="lb-view" value="all" checked> <span data-i18n="leaderboard:page.viewAll">All players</span></label>
       </div>
       <div class="lb-view" id="lb-scale-mode" role="radiogroup" aria-label="Which rating scale to show" data-i18n-aria-label="leaderboard:page.whichScale" hidden>
-        <label><input type="radio" name="lb-mode" value="anchor" checked> <span data-i18n="leaderboard:page.scaleAnchor">Anchor scale</span></label>
-        <label><input type="radio" name="lb-mode" value="playdek"> <span data-i18n="leaderboard:page.scalePlaydek">Playdek estimate</span></label>
+        <label><input type="radio" name="lb-mode" value="anchor"> <span data-i18n="leaderboard:page.scaleAnchor">Anchor scale</span></label>
+        <label><input type="radio" name="lb-mode" value="playdek" checked> <span data-i18n="leaderboard:page.scalePlaydek">Playdek estimate</span></label>
+        <label id="lb-prior" hidden title="How much the games between models weigh against games people played: few games against people leave a player near its leaderboard rating with a wide ±, many move it to what they measured" data-i18n-title="leaderboard:page.priorGamesTitle"><span data-i18n="leaderboard:page.priorGamesBefore">Games between models count as</span> <select id="lb-prior-games"></select> <span data-i18n="leaderboard:page.priorGamesAfter">games against people</span></label>
       </div>
       <div class="lb-lineages" id="lb-lineages" hidden></div>
     </section>
