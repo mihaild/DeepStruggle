@@ -64,8 +64,10 @@ web/ui/
 │   │                           # play links open each player's search; tags HF DEFAULT on the player
 │   │                           # that is the repo's default model and search, read live from
 │   │                           # models.json (hf_catalog.ts) after render; tags SITE: <LEVEL> on the
-│   │                           # players twilightstruggle.app offers as its AI's levels, and adds the
-│   │                           # site's description to their card, read the same way from
+│   │                           # players twilightstruggle.app offers as its AI's levels (SITE: <LEVEL>
+│   │                           # (HIDDEN), dashed, on the levels it keeps only for games begun at them;
+│   │                           # owner, 2026-11-17), and adds the site's description to their card,
+│   │                           # read the same way from
 │   │                           # site_models.json (none if it cannot be read); with an estimate in its data
 │   │                           # (tools/playdek_estimate.py, via TS_PLAYDEK_ESTIMATE) the page opens on
 │   │                           # the players on Playdek's scale, in that scale's order (?scale=anchor for

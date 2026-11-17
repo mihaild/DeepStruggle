@@ -193,13 +193,16 @@ export interface SiteLevel {
   path: string;
   /** Its `search=` value: "policy" or a rollout spec. */
   search: string;
+  /** Not offered on the site: kept only so games begun at it go on (its `hidden`). */
+  hidden: boolean;
 }
 
 /**
  * The levels twilightstruggle.app offers, from `site_models.json` in the repo, which that site reads
- * as its pages open (its ai/ui/src/analysis/site_models.ts describes the file). Only the levels it
- * offers -- not those it keeps only for games begun at them -- and only those on `repo`'s models. A
- * level this page cannot read is left out rather than failing the rest.
+ * as its pages open (its ai/ui/src/analysis/site_models.ts describes the file): those it offers and,
+ * marked `hidden`, those it keeps only for games begun at them (owner, 2026-11-17: the leaderboard
+ * labels both), on `repo`'s models only. A level this page cannot read is left out rather than
+ * failing the rest.
  */
 export async function fetchSiteLevels(repo: string): Promise<SiteLevel[]> {
   checkRepoName(repo);
@@ -210,10 +213,10 @@ export async function fetchSiteLevels(repo: string): Promise<SiteLevel[]> {
   const out: SiteLevel[] = [];
   for (const l of doc.levels as Array<Record<string, unknown> | null>) {
     const c = l?.checkpoint as Record<string, unknown> | undefined;
-    if (!l || l.hidden === true || typeof l.id !== "string" || typeof l.name !== "string" || typeof l.search !== "string"
+    if (!l || typeof l.id !== "string" || typeof l.name !== "string" || typeof l.search !== "string"
         || !c || c.repo !== repo || typeof c.path !== "string" || !c.path.endsWith(".onnx")) continue;
     out.push({ id: l.id, name: l.name, description: typeof l.description === "string" ? l.description : "",
-               path: c.path, search: l.search });
+               path: c.path, search: l.search, hidden: l.hidden === true });
   }
   return out;
 }

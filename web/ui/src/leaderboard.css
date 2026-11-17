@@ -93,6 +93,7 @@ a:hover { text-decoration: underline; }
 .lb-tag.kind { background: rgba(167, 139, 250, 0.18); color: var(--accent); }
 .lb-tag.hf { background: rgba(52, 211, 153, 0.16); color: var(--hf); }
 .lb-tag.site { background: rgba(56, 189, 248, 0.16); color: var(--site); }
+.lb-tag.site.hidden-level { background: transparent; border: 1px dashed var(--site); }
 
 .lb-detail { margin-top: 18px; padding: 14px 16px; background: var(--bg-panel-solid);
   border: 1px solid var(--border-color); border-radius: 6px; }

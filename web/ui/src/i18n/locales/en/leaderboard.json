@@ -25,7 +25,9 @@
     "hfDefault": "HF DEFAULT",
     "hfDefaultTitle": "The default on Hugging Face: the workbench plays this network with this search when a link names neither",
     "site": "SITE: {{level}}",
-    "siteTitle": "The {{level}} level of the AI on twilightstruggle.app"
+    "siteTitle": "The {{level}} level of the AI on twilightstruggle.app",
+    "siteHidden": "SITE: {{level}} (HIDDEN)",
+    "siteHiddenTitle": "The {{level}} level of the AI on twilightstruggle.app: not offered there, kept so games begun at it go on"
   },
   "kind": {
     "gumbel": "Gumbel",
@@ -85,7 +87,8 @@
     "theAnchor": " (the anchor)",
     "against": "Against",
     "asUs": "as US",
-    "asUssr": "as USSR"
+    "asUssr": "as USSR",
+    "siteHiddenNote": "It is hidden there: not offered, kept so games begun at it go on."
   },
   "codes": {
     "predates": "This leaderboard.json predates the codes; rebuild it with tools/scripts/build_web.sh.",

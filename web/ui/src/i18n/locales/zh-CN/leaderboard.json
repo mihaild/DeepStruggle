@@ -25,7 +25,9 @@
     "hfDefault": "HF 默认",
     "hfDefaultTitle": "Hugging Face 默认配置：链接未指定时，工作台采用此网络及搜索设置",
     "site": "站点：{{level}}",
-    "siteTitle": "twilightstruggle.app 中的 {{level}} 级电脑对手"
+    "siteTitle": "twilightstruggle.app 中的 {{level}} 级电脑对手",
+    "siteHidden": "站点：{{level}}（隐藏）",
+    "siteHiddenTitle": "twilightstruggle.app 上 AI 的 {{level}} 难度：那里不再提供，仅保留以便继续已开始的对局"
   },
   "kind": {
     "gumbel": "Gumbel",
@@ -84,7 +86,8 @@
     "theAnchor": "（评级基准）",
     "against": "对手",
     "asUs": "执美国",
-    "asUssr": "执苏联"
+    "asUssr": "执苏联",
+    "siteHiddenNote": "该难度在那里是隐藏的：不再提供，仅保留以便继续已开始的对局。"
   },
   "codes": {
     "predates": "此 leaderboard.json 早于配置编号体系；请运行 tools/scripts/build_web.sh 重新构建。",

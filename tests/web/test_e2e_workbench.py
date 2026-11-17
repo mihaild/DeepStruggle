@@ -842,8 +842,9 @@ def test_the_leaderboard_tags_the_hugging_face_default_player(browser: Any, stat
 def test_the_leaderboard_tags_the_players_twilightstruggle_app_offers(browser: Any, static_site: str) -> None:
     """site_models.json (read when the page opens) lists the AI's levels on twilightstruggle.app: the
     player each offered level is -- its network's .onnx, played with the level's search -- is tagged
-    with the level, and its card adds the site's description, as text. A hidden level or one on another
-    repo tags nothing; a file the page cannot read tags nothing and breaks nothing."""
+    with the level, and its card adds the site's description, as text. A hidden level (kept for games
+    begun at it) tags its player too, marked hidden (owner, 2026-11-17); one on another repo tags nothing;
+    a file the page cannot read tags nothing and breaks nothing."""
     data, epoch, rated = _leaderboard_data()
     players = data["players"]
     pid = next(p for p in sorted(rated) if (players[p]["workbench_search"] or "").startswith("rollout")
@@ -882,11 +883,13 @@ def test_the_leaderboard_tags_the_players_twilightstruggle_app_offers(browser: A
     page.wait_for_selector("#lb-body .lb-tag.site")
     assert tagged(page, "SITE: STRONG") == {pid}
     assert tagged(page, "SITE: QUICK") == greedy
-    assert not tagged(page, "SITE: OLD") and not tagged(page, "SITE: ELSEWHERE")
+    assert tagged(page, "SITE: OLD (HIDDEN)") == {pid} and not tagged(page, "SITE: OLD")
+    assert not tagged(page, "SITE: ELSEWHERE")
     page.click(f"#lb-body tr[data-player='{pid}']")
     detail = page.inner_text("#lb-detail")
     assert "The Strong level on twilightstruggle.app: The Strong <b>level</b>." in detail, "the description is text"
     assert "Quick" not in detail
+    assert "The Old level on twilightstruggle.app: The Old <b>level</b>. It is hidden there" in detail
     assert not page.errors
     page.close()
 

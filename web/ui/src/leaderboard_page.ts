@@ -175,8 +175,12 @@ const hfTag = () => `<span class="lb-tag hf" title="${esc(t("leaderboard:tag.hfD
 const SITE_URL = "https://twilightstruggle.app/ai/";
 
 function siteTag(level: SiteLevel): string {
-  return `<span class="lb-tag site" title="${esc(t("leaderboard:tag.siteTitle", { level: level.name }))}">${
-    t("leaderboard:tag.site", { level: esc(level.name.toUpperCase()) })}</span>`;
+  // A hidden level is not offered on the site; it is kept for games begun at it, and labelled so.
+  const title = level.hidden ? t("leaderboard:tag.siteHiddenTitle", { level: level.name })
+    : t("leaderboard:tag.siteTitle", { level: level.name });
+  const name = esc(level.name.toUpperCase());
+  const tag = level.hidden ? t("leaderboard:tag.siteHidden", { level: name }) : t("leaderboard:tag.site", { level: name });
+  return `<span class="lb-tag site${level.hidden ? " hidden-level" : ""}" title="${esc(title)}">${tag}</span>`;
 }
 
 /** A player's kind as its tag says it; none for the greedy policy, the kind itself for one not listed. */
@@ -470,7 +474,8 @@ class LeaderboardPage {
         const site = `<a href="${SITE_URL}">twilightstruggle.app</a>`;
         return `<p>${siteTag(l)} ${l.description
           ? t("leaderboard:detail.siteLevelDescribed", { level: esc(l.name), site, description: esc(l.description) })
-          : t("leaderboard:detail.siteLevel", { level: esc(l.name), site })}</p>`;
+          : t("leaderboard:detail.siteLevel", { level: esc(l.name), site })}${
+          l.hidden ? " " + t("leaderboard:detail.siteHiddenNote") : ""}</p>`;
       }).join("")}
       ${codeLine}
       ${links ? `<p class="lb-links">${links}</p>` : ""}
