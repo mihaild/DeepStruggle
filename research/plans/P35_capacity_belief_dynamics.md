@@ -294,6 +294,11 @@ selfplay`: 256 of the network's own games at T = 1):
 It finds the opponent unasked: on the network's games it keeps the whole gain, on humans it avoids the harm
 (a small gain instead of −11.7%). This is the belief mode for the leaderboard and the browser alike.
 
+**(2026-11-17: on the site's games against people, conditioning on every decision as the root does, the averaged
+belief is worse than the prior: −2.7% (R34 soup) and −3.3% (B6 soup) in log loss, against +12.4% / +9.1% on each
+network's self-play; it ranks the person's cards slightly better than random but is overconfident --
+[`log/P35_belief_vs_people.md`](../log/P35_belief_vs_people.md).)**
+
 **(2026-11-01: every belief-root number in this file and in P36 predates a fix: as the USSR, the root's
 worlds always held the US's unrevealed headline, because the tracker conditioned on that choice. Read them
 as upper bounds. `bindings/belief.cpp` no longer does.)**
