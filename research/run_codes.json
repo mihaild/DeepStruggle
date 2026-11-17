@@ -2743,6 +2743,46 @@
     "batch_size": 16384,
     "no_blunder_window": true
    }
+  },
+  "R136": {
+   "description": "R134 / R135's US exploiter recipe with B6's best checkpoint (its 11,520-11,600M SWA) as a fixed opponent from another run: J1 at its 9,990M state as the US exploiter of B6 -- does an exploiter from a different line find what B6's own did not (owner, 2026-11-17)",
+   "first": "E8-A8-R102-S44@9990M+R136_20261117_233419",
+   "flags": {
+    "reward_scheme": "terminal",
+    "opponent_frac": 1.0,
+    "opponent_checkpoints": [
+     "/workspace/data/checkpoints/E8.1-A8-R132-S45_20261115_135518/swa_11520-11600M.pt"
+    ],
+    "opponent_lock_side": "us",
+    "opponent_temperature": 0.0,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "zero_avoid_scope": "setup",
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
+  },
+  "R137": {
+   "description": "R134 / R135's USSR exploiter recipe with B6's best checkpoint (its 11,520-11,600M SWA) as a fixed opponent from another run: J1 at its 9,990M state as the USSR exploiter of B6 -- does an exploiter from a different line find what B6's own did not (owner, 2026-11-17)",
+   "first": "E8-A8-R102-S44@9990M+R137_20261117_233428",
+   "flags": {
+    "reward_scheme": "terminal",
+    "opponent_frac": 1.0,
+    "opponent_checkpoints": [
+     "/workspace/data/checkpoints/E8.1-A8-R132-S45_20261115_135518/swa_11520-11600M.pt"
+    ],
+    "opponent_lock_side": "ussr",
+    "opponent_temperature": 0.0,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "zero_avoid_scope": "setup",
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
   }
  },
  "views": {
@@ -3071,7 +3111,9 @@
   "E8.1-A8-R132-S45@11160M+S47_20261117_043449": "E8.1-A8-R132-S45@11160M+S47",
   "E8.1-A8-R132-S45@9990M+R133_20261117_105132": "E8.1-A8-R132-S45@9990M+R133",
   "E8.1-A8-R132-S45@11600M+R134_20261117_170350": "E8.1-A8-R132-S45@11600M+R134",
-  "E8.1-A8-R132-S45@11600M+R135_20261117_170430": "E8.1-A8-R132-S45@11600M+R135"
+  "E8.1-A8-R132-S45@11600M+R135_20261117_170430": "E8.1-A8-R132-S45@11600M+R135",
+  "E8-A8-R102-S44@9990M+R136_20261117_233419": "E8-A8-R102-S44@9990M+R136",
+  "E8-A8-R102-S44@9990M+R137_20261117_233428": "E8-A8-R102-S44@9990M+R137"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
