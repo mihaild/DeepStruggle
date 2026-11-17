@@ -544,5 +544,32 @@
     },
     "description": "P41 J1's best SWA under the raced 64-world keyed rollout root (k4, horizon 4, rule z2, stop earlier, its own leaves, keyed chance, aligned, box-4 headline, race 16), the search Arm S plays under on the board.",
     "report": null
+  },
+  "E8.1-A8-R132-S45@11160M+(S45,46,47)@11520..11600M": {
+    "network": "E8.1-A8-R132-S45@11160M+(S45,46,47)@11520..11600M",
+    "inference": {
+      "kind": "policy",
+      "temperature": 0.0
+    },
+    "description": "The B6 soup (11520-11600M), greedy.",
+    "report": null
+  },
+  "E8.1-A8-R132-S45@11160M+(S45,46,47)@11520..11600M~rollout(k=4,worlds=64,horizon=4,rule=z2,stop=earlier,leaf=own,chance=keyed,aligned=true,box4=true,race=16)": {
+    "network": "E8.1-A8-R132-S45@11160M+(S45,46,47)@11520..11600M",
+    "inference": {
+      "kind": "rollout",
+      "k": 4,
+      "worlds": 64,
+      "horizon": 4,
+      "rule": "z2",
+      "stop": "earlier",
+      "leaf": "own",
+      "chance": "keyed",
+      "aligned": true,
+      "box4": true,
+      "race": 16
+    },
+    "description": "The B6 soup (11520-11600M) under the raced 64-world keyed rollout root (k4, horizon 4, rule z2, stop earlier, its own leaves, keyed chance, aligned, box-4 headline, race 16), as J1's best SWA plays on the board.",
+    "report": null
   }
 }
