@@ -181,6 +181,12 @@ SWA reads, head to head at the same step and the two references (J1's and the co
 | 9,200M | 54.4 | 58.1 | 61.1 (57.6 / 58.6) | 52.5 (45.1 / 48.1) | 0.46-0.47 |
 | 9,600M | 53.7 | 56.5 | 62.8 (58.4 / 58.2) | 52.4 (45.0 / 46.7) | 0.46-0.47 |
 | 10,000M | 55.6 | 58.8 | **63.9** (56.3 / 59.5) | 51.9 (44.7 / 47.6) | 0.45-0.47 |
+| 10,400M | 54.3 | 56.8 | 62.5 (58.9 / 60.1) | 52.8 (47.7 / 49.1) | 0.46-0.47 |
+| 10,800M | 55.1 | 57.2 | 64.4 (59.8 / 59.8) | 54.4 (48.6 / 51.2) | 0.45-0.47 |
+| 11,200M | 54.0 | 56.3 | 63.7 (60.2 / 60.4) | 55.4 (48.0 / 51.8) | 0.45-0.47 |
+| 11,600M | 56.0 | 56.9 | **64.4** (58.5 / 58.9) | **55.6** (45.2 / 50.1) | 0.46-0.48 |
+| 12,000M | 55.6 | 55.8 | 64.4 (61.0 / 60.5) | 54.6 (48.0 / 50.6) | 0.46-0.47 |
+| 12,400M | 57.0 | 56.7 | 65.0 (62.5 / 59.1) | 53.6 (47.1 / 48.9) | 0.45-0.48 |
 
 From 7,600M a plateau at J1's best level (old reference 61-64%, J1's 13,600M SWA 49-52.5%); still 54-56% against the
 control and 56-62% against J1 at the same step. Setups at 9,600-10,000M: USSR Pol 3 Yug 3 96-99% (the Yugoslavia point
@@ -188,6 +194,23 @@ in every deal); US mixed, WG 4 in about two thirds (WG 4 Ita 3 Fra 1 Iran 1 22% 
 back on Finland 3 Poland 3, J1 on Fra 3 Can 2 Ita 2 Iran 1 Panama 1. Behaviour at 7,200 and 9,600M beside them: held-
 scoring-card losses 1.5 / 1.2% (control 2.8 / 3.0, J1 3.5 / 3.4); every other ending within a point or two; US event
 shares unchanged by any recipe (Nuclear Subs 33-44%, Chernobyl 1-9% almost all as a headline, Our Man in Tehran 1-3%).
+
+**B6 stopped at 12,408M for a soup (owner, 2026-11-17).** The best read of the two references' mean is 11,600M
+(64.4 / 55.6). Two seed branches from B6's 11,160M state to 11,600M, B6's flags with the env, pool and sampling seeds
+at 46 and 47 (`E8.1-A8-R132-S45@11160M+S46`, `+S47`); the soup of the three 11,520-11,600M SWAs,
+`E8.1-A8-R132-S45@11160M+(S45,46,47)@11520..11600M` (`data/checkpoints/_models/`):
+
+| the soup against | score | US / USSR seat |
+|:---|---:|---:|
+| B6's own 11,520-11,600M SWA (2,000 deals a side) | **53.4%** +- 0.8 | 52.4 / 54.5 |
+| the old reference, A13+R48's SWA (1,000 a side) | **68.8%** +- 1.0 | 68.0 / 69.7 |
+| J1's best, its 13,520-13,600M SWA (1,000 a side) | **57.1%** +- 1.1 | 57.9 / 56.2 |
+
+On the E8 leaderboard (1,000 deals a side against both main players): the soup greedy **1573** (J1's best SWA 1539),
+the soup under the raced 64-world keyed rollout root **1732**, the top of the board (J1's best under the same root
+1704). Behaviour report: [`E8.1-A8-R132-S45_11160M+_S45_46_47_11520..11600M.md`](../log/per_checkpoint/E8.1-A8-R132-S45_11160M+_S45_46_47_11520..11600M.md)
+-- held-scoring losses 0.9%, the USSR's human setup (Poland 4, East Germany 1, Yugoslavia 1) in 31% of games beside
+Poland 3 Yugoslavia 3 in 51%, the US on West Germany 4 in about 80%.
 
 By 6,000M level with J1's 13,600M SWA (the leaderboard's top network) at under half its steps. Setups drift: the US
 from West Germany 4 (~97% at 1,200-2,000M) to Fra 3 WG 3 Ita 2 Iran 1 (61% at 4,000M) and back to WG 4 Fra 2 Ita 2 Iran 1
