@@ -85,6 +85,7 @@ import random
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
+import ts_engine as ts
 
 from bindings.ts_env import model_obs_features
 from bindings.ts_env import check_obs_width
@@ -113,7 +114,7 @@ class OpponentPool:
                  league_frac: Optional[float] = None, obs_features: Optional[int] = None,
                  seats: Optional[Sequence[Optional[int]]] = None, per_game_own: bool = False,
                  prior_window: int = 0, prior_turn_weight: Tuple[float, float] = (1.0, 1.0),
-                 eviction: str = "spread") -> None:
+                 eviction: str = "spread", opponent_obs_features: Optional[int] = None) -> None:
         if not nets:
             raise ValueError("OpponentPool needs at least one frozen network")
         if capacity < 1:
@@ -146,6 +147,19 @@ class OpponentPool:
         # Rollouts use learner-view observations for both the policy and critic. Equal widths
         # alone do not imply equal semantics (HEADLINE_REVEAL changes existing slots).
         self.obs_features = model_obs_features(self.nets[0]) if obs_features is None else obs_features
+        #: The feature set the frozen side is seated with. Normally the learner's. A fixed opponent may differ from
+        #: the learner in rule bits only (ts.OBS_FEATURES_RULES: no width, no observation content), so its rows read
+        #: the learner's observation unchanged while its seat plays its own rules -- as in a tournament. Only for a
+        #: fixed opponent in every environment with the learner's side locked, so each seat's rules never change.
+        self.opponent_obs_features = self.obs_features if opponent_obs_features is None else int(opponent_obs_features)
+        if self.opponent_obs_features != self.obs_features:
+            diff = self.opponent_obs_features ^ self.obs_features
+            if diff & ~int(ts.OBS_FEATURES_RULES):
+                raise ValueError(f"opponent observation features {self.opponent_obs_features:#x} differ from the "
+                                 f"learner's {self.obs_features:#x} in observation bits, not only rule bits")
+            if lock_learner_side is None or frac < 1.0:
+                raise ValueError("an opponent with its own rule bits needs the learner's side locked and every "
+                                 "environment mixed (--opponent-lock-side, --opponent-frac 1.0)")
         for net in self.nets:
             self._check_obs_features(net)
         self.capacity = capacity
@@ -311,9 +325,21 @@ class OpponentPool:
 
     def _check_obs_features(self, net: Any) -> None:
         actual = model_obs_features(net)
-        if actual != self.obs_features:
+        if actual != self.opponent_obs_features:
             raise ValueError(f"opponent observation features {actual:#x} do not match "
-                             f"learner/pool observation features {self.obs_features:#x}")
+                             f"learner/pool observation features {self.opponent_obs_features:#x}")
+
+    def seat_features(self) -> Tuple[np.ndarray, np.ndarray]:
+        """(US, USSR) feature set of each environment's seats: the learner's, and on the frozen side the
+        opponent's (which differs only in rule bits, and only under a locked side in every environment)."""
+        us = np.full(self.num_envs, self.obs_features, dtype=np.uint32)
+        ussr = us.copy()
+        if self.opponent_obs_features != self.obs_features:
+            frozen_us = self.is_mixed & (self.learner_side == -1)
+            frozen_ussr = self.is_mixed & (self.learner_side == 1)
+            us[frozen_us] = self.opponent_obs_features
+            ussr[frozen_ussr] = self.opponent_obs_features
+        return us, ussr
 
     def _register(self) -> int:
         """Give the newest net a stable id and zeroed statistics."""

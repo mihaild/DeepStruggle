@@ -220,7 +220,11 @@ is in env steps (there is no wall-clock flag, since steps/sec depends on the pol
 must share `--train-steps` **and** `--pool-every-steps`, which sets how fast the opponent pool grows.
 `--snapshot-every-steps` is reporting only: evaluation restores the RNG streams it draws from.
 Training pools reject members whose observation feature bits differ from the learner's, including
-equal-width feature sets and newly added league members.
+equal-width feature sets and newly added league members. One exception (owner, 2026-11-17): fixed
+`--opponent-checkpoints` with no self pool that differ from the learner in *rule* bits only
+(`ts.OBS_FEATURES_RULES`: no width, no observation content), with `--opponent-lock-side` and
+`--opponent-frac 1.0` -- the opponent's seat plays its own rules, as in a tournament (an E8
+network exploited by an E8.1 learner).
 Every `training_metrics.jsonl` metric is mirrored to `<run-dir>/tb` for TensorBoard
 (`.venv/bin/python -m tensorboard.main --logdir <run-dir>/tb`; `--no-tensorboard` to skip).
 How to run and rate an arm, and how to record it: `research/method/running_experiments.md`,

@@ -3081,6 +3081,13 @@ def train_pipeline(
                           "not be comparable to a pooled one. Pass --reset-opponent-pool if that "
                           "is deliberate; otherwise check that the resume path names a run "
                           "directory that holds snapshot_<n>steps.pt files.", flush=True)
+        # A fixed opponent trained under other rule bits (e.g. an E8 network against an E8.1 learner) keeps
+        # its own rules in its seat; OpponentPool refuses any difference in observation bits.
+        _opp_features: Optional[int] = None
+        if opponent_checkpoints and not opponent_self_pool:
+            _fs = {model_obs_features(n) for n in _seed_nets}
+            if len(_fs) == 1 and next(iter(_fs)) != trainer.obs_features:
+                _opp_features = next(iter(_fs))
         trainer.opponent_pool = OpponentPool(
             _seed_nets,
             num_envs=num_envs,
@@ -3104,7 +3111,12 @@ def train_pipeline(
             prior_window=int(critic_prior_window),
             prior_turn_weight=(float(critic_prior_turn_weight[0]), float(critic_prior_turn_weight[1])),
             eviction=str(opponent_pool_eviction),
+            opponent_obs_features=_opp_features,
         )
+        if _opp_features is not None:
+            trainer.env.set_obs_features(*trainer.opponent_pool.seat_features())
+            print(f"[opponent pool] the fixed opponent's seat plays its own rule bits: features "
+                  f"{_opp_features:#x} against the learner's {trainer.obs_features:#x}", flush=True)
         if any(_seed_merged) or any(_seed_macro) or merged_influence or macro_influence:
             print(f"[opponent pool] action views (P23 / P42): learner "
                   f"{'E4.1' if merged_influence else 'macro' if macro_influence else 'E4'}, members "

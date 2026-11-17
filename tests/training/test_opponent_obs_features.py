@@ -54,3 +54,31 @@ def test_direct_trainer_pool_assignment_is_checked_before_rollout() -> None:
     with pytest.raises(ValueError, match="observation features"):
         trainer.collect_rollouts()
     assert env.runner.get_state(0).raw_bytes() == before
+
+
+def test_a_fixed_opponent_may_differ_in_rule_bits_only_and_keeps_its_own_seat() -> None:
+    reveal, gated = int(ts.OBS_FEATURE_HEADLINE_REVEAL), int(ts.OBS_FEATURE_OPP_EVENT_GATED)
+    learner, opponent = reveal | gated, reveal
+    pool = OpponentPool([create_ladder_net("cpu", **SHALLOW, obs_features=opponent)], 4, frac=1.0,
+                        lock_learner_side=1, obs_features=learner, opponent_obs_features=opponent)
+    us, ussr = pool.seat_features()
+    assert us.tolist() == [learner] * 4 and ussr.tolist() == [opponent] * 4
+    # A self-grown member would have the learner's bits, which this pool does not hold.
+    with pytest.raises(ValueError, match="observation features"):
+        pool.add(create_ladder_net("cpu", **SHALLOW, obs_features=learner), 10)
+
+
+def test_rule_bit_opponents_need_a_locked_side_in_every_environment() -> None:
+    reveal, gated = int(ts.OBS_FEATURE_HEADLINE_REVEAL), int(ts.OBS_FEATURE_OPP_EVENT_GATED)
+    nets = [create_ladder_net("cpu", **SHALLOW, obs_features=reveal)]
+    with pytest.raises(ValueError, match="locked"):
+        OpponentPool(nets, 4, frac=1.0, obs_features=reveal | gated, opponent_obs_features=reveal)
+    with pytest.raises(ValueError, match="locked"):
+        OpponentPool(nets, 4, frac=0.5, lock_learner_side=1, obs_features=reveal | gated, opponent_obs_features=reveal)
+
+
+def test_an_opponent_differing_in_observation_bits_is_still_refused() -> None:
+    reveal = int(ts.OBS_FEATURE_HEADLINE_REVEAL)
+    with pytest.raises(ValueError, match="observation bits"):
+        OpponentPool([create_ladder_net("cpu", **SHALLOW, obs_features=0)], 4, frac=1.0, lock_learner_side=1,
+                     obs_features=reveal, opponent_obs_features=0)
