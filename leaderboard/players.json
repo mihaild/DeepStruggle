@@ -545,6 +545,25 @@
     "description": "P41 J1's best SWA under the raced 64-world keyed rollout root (k4, horizon 4, rule z2, stop earlier, its own leaves, keyed chance, aligned, box-4 headline, race 16), the search Arm S plays under on the board.",
     "report": null
   },
+  "E8-A8-R102-S44@13520..13600M~rollout(k=4,worlds=64,horizon=4,rule=z2,stop=earlier,leaf=own,chance=keyed,belief=2048,aligned=true,box4=true,race=16)": {
+    "network": "E8-A8-R102-S44@13520..13600M",
+    "inference": {
+      "kind": "rollout",
+      "k": 4,
+      "worlds": 64,
+      "horizon": 4,
+      "rule": "z2",
+      "stop": "earlier",
+      "leaf": "own",
+      "chance": "keyed",
+      "belief": 2048,
+      "aligned": true,
+      "box4": true,
+      "race": 16
+    },
+    "description": "P41 J1's best SWA (13,520-13,600M) under the belief root: the raced 64-world keyed rollout root (k4, horizon 4, rule z2, stop earlier, its own leaves, keyed chance, aligned, box-4 headline, race 16) with each world's opponent hand dealt from the policy-likelihood belief over 2,048 hands, on the build with the headline-leak fix (a9e554a). Owner's ask (2026-11-17).",
+    "report": null
+  },
   "E8.1-A8-R132-S45@11160M+(S45,46,47)@11520..11600M": {
     "network": "E8.1-A8-R132-S45@11160M+(S45,46,47)@11520..11600M",
     "inference": {
