@@ -2683,6 +2683,26 @@
     "batch_size": 16384,
     "no_blunder_window": true
    }
+  },
+  "R133": {
+   "description": "R132 as R108's US exploiter: --opponent-frac 1.0 against fixed checkpoints, --opponent-lock-side us, --opponent-temperature 0, --zero-avoid-scope setup, no pool -- B6's US exploiter of J1's best SWA (owner, 2026-11-17: how far above J1 can the US get); J1 (E8) keeps its own rule bits in its seat",
+   "first": "E8.1-A8-R132-S45@9990M+R133_20261117_105132",
+   "flags": {
+    "reward_scheme": "terminal",
+    "opponent_frac": 1.0,
+    "opponent_checkpoints": [
+     "/workspace/data/checkpoints/E8-A8-R102-S44_20261030_200841/swa_13520-13600M.pt"
+    ],
+    "opponent_lock_side": "us",
+    "opponent_temperature": 0.0,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "zero_avoid_scope": "setup",
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
   }
  },
  "views": {
@@ -2997,7 +3017,19 @@
   "E8-A8-R102-S44@15210M+R120@16010M+R109_20261111_071000": "E8-A8-R102-S44@15210M+R120@16010M+R109",
   "E8.1-A31-R122-S45_20261111_091246": "E8.1-A31-R122-S45",
   "E8.1-A31-R123-S45_20261111_114544": "E8.1-A31-R123-S45",
-  "E8.1-A31-R119-S45_20261111_143853": "E8.1-A31-R119-S45"
+  "E8.1-A31-R119-S45_20261111_143853": "E8.1-A31-R119-S45",
+  "E8.1-A8-R119-S45@11230M+R124_20261114_000354": "E8.1-A8-R119-S45@11230M+R124",
+  "E8-A8-R102-S44@12010M+R125_20261114_095754": "E8-A8-R102-S44@12010M+R125",
+  "E8.1-A8-R119-S45@11230M+R126_20261114_133647": "E8.1-A8-R119-S45@11230M+R126",
+  "E8.1-A8-R119-S45@11230M+R128_20261114_175847": "E8.1-A8-R119-S45@11230M+R128",
+  "E8.1-A8-R119-S45@11230M+R124@13200M+R129_20261114_230548": "E8.1-A8-R119-S45@11230M+R124@13200M+R129",
+  "E8.1-A8-R119-S45@11230M+R130_20261115_052434": "E8.1-A8-R119-S45@11230M+R130",
+  "E8.1-A8-R119-S45@11230M+R131_20261115_064524": "E8.1-A8-R119-S45@11230M+R131",
+  "E8.1-A8-R119-S45@11230M+R132_20261115_112801": "E8.1-A8-R119-S45@11230M+R132",
+  "E8.1-A8-R132-S45_20261115_135518": "E8.1-A8-R132-S45",
+  "E8.1-A8-R132-S45@11160M+S46_20261117_043430": "E8.1-A8-R132-S45@11160M+S46",
+  "E8.1-A8-R132-S45@11160M+S47_20261117_043449": "E8.1-A8-R132-S45@11160M+S47",
+  "E8.1-A8-R132-S45@9990M+R133_20261117_105132": "E8.1-A8-R132-S45@9990M+R133"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
