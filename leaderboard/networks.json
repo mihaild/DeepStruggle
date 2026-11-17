@@ -163,7 +163,7 @@
     "sha256": "dfc8e050bc652bbcf0ff6b510caf213865114d4a2c773a67e613666f081d7bbf",
     "description": "Soup of three 80M SWAs over 11520-11600M: B6 (E8.1-A8-R132-S45, P47's no-pool run from scratch; recipe R132 = J1's R102 without the pool, pure win/loss) and its seed branches S46 and S47 from 11160M. 53.4% head to head against B6's own 11520-11600M SWA.",
     "old_names": [],
-    "hf": null,
+    "hf": "_models/E8.1-A8-R132-S45@11160M+(S45,46,47)@11520..11600M.pt",
     "report": "research/log/per_checkpoint/E8.1-A8-R132-S45_11160M+_S45_46_47_11520..11600M.md"
   }
 }
