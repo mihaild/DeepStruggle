@@ -102,6 +102,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                     help="first deal seed (default 10000); give an unused one to add games to a recorded pairing")
     ap.add_argument("--batch-chunk-size", type=int, default=1000)
     ap.add_argument("--pack-pairs", type=int, default=25)
+    ap.add_argument("--progress-every", type=float, default=600.0,
+                    help="seconds between progress lines while the pairings play; 0 = none")
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--output-report", default=None, help="also write tournament.py's markdown report here")
     ap.add_argument("--dry-run", action="store_true", help="print the pairings and stop")
@@ -198,7 +200,7 @@ def _run(a: argparse.Namespace) -> int:
     anchor = board.epochs[a.epoch]["anchor"]
     run_massive_tournament(
         model_specs=specs, games_per_side=a.games_per_side, temperature=0.0,
-        batch_chunk_size=a.batch_chunk_size, pack_pairs=a.pack_pairs,
+        batch_chunk_size=a.batch_chunk_size, pack_pairs=a.pack_pairs, progress_every=a.progress_every,
         anchor_model=anchor if anchor in index else entrants[0],
         anchor_elo=float(board.epochs[a.epoch]["anchor_elo"]),
         output_report=a.output_report, device=a.device,

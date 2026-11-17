@@ -300,6 +300,41 @@ def _add_counts(into: Dict[str, int], more: Dict[str, int]) -> None:
         into[k] = into.get(k, 0) + v
 
 
+class MatchProgress:
+    """A line every `every` seconds while a long matchup plays (a searched one runs for hours): games finished,
+    the first agent's score in them, the live games' mean turn and a rough time left from it. `every` <= 0 is
+    silent. The time left assumes a game lasts ten turns, so it runs long for games that end early."""
+
+    def __init__(self, label: str, total: int, every: float) -> None:
+        self.label, self.total, self.every = label, int(total), float(every)
+        self.t0 = self.last = time.time()
+        self.done = 0
+        self.points = 0.0
+        self.scored = 0
+
+    def finish(self, a_points: Optional[float] = None) -> None:
+        self.done += 1
+        if a_points is not None:
+            self.points += a_points
+            self.scored += 1
+
+    def tick(self, live_turns: Sequence[int]) -> None:
+        if self.every <= 0:
+            return
+        now = time.time()
+        if now - self.last < self.every:
+            return
+        self.last = now
+        live = len(live_turns)
+        frac = (self.done + sum(min(max(int(t) - 1, 0), 10) for t in live_turns) / 10.0) / max(1, self.total)
+        elapsed = now - self.t0
+        left = f", about {elapsed * (1 - frac) / frac / 60:.0f} min left" if frac > 0 else ""
+        score = f", the first {100 * self.points / self.scored:.1f}% of them" if self.scored else ""
+        turn = f"; {live} live at turn {float(np.mean(live_turns)):.1f} on average" if live else ""
+        print(f"[progress] {self.label}: {self.done:,}/{self.total:,} games finished{score}{turn}; "
+              f"{elapsed / 60:.0f} min elapsed{left}", flush=True)
+
+
 @dataclass
 class MatchupTally:
     """Agent A's wins, losses and draws in each seat, with the causes of the losses."""
@@ -553,6 +588,7 @@ class BatchMatchRunner:
         log_games_file: Optional[str] = None,
         auto_advance: bool = True,
         pairs: Optional[Sequence[int]] = None,
+        progress_every: float = 0.0,
     ) -> MatchupResult:
         """Play a matchup batched. Action selection matches NeuralAgent.select_action.
 
@@ -590,6 +626,7 @@ class BatchMatchRunner:
         if bad or len(set(ks)) != len(ks) or not ks:
             raise ValueError(f"pairs must be distinct indices in range({games_per_side}), got {ks}")
         n_pairs = len(ks)
+        progress = MatchProgress(f"{agent_a.name} vs {agent_b.name}", 2 * n_pairs, progress_every)
         tally = MatchupTally()
         all_steps = []
         all_turns = []
@@ -689,10 +726,15 @@ class BatchMatchRunner:
                                                     headline_stage=int(st.headline_stage))
                         chunk_steps[idx] = steps
                         chunk_causes[idx] = classify_game_ending_reason(st)
+                        # Envs < cur_half seat A as the USSR: a US utility below zero is A's win there.
+                        u = chunk_utils[idx] if idx >= cur_half else -chunk_utils[idx]
+                        progress.finish(1.0 if u > 0 else 0.0 if u < 0 else 0.5)
                     active = active & (~terms)
 
                 if not np.any(active):
                     break
+                if progress.every > 0:
+                    progress.tick(np.asarray(runner.get_turns())[active].tolist())
                 _raise_unfinished(active, steps, max_steps, f"{agent_a.name} vs {agent_b.name}")
 
                 if track_choices:
@@ -852,6 +894,7 @@ class BatchMatchRunner:
         temperature: float = 0.1,
         deterministic: Optional[bool] = None,
         auto_advance: bool = True,
+        progress_every: float = 0.0,
     ) -> List[MatchupResult]:
         """Several matchups in ONE engine batch, one forward per agent per step over all its rows.
 
@@ -921,6 +964,8 @@ class BatchMatchRunner:
         causes = [""] * n
         t0 = time.time()
         steps = 0
+        # Several pairings share the batch, so the line counts games only, with no one agent's score.
+        progress = MatchProgress(f"{P} pairing(s)", n, progress_every)
         while np.any(active):
             obs = runner.get_observations()
             masks = runner.get_action_masks()
@@ -937,9 +982,12 @@ class BatchMatchRunner:
                                       headline_stage=int(st.headline_stage))
                 fin_steps[idx] = steps
                 causes[idx] = classify_game_ending_reason(st)
+                progress.finish()
             active = active & (~terms)
             if not np.any(active):
                 break
+            if progress.every > 0:
+                progress.tick(np.asarray(runner.get_turns())[active].tolist())
             _raise_unfinished(active, steps, max_steps, ", ".join(f"{a.name} vs {b.name}" for a, b in pairs))
 
             actor = np.where(d_players == -1, ussr_agent, us_agent)

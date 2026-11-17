@@ -293,6 +293,11 @@ step (`BatchMatchRunner.play_packed_matchups`), with each game keeping its deal 
 33-player field: 819 s -> 250 s, Elo within 0.4. `--pack-pairs 1`, `--track-choices` and
 `--log-games` play one pairing at a time.
 
+**Progress.** While a matchup plays, `tournament.py` and `leaderboard_play.py` print a `[progress]` line every
+`--progress-every` seconds (default 600; 0 = none): games finished, the first agent's score in them (one
+pairing; a packed batch counts games only), the live games' mean turn and a rough time left (assuming ten
+turns a game, so it runs long). Flushed at once, so a redirected log shows them; not reported with `--workers`.
+
 ### B. Multicore: search and Python bots
 
 A `search:`/`gumbel:` entrant's tree, and a bot like `heuristic_mcts`, run in Python on one core

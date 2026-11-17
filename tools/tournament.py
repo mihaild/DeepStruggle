@@ -241,6 +241,7 @@ def run_massive_tournament(
     entrant_names: Optional[Sequence[str]] = None,
     base_seed: int = 10000,
     on_matchup: Optional[Callable[[str, str, MatchupResult], None]] = None,
+    progress_every: float = 0.0,
 ) -> Dict[str, Any]:
     """Runs high-throughput round-robin tournament across all specified models.
 
@@ -309,13 +310,13 @@ def run_massive_tournament(
                     agents[gi], agents[gj], games_per_side=games_per_side, device=dev,
                     base_seed=base_seed, temperature=temperature, batch_chunk_size=batch_chunk_size,
                     track_choices=track_choices, log_games_file=log_games,
-                    auto_advance=auto_advance)]
+                    auto_advance=auto_advance, progress_every=progress_every)]
             else:
                 res = BatchMatchRunner.play_packed_matchups(
                     [(agents[gi], agents[gj]) for gi, gj in group], games_per_side=games_per_side,
                     base_seed=base_seed, device=dev, temperature=temperature,
                     batch_chunk_size=batch_chunk_size,
-                    auto_advance=auto_advance)
+                    auto_advance=auto_advance, progress_every=progress_every)
             share = (time.time() - t_g) / len(group)
             for (i, j), m_res in zip(group, res):
                 record(i, j, m_res, share)
@@ -604,6 +605,10 @@ def main():
                              "closer to its own argmax and wins on temperature rather than on "
                              "strength. Re-rate at 0.0 when the arms differ in entropy.")
     parser.add_argument("--batch-chunk-size", type=int, default=1000, help="Max parallel games executed in a single vectorized batch")
+    parser.add_argument("--progress-every", type=float, default=600.0,
+                        help="Seconds between progress lines while a matchup plays (games finished, the first "
+                             "agent's score so far, the live games' turn, a rough time left); 0 = none. "
+                             "Not reported with --workers.")
     parser.add_argument("--pack-pairs", type=int, default=25,
                         help="Pairings played together in one engine batch, each agent's positions "
                              "in one forward per step (same deal seeds per game as one at a time). "
@@ -744,6 +749,7 @@ def main():
         temperature=args.temperature,
         batch_chunk_size=args.batch_chunk_size,
         pack_pairs=args.pack_pairs,
+        progress_every=args.progress_every,
         opening=args.opening,
         anchor_model=args.anchor_model,
         anchor_elo=args.anchor_elo,
