@@ -2,7 +2,8 @@
 
 **Status:** proposed (owner, 2026-11-18); **revised the same day** after P49a: both seats throughout (owner: "we
 need something symmetrical, that improves both sides"), the search aimed at setups (P49a found the exploit is
-one), and the absorption followed by a low-rate leg. P49a is done (*Runs*); P49a' is two more CPU checks; P49b
+one), and -- with the running session, after the low-rate arms and P49a' -- the main is the low-rate run
+R139 at its final state, arm and control at its rate. P49a is done (*Runs*); P49a' is two more CPU checks; P49b
 is the search for exploiters that need no foreign lineage; P49c the absorption; P49d the loop.
 **Gate:** P49c waits for a P49b exploiter that passes in at least one seat.
 **Needs approval:** each launch; trainer-side only. Builds are named where they are needed.
@@ -45,9 +46,18 @@ P49a under *Runs*.
 * **The USSR seat has not been tested at the budget that worked.** B6's own USSR exploiter read +1.4 / -1.6;
   J1's USSR exploiter of B6 was stopped after 410M, before the step at which X took off (X read 47% at 410M
   and 63% at 810M). Whether B6's US has a hole of this size is unknown.
-* **Part of B6's plateau is noise:** continued at lr 1e-4 it reads 68.2% on the old reference after 400M (64.4%
-  at the full rate; its three-seed soup 68.8%). A lower rate sharpens what a network knows and slows what it
-  can take in, so absorption comes first and the low-rate leg last.
+* **Part of B6's plateau is noise, and the low-rate run is the network to build on:** continued at lr 1e-4
+  (R139) it reads 69.6% on the old reference and 59.0% against J1's best at 12,800M (64.4% / 54.6% at the full
+  rate; the three-seed soup 68.8%) and is still improving. X scores 54-58% against R139 and R140, as against
+  the plain run at the same steps: the low rate neither froze the hole in nor closed it, so the first
+  version's "absorb at the full rate, then anneal" has no support; what is left of the hole there (+6 to +7)
+  is the part ordinary training does not close.
+* **The setup is necessary, not sufficient** (P49a'): B6's own US forced into X's commonest setup scores 34-37%
+  against B6's USSR. From that setup B6 still fights for Europe's battlegrounds (1.2 held at the end of turn
+  3, X's 0) and never runs the VP race. X's exploit is the setup **and** a follow-up B6's policy does not
+  have: concede the battlegrounds, hold the non-battlegrounds against Control, spend the Ops in South America,
+  the Middle East and Asia. Why X had it: J1 at 9,990M already set up without West Germany (France 3, Italy 3,
+  Canada 2, Iran 1); its basin was next to the line.
 * **The machinery exists:** the seat-true league and its driver (P45), the opponent prior with a learned gain
   (P46c), one opponent per game (P47), the restart pool (P48b). **The prior is used in every game the main plays
   against an opponent that is not itself** (P49c says how, and why the restarts are needed beside it).
@@ -68,16 +78,19 @@ The robust margin, X's signature and what is known of the other seat.
 
 ## P49b — exploiters of B6 from inside its own lineage, one for each seat
 
-**Every arm is run in both seats, the pair in the two slots:** a US exploiter against B6's USSR and a USSR
-exploiter against B6's US, the same start, recipe and budget. **Target, for every arm:** B6's eight snapshots
-of 11,530-11,600M and their SWA, greedy, one drawn per game (the fixed-opponent list drawn per game is the one
-build if `--opponent-per-game` does not yet cover it). X's recipe otherwise (R136's flags, the full rate),
-1,600M, reads every 400M.
+**Every arm is run in both seats, the pair in the two slots:** a US exploiter against the main's USSR and a
+USSR exploiter against its US, the same start, recipe and budget. **The main, and so the target, is the
+low-rate run R139 at its final state (13,200M)** (revised 2026-11-18 with the running session: B6 at 11,600M
+is the most exposed state we have, and absorbing from it would credit the method with what 800M of ordinary
+training already closes). **Target, for every arm:** R139's last eight snapshots and their SWA, greedy, one
+drawn per game (a fixed-opponent list drawn per game: a small build). X's recipe otherwise (R136's flags, the
+full rate -- an exploiter has far to travel), 1,600M, reads every 400M. "B6" in the arms below is this
+lineage; where a state is named it is R139's final one unless it says otherwise.
 
 | arm | the exploiter | why it might leave B6's basin | build |
 |:---|:---|:---|:---|
 | **S** | starts from B6 at 11,600M; in half its games its own setup is drawn at random from the legal ones, as part of the environment (not credited to the policy), and the critic trains on those games | P49a: the known exploit is a setup, and a setup is what a policy does not explore; once the critic prices setups against this opponent, the policy's own setup follows it, as the setups did in P44 | a random legal setup for the learner's seat as environment (the forced-opening path, with a random draw) |
-| E1 | starts from B6's own state at 4,020M | an earlier era of the same run plays differently and scores about what J1 did against B6 before training | none |
+| E1 | starts from one of B6's own earlier states (4,000-8,000M), **chosen by its setup**: the saved state whose setups in that seat are farthest from the main's (for the US, the fewest points on Europe's battlegrounds) | X came from a network that already set up without West Germany; an earlier era of the same run that set up differently is the nearest thing inside the lineage, and scores about what J1 did against B6 before training | none (the setup traces by step exist) |
 | E2 | starts from B6 at 11,600M, paid only for one ending (P41's restricted payoff): for the US, 20 VP; for the USSR, Europe Control, then 20 VP | the reward points at a line | an ending-restricted reward for exploiter runs |
 | E3 | starts from B6 at 11,600M with fresh policy heads | the policy is relearned against the target | none if R87's head reset still runs |
 | E4 | a new no-pool seed trained to 2,000M | a different run's early style; 2,000M more | none |
@@ -102,8 +115,9 @@ side by side. **One seat only ->** P49c runs with that seat's exploiter (below).
 
 ## P49c — absorption: defence, attack, retention, in both seats
 
-The new main is B6 from its 11,600M state, the no-pool recipe (R132) at the full rate, with three kinds of
-game added and nothing from another lineage. 800M, then 800M, then the low-rate leg.
+The new main is **R139 from its final state (13,200M), at R139's own rate (lr 1e-4)**, with three kinds of
+game added and nothing from another lineage; **the control is R139 continued unchanged over the same steps.**
+Arm and control share the rate from start to end, so no leg of either has to be discounted. 800M, then 800M.
 
 **The critic prior is used: in every game against an exploiter and against the old state** (P46c's form, the
 gain learned, as built for R128). It is zero in self-play and in the restarts.
@@ -113,7 +127,7 @@ gain learned, as built for R128). It is zero in self-play and in the restarts.
 | self-play | 70% | the main, both seats | `sigmoid(c(s))` -- no prior | everything else |
 | **against an exploiter** | 15%, half to each seat's exploiter | the P49b exploiter of a seat in that seat, the main in the other; one opponent for the whole game | `sigmoid(c(s) +- g(s) * beta)`, **`beta` the prior**: the main's running score against this exploiter in this seat, in log-odds against its self-play rate there; + on the main's rows, - on the exploiter's | the main's USSR meets the US exploiter's line from the first move, and its US the USSR exploiter's: defence |
 | restarts from those games | 10%, from both seats' games alike | the main, both seats, from the turn boundaries of turns 1-6 of the games against the exploiters | `sigmoid(c(s))` -- no prior, the exploiter is no longer playing | what each line's positions are worth, and the main's own play in the exploiter's seat steering into them or not: attack, with no imitation term |
-| **against B6's 11,600M state** | 5% | the old state in either seat, the main in the other; one opponent a game | `sigmoid(c(s) +- g(s) * beta)`, **`beta` the prior** for that state and seat | punishing the old weaknesses stays rewarded: retention |
+| **against B6's 11,600M state** (the most exposed one) | 5% | the old state in either seat, the main in the other; one opponent a game | `sigmoid(c(s) +- g(s) * beta)`, **`beta` the prior** for that state and seat | punishing the old weaknesses stays rewarded: retention |
 
 `c(s)` is the critic's win logit and `g(s)` its gain head, both reading the position only; `beta` is the one
 number from outside the network, kept by the trainer per opponent and seat as a running average. The shifted
@@ -161,27 +175,31 @@ exploiter's play on those positions, fading to zero over 400M, is the one additi
 For a line that is a trade (X's setup costs 2-3 points against opponents that punish it) the main is not
 expected to adopt it, and not adopting it is not a failure: read 1 below is then reported, not required.
 
-### Absorb, then the low rate
+### The rate
 
-After the two legs at the full rate, the arm and its control (B6's own continuation over the same steps) each
-get the same 400M at lr 1e-4 (R139's recipe). **The product is the arm after that leg, and what it has to beat
-is the control after the same leg**, not the plateau network: the rate alone is worth about 4 points on the
-old reference.
+Arm and control both run at lr 1e-4 throughout (the first version had the absorption at the full rate and a
+low-rate leg after; withdrawn above). If the main does not move at this rate -- read 2 not met by +800M while
+the exploiter's margin is intact -- one more leg is run at the full rate for arm and control alike, followed
+by the same 400M at 1e-4 for both. **What the arm has to beat is the control at the same step**, never the
+plateau network: the rate alone was worth about 5 points on the old reference.
 
-**Reads** at +400M, +800M, +1,600M and after the low-rate leg, per seat from the JSON, beside the control:
+**Reads** at +400M, +800M and +1,600M, per seat from the JSON, beside the control at the same step:
 
-1. the main in each seat against B6 at 11,600M and at 12,400M (now 50% as the US, 50% as the USSR);
+1. the main in each seat against B6 at 11,600M and against R139's final state (R139 now scores about 55%
+   against the former);
 2. the main against each exploiter it trains with, in the seat opposite it (for the US exploiter now about
    32%; back to the main's self-play rate in that seat);
-3. **the main against the held-out yardsticks:** as the USSR against X (X's US now 68%; 55% or under is the
-   pass), and as the US against R137's continuation if it was run;
+3. **the main against the held-out yardsticks:** as the USSR against X (X's US scores 58% against R139 at
+   12,800M, 51% being that network's own US rate; within 3 points of that rate is the pass), and as the US
+   against R137's continuation if it was run;
 4. the pooled control, J1's best and the old reference (not below the control arm at the same step);
 5. the critic: the handover test from each exploiter, the priors the trainer holds, and the learned gain on
    the lines' positions beside its value elsewhere;
 6. setups in both seats, and the share of the main's own games that carry an exploiter's signature.
 
-**Prediction.** Read 2 within 3 points of the self-play rate by +400M; read 3 at 55% or under by +800M; read 4
-level; read 1 above 50% only for lines that are not a trade.
+**Prediction.** Read 2 within 3 points of the self-play rate by +800M; read 3 within 3 points of it by +800M
+while the control stays at +5 or more; read 4 level; read 1 above the control only for lines that are not a
+trade.
 **Rule.** Reads 2-4 met -> the method works for the seats it was run in; P49d. Read 3 not met while read 2 is ->
 the main learned its sparring partner and not the line; the exploiter's lineage is continued before it is a
 teacher (P49d). Read 4 down by 2 points or more -> the shares are halved once.
@@ -197,7 +215,7 @@ opponent, to learn which of the three additions carried it.
 * **The yardsticks are continued 800M against the final main and never fed back:** what X (and R137) still
   find is the result.
 * **Stop** after two generations in which no exploiter of either seat gains 3 points or more over the main's
-  self-play rate there and the references do not move; then the low-rate leg.
+  self-play rate there and the references do not move.
 
 ## Cost
 
@@ -205,9 +223,9 @@ opponent, to learn which of the three additions carried it.
 |:---|---:|:---|
 | P49a' | none | a few CPU minutes |
 | P49b, arm S in both seats | 3,200M | 9 hours |
+| P49b, arm E1 in both seats | 3,200M | 9 hours |
 | P49b, the USSR yardstick (R137 to 11,600M) | 1,200M | 3.5 hours alone |
 | P49c, two legs beside the control's | 1,600M + 1,600M | 9 hours |
-| the low-rate leg, arm and control | 400M + 400M | 2.5 hours |
 | P49d, one generation | 1,600M + 1,600M | 9 hours |
 
 ## Follow-ups
