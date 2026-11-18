@@ -2828,6 +2828,62 @@
     "batch_size": 16384,
     "no_blunder_window": true
    }
+  },
+  "R141": {
+   "description": "Exploiter of R139's final state (owner, 2026-11-18): the US seat locked, R139's last eight snapshots (13,130-13,200M) drawn one per game, greedy, R136's exploiter settings at lr 3e-4 with the zero-avoiding term on setups only (the bridge pair to R134-R137 and X); 800M screen",
+   "first": "E8.1-A8-R132-S45@11600M+R139@13200M+R141_20261118_182027",
+   "flags": {
+    "reward_scheme": "terminal",
+    "opponent_frac": 1.0,
+    "opponent_checkpoints": [
+     "<parent snapshot at the branch point>",
+     "<parent snapshot at the branch point>",
+     "<parent snapshot at the branch point>",
+     "<parent snapshot at the branch point>",
+     "<parent snapshot at the branch point>",
+     "<parent snapshot at the branch point>",
+     "<parent snapshot at the branch point>",
+     "<parent snapshot at the branch point>"
+    ],
+    "opponent_lock_side": "us",
+    "opponent_temperature": 0.0,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "zero_avoid_scope": "setup",
+    "opponent_per_game": true,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
+  },
+  "R142": {
+   "description": "Exploiter of R139's final state (owner, 2026-11-18): the USSR seat locked, R139's last eight snapshots (13,130-13,200M) drawn one per game, greedy, R136's exploiter settings at lr 3e-4 with the zero-avoiding term on setups only (the bridge pair to R134-R137 and X); 800M screen",
+   "first": "E8.1-A8-R132-S45@11600M+R139@13200M+R142_20261118_182157",
+   "flags": {
+    "reward_scheme": "terminal",
+    "opponent_frac": 1.0,
+    "opponent_checkpoints": [
+     "<parent snapshot at the branch point>",
+     "<parent snapshot at the branch point>",
+     "<parent snapshot at the branch point>",
+     "<parent snapshot at the branch point>",
+     "<parent snapshot at the branch point>",
+     "<parent snapshot at the branch point>",
+     "<parent snapshot at the branch point>",
+     "<parent snapshot at the branch point>"
+    ],
+    "opponent_lock_side": "ussr",
+    "opponent_temperature": 0.0,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "zero_avoid_scope": "setup",
+    "opponent_per_game": true,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
   }
  },
  "views": {
@@ -3162,7 +3218,9 @@
   "E8.1-A8-R132-S45@11600M+R138_20261118_015831": "E8.1-A8-R132-S45@11600M+R138",
   "E8.1-A8-R132-S45@11600M+R138_20261118_020450": "E8.1-A8-R132-S45@11600M+R138",
   "E8.1-A8-R132-S45@11600M+R139_20261118_105456": "E8.1-A8-R132-S45@11600M+R139",
-  "E8.1-A8-R132-S45@11600M+R140_20261118_105539": "E8.1-A8-R132-S45@11600M+R140"
+  "E8.1-A8-R132-S45@11600M+R140_20261118_105539": "E8.1-A8-R132-S45@11600M+R140",
+  "E8.1-A8-R132-S45@11600M+R139@13200M+R141_20261118_182027": "E8.1-A8-R132-S45@11600M+R139@13200M+R141",
+  "E8.1-A8-R132-S45@11600M+R139@13200M+R142_20261118_182157": "E8.1-A8-R132-S45@11600M+R139@13200M+R142"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
