@@ -2798,6 +2798,36 @@
     "no_blunder_window": true,
     "restart_pool_frac": 0.25
    }
+  },
+  "R139": {
+   "description": "R132 at lr 1e-4 (3x smaller than R132's 3e-4): B6 continued from its plateau, the 11,600M state (owner, 2026-11-18)",
+   "first": "E8.1-A8-R132-S45@11600M+R139_20261118_105456",
+   "flags": {
+    "reward_scheme": "terminal",
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "lr": 0.0001,
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
+  },
+  "R140": {
+   "description": "R132 at lr 3e-5 (10x smaller than R132's 3e-4): B6 continued from its plateau, the 11,600M state (owner, 2026-11-18)",
+   "first": "E8.1-A8-R132-S45@11600M+R140_20261118_105539",
+   "flags": {
+    "reward_scheme": "terminal",
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "lr": 3e-05,
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
   }
  },
  "views": {
@@ -3129,7 +3159,10 @@
   "E8.1-A8-R132-S45@11600M+R135_20261117_170430": "E8.1-A8-R132-S45@11600M+R135",
   "E8-A8-R102-S44@9990M+R136_20261117_233419": "E8-A8-R102-S44@9990M+R136",
   "E8-A8-R102-S44@9990M+R137_20261117_233428": "E8-A8-R102-S44@9990M+R137",
-  "E8.1-A8-R132-S45@11600M+R138_20261118_015831": "E8.1-A8-R132-S45@11600M+R138"
+  "E8.1-A8-R132-S45@11600M+R138_20261118_015831": "E8.1-A8-R132-S45@11600M+R138",
+  "E8.1-A8-R132-S45@11600M+R138_20261118_020450": "E8.1-A8-R132-S45@11600M+R138",
+  "E8.1-A8-R132-S45@11600M+R139_20261118_105456": "E8.1-A8-R132-S45@11600M+R139",
+  "E8.1-A8-R132-S45@11600M+R140_20261118_105539": "E8.1-A8-R132-S45@11600M+R140"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
