@@ -440,6 +440,7 @@ class BaseNashPGTrainer:
         priority_alpha: float = 0.0,
         temperature_schedule: bool = True,
         setup_explore_frac: float = 0.0,
+        setup_random_frac: float = 0.0,   # P49b arm S: games whose learner-seat setup is uniform random, as environment
         rollout_temps: Optional[Sequence[float]] = None,
         merged_influence: bool = False,
         macro_influence: bool = False,
@@ -774,6 +775,16 @@ class BaseNashPGTrainer:
         # log-prob of it, so the PPO ratio still starts at 1.0 and the transition trains normally.
         self.setup_explore_frac = float(setup_explore_frac)
         self._setup_explore_env = np.zeros(self.num_envs, dtype=bool)
+        #: P49b arm S (owner, 2026-11-18): in a drawn share of games (each game drawn at its start) the LEARNER's
+        #: setup placements are a uniform legal choice made by the environment -- learner 0 on those rows, so no
+        #: policy gradient and out of the learner's statistics, the stored log-prob the policy's own; the rest of
+        #: the game is the learner's and is trained as usual, the critic on all of it. The opponent's setup is its
+        #: own. Unlike --setup-explore-frac (both sides, trained on).
+        self.setup_random_frac = float(setup_random_frac)
+        self._rs_rng = np.random.default_rng(54_321)
+        self._rs_game = self._rs_rng.random(self.num_envs) < self.setup_random_frac
+        self.setup_random_forced = 0
+        self.setup_random_games = 0
         if self.setup_explore_frac > 0.0:
             n_expl = int(round(self.num_envs * self.setup_explore_frac))
             self._setup_explore_env[:n_expl] = True
@@ -2019,6 +2030,16 @@ class BaseNashPGTrainer:
                             _forced_t,
                             unscaled_log_probs.gather(1, actions_t.unsqueeze(1)).squeeze(1),
                             log_probs_t)
+                if self.setup_random_frac > 0.0:
+                    _rs = self._random_setup_apply(actions_t, np.asarray(self._masks_np),
+                                                   np.asarray(learner_np, dtype=bool))
+                    if _rs.any():
+                        learner_np = np.asarray(learner_np, dtype=bool) & ~_rs
+                        learner_t = torch.from_numpy(learner_np).to(self.device)
+                        _pm_learner = _pm & learner_t
+                        _rs_t = torch.from_numpy(_rs).to(self.device)
+                        log_probs_t = torch.where(
+                            _rs_t, unscaled_log_probs.gather(1, actions_t.unsqueeze(1)).squeeze(1), log_probs_t)
                 if self.opening_seeder is not None:
                     _fo = self.opening_seeder.apply(actions_t, np.asarray(self._masks_np), _dp, self.env.runner)
                     if _fo.any():
@@ -2174,6 +2195,11 @@ class BaseNashPGTrainer:
                 self._script_draw(np.flatnonzero(self._dones_np > 0.5))
             if self.seeder is not None:
                 self.seeder.draw(np.flatnonzero(self._dones_np > 0.5), self.total_env_steps)
+            if self.setup_random_frac > 0.0:
+                _new = np.flatnonzero(self._dones_np > 0.5)
+                if _new.size:
+                    self._rs_game[_new] = self._rs_rng.random(_new.size) < self.setup_random_frac
+                    self.setup_random_games += int(self._rs_game[_new].sum())
             if self.opening_seeder is not None:
                 self.opening_seeder.draw(np.flatnonzero(self._dones_np > 0.5))
             if self.aux_opp_legality > 0.0:
@@ -2390,6 +2416,10 @@ class BaseNashPGTrainer:
             metrics.update(self.restart_pool.metrics())
         if self.afterstate is not None:
             metrics.update(self.afterstate.metrics())
+        if self.setup_random_frac > 0.0:
+            metrics["setup_random_forced"] = float(self.setup_random_forced)
+            metrics["setup_random_games"] = float(self.setup_random_games)
+            self.setup_random_forced = self.setup_random_games = 0
         # How much of the searcher's answer the real mask rejected. A determinized search can
         # legitimately propose an action that is illegal in the true state, so a small nonzero
         # rate is expected and healthy; it going to zero would mean the filter is not reaching
@@ -2527,6 +2557,22 @@ class BaseNashPGTrainer:
             actions_t[idx] = int(self._setup_rng.choice(legal))
             forced += 1
         self.setup_forced_actions = getattr(self, "setup_forced_actions", 0) + forced
+
+    def _random_setup_apply(self, actions_t: torch.Tensor, masks_np: np.ndarray, learner_np: np.ndarray) -> np.ndarray:
+        """P49b arm S: in this step's drawn games, the learner's setup placement replaced by a uniform legal one.
+        Returns the rows forced (the caller marks them environment). Only SETUP-phase decisions of the learner."""
+        forced = np.zeros(self.num_envs, dtype=bool)
+        for i in np.flatnonzero(self._rs_game & learner_np):
+            idx = int(i)
+            if self.env.runner.get_state(idx).current_phase != ts.Phase.SETUP:
+                continue
+            legal = np.flatnonzero(masks_np[idx])
+            if legal.size <= 1:
+                continue
+            actions_t[idx] = int(self._rs_rng.choice(legal))
+            forced[idx] = True
+        self.setup_random_forced += int(forced.sum())
+        return forced
 
     def _mix_search_values(self) -> None:
         """P32 T2: blend the search value into v_win's target at the searched decisions, after

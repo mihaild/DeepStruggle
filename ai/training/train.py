@@ -1241,6 +1241,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Searched-game rows sampled from the replay store per minibatch.")
     parser.add_argument("--afterstate-value-coef", type=float, default=0.0,
                         help="The critic at every moment of a side's turn (ai/training/afterstate_critic.py, owner 2026-11-18): right after its decision and before / after each of its die rolls, from its own perspective, as extra value-loss rows weighted by this x --vf-coef, each with the lambda-return of the side's next decision (the result where the game ends first). 0 = off. Lets a player read the critic after any move (CriticArgmaxAgent, critic: specs).")
+    parser.add_argument("--setup-random-frac", type=float, default=0.0,
+                        help="P49b arm S (owner, 2026-11-18): the share of games, drawn per game, whose LEARNER-seat setup placements are a uniform legal choice made by the environment (learner 0 on those rows: no policy gradient, the critic trained on the rest of the game). The opponent sets up itself. Unlike --setup-explore-frac, which forces both sides and trains on the forced placements. 0 = off.")
     parser.add_argument("--afterstate-frac", type=float, default=0.25,
                         help="The share of the learner's decisions whose moments --afterstate-value-coef captures (about 7 us each on the CPU).")
     parser.add_argument("--predeal-value-coef", type=float, default=0.0,
@@ -1512,6 +1514,7 @@ def main():
             predeal_value_coef=args.predeal_value_coef,
             afterstate_value_coef=args.afterstate_value_coef,
             afterstate_frac=args.afterstate_frac,
+            setup_random_frac=args.setup_random_frac,
             searched_games_workers=args.searched_games_workers,
             searched_games_envs=args.searched_games_envs,
             searched_value_coef=args.searched_value_coef,

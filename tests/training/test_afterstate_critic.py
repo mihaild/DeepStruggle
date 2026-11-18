@@ -10,6 +10,7 @@ import torch.nn as nn
 import ts_engine as ts
 
 from ai.search.critic_argmax import CriticArgmaxAgent
+from ai.training.nash_pg import NashPGTrainer
 from ai.training.afterstate_critic import (AFTER_DECISION, AFTER_ROLL, BEFORE_ROLL, AfterstateCapture,
                                            AfterstateRows, build_targets, next_decision_target, walk_afterstates)
 from bindings.ts_env import TsVectorizedEnv
@@ -123,3 +124,21 @@ def test_the_critic_player_takes_the_move_its_critic_likes_best() -> None:
             o = torch.from_numpy(np.asarray(ts.extract_observation_features(s2, me, 0), dtype=np.float32))
             vals.append(float(torch.tanh(o @ net.w)))
         assert picks[0] == int(legal[int(np.argmax(vals))])
+
+
+def test_random_setup_forces_only_the_learners_setup_and_marks_it_environment() -> None:
+    env = TsVectorizedEnv(num_envs=8, base_seed=13)
+    obs, masks, _ = env.reset_all()
+    trainer = NashPGTrainer.__new__(NashPGTrainer)
+    trainer.num_envs = 8
+    trainer.env = env
+    trainer.setup_random_frac = 1.0
+    trainer._rs_rng = np.random.default_rng(0)
+    trainer._rs_game = np.array([True, True, True, True, False, False, False, False])
+    trainer.setup_random_forced = 0
+    learner = np.array([True, False, True, False, True, False, True, False])
+    acts = torch.zeros(8, dtype=torch.int64)
+    forced = trainer._random_setup_apply(acts, np.asarray(masks), learner)
+    assert list(np.flatnonzero(forced)) == [0, 2], "drawn games, learner rows, at setup -- nothing else"
+    for i in (0, 2):
+        assert np.asarray(masks)[i][int(acts[i])], "a legal placement"
