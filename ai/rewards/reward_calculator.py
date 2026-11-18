@@ -1,6 +1,6 @@
 """Abstract Reward Calculator Interface & Concrete Strategies for Zero-Sum Games."""
 
-from typing import Protocol, Optional, List, Dict, Any
+from typing import Protocol, Optional, List, Dict, Any, Sequence
 import numpy as np
 import torch
 import ts_engine as ts
@@ -50,6 +50,69 @@ class ZeroSumTerminalReward:
     ) -> np.ndarray:
         rewards = np.where(dones, terminal_utilities * acting_players, 0.0)
         return rewards.astype(np.float32)
+
+    def compute_zero_sum_sign(
+        self,
+        curr_players: torch.Tensor,
+        next_players: torch.Tensor,
+    ) -> torch.Tensor:
+        return (curr_players * next_players).float()
+
+
+#: The engine's ending names (ts.game_ending_reason) by the ending families --target-endings names.
+ENDING_FAMILY: Dict[str, str] = {
+    "20 VP": "20vp",
+    "Europe Control": "europe_control",
+    "DEFCON 1 (own decision)": "defcon",
+    "DEFCON 1 (opponent decision)": "defcon",
+    "wargames": "wargames",
+    "final scoring": "final_scoring",
+}
+TARGET_ENDINGS = ("20vp", "europe_control", "defcon", "wargames", "final_scoring")
+
+
+class EndingTargetedReward:
+    """An exploiter's payoff for one way of winning (owner, 2026-11-18): from the learner's seat, +1 for a win by one
+    of `targets` (ending families of ENDING_FAMILY), -1 for any loss, 0 for a win any other way and for a draw. Written
+    zero-sum from the US's side (the fixed opponent does not train), so GAE's alternating signs hold as in the terminal
+    scheme. Needs the learner's seat: an exploiter run, --opponent-lock-side.
+    """
+
+    def __init__(self, targets: Sequence[str], learner_side: int) -> None:
+        bad = [t for t in targets if t not in TARGET_ENDINGS]
+        if bad or not targets:
+            raise ValueError(f"--target-endings must name some of {TARGET_ENDINGS}, got {list(targets)}")
+        if learner_side not in (1, -1):
+            raise ValueError("--target-endings needs the learner's seat locked (--opponent-lock-side us|ussr)")
+        self.targets = frozenset(targets)
+        self.learner_side = int(learner_side)
+
+    def payoff(self, terminal_utility: float, state: Optional[ts.GameState]) -> float:
+        """The learner's payoff for one finished game."""
+        winner = 1 if terminal_utility > 0 else -1 if terminal_utility < 0 else 0
+        if winner == 0:
+            return 0.0
+        if winner != self.learner_side:
+            return -1.0
+        if state is None:
+            raise ValueError("an ending-targeted reward needs the finished game's state")
+        return 1.0 if ENDING_FAMILY.get(str(ts.game_ending_reason(state))) in self.targets else 0.0
+
+    def compute_step_rewards(
+        self,
+        acting_players: np.ndarray,
+        dones: np.ndarray,
+        terminal_utilities: np.ndarray,
+        prev_victory_points: np.ndarray,
+        curr_victory_points: np.ndarray,
+        states: Optional[List[Optional[ts.GameState]]] = None,
+    ) -> np.ndarray:
+        rewards = np.zeros(len(dones), dtype=np.float32)
+        for i in np.flatnonzero(dones):
+            st = states[int(i)] if states is not None else None
+            u_us = self.payoff(float(terminal_utilities[i]), st) * self.learner_side
+            rewards[i] = u_us * float(acting_players[i])
+        return rewards
 
     def compute_zero_sum_sign(
         self,

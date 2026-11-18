@@ -34,7 +34,7 @@ from ai.models.hyperspherical import SphereTrunk
 from ai.models.ladder_net import LadderNet, create_ladder_net
 from ai.models.mup import (base_shapes_for, combine_lr_mults, mup_lr_mults, policy_head_lr_mults,
                            zero_output_layers)
-from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator, UsefulActionsReward, VPPotentialShaping
+from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator, UsefulActionsReward, VPPotentialShaping, EndingTargetedReward
 from bindings.ts_env import (OBS_LAYOUT_NAME, TsVectorizedEnv, check_obs_width,
                              model_obs_features)
 from ai.training.active_search import ActiveSearch, gate_metrics
@@ -1953,6 +1953,7 @@ def train_pipeline(
     afterstate_value_coef: float = 0.0,
     afterstate_frac: float = 0.25,
     setup_random_frac: float = 0.0,
+    target_endings: Optional[Sequence[str]] = None,
     searched_games_workers: int = 0,
     searched_games_envs: int = 32,
     searched_value_coef: float = 0.0,
@@ -2337,6 +2338,7 @@ def train_pipeline(
         "afterstate_value_coef": float(afterstate_value_coef),
         "afterstate_frac": float(afterstate_frac),
         "setup_random_frac": float(setup_random_frac),
+        "target_endings": list(target_endings) if target_endings else None,
         "searched_games_workers": int(searched_games_workers),
         "searched_games_envs": int(searched_games_envs),
         "searched_value_coef": float(searched_value_coef),
@@ -2650,6 +2652,9 @@ def train_pipeline(
 
     # 3. Setup Reward Calculator & Vectorized Env
     is_curriculum = (reward_scheme == "curriculum")
+    if target_endings and reward_scheme != "terminal":
+        raise ValueError(f"--target-endings replaces the terminal scheme's payoff; --reward-scheme {reward_scheme} would "
+                         "ignore it")
     if decisiveness_turns and reward_scheme not in ("blunder_aware", "useful_actions", "curriculum"):
         raise ValueError(f"--decisiveness-turns {decisiveness_turns:g} scales the blunder-aware terminal reward, "
                          f"which --reward-scheme {reward_scheme} does not use; it applies to blunder_aware, "
@@ -2661,6 +2666,10 @@ def train_pipeline(
                                                    held_scoring_blunder=held_scoring_blunder)
     elif reward_scheme == "shaped":
         reward_calc = ShapedZeroSumReward()
+    elif target_endings:
+        reward_calc = EndingTargetedReward(list(target_endings), {"us": 1, "ussr": -1}.get(str(opponent_lock_side), 0))
+        print(f"[reward] ending-targeted: +1 for the {opponent_lock_side} seat's wins by {sorted(target_endings)}, "
+              f"-1 for any loss, 0 for any other win or a draw", flush=True)
     else:
         reward_calc = ZeroSumTerminalReward()
     if vp_potential:
