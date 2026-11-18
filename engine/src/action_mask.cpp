@@ -88,12 +88,27 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
             // of the turn loses the game outright, so the obligation that can lose it wins, and
             // the forced flags are left alone to bind on the next action round instead.
             //
-            // Under a trap the mask is the same single card -- Missile Envy is 2 Ops, so it is a
-            // legal discard, and discarding it is the whole action round and satisfies both
-            // obligations. The state machine's trap branch already clears the force when the
-            // discarded card is the forced one.
+            // Under a trap the mask is the same single card whenever Missile Envy is a legal
+            // discard -- 2 Ops printed -- and discarding it is the whole action round and
+            // satisfies both obligations at the first opportunity. The state machine's trap
+            // branch clears the force when the discarded card is the forced one.
+            //
+            // Red Scare/Purge makes it 1 Op, which the trap will not take (traps judge effective
+            // Ops, as below). Then the trap outranks the force and DEFERS it, as held scoring
+            // does: the player discards another eligible card or, holding none, plays their
+            // scoring cards and skips (block 4), and Missile Envy stays owed for the first round
+            // it can be played -- once the player is out, Red Scare/Purge has ended, or
+            // Containment / Brezhnev Doctrine lifts it back to 2 (owner's ruling, 2026-11-18).
+            // Offered here instead, it was refused as a discard and fell through to an ordinary
+            // play, and the trapped player couped with it.
+            const bool trapped_now = state.current_phase == Phase::ACTION_ROUND &&
+                ((p == Player::US && state.has_flag(effect_bits::QUAGMIRE_ACTIVE)) ||
+                 (p == Player::USSR && state.has_flag(effect_bits::BEAR_TRAP_ACTIVE)));
+            const bool envy_defers_to_trap = trapped_now &&
+                Operations::get_effective_ops(state, card_ids::MISSILE_ENVY, p) < 2;
             if (state.current_phase == Phase::ACTION_ROUND &&
                 state.forced_card_player == p &&
+                !envy_defers_to_trap &&
                 in_hand_of(state.card_locations[card_ids::MISSILE_ENVY], p)) {
                 uint8_t held = 0;
                 for (uint8_t i = 1; i <= 110; ++i) {

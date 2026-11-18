@@ -909,6 +909,18 @@ bool StateMachine::step(GameState& state, const MicroAction& action, const uint8
         order = 0;
     }
     if (!step_impl(state, action, legal)) return false;
+    // A Missile Envy obligation lives exactly as long as the card is in its holder's hand. Any
+    // card that takes it out ends it -- discarded by Five Year Plan, Terrorism, Blockade, Latin
+    // American Debt Crisis, Aldrich Ames, Ask Not or a trap, or drawn by Grain Sales (owner's
+    // ruling, 2026-11-18). Held here rather than at each of those sites, which a new one would
+    // not know to join. Every reader already gated the force on the card being in hand, so this
+    // changes nothing while it is gone; what it stops is the force waking up again when the card
+    // comes back to the same player -- Grain Sales handing it back, or a reshuffle and a later deal.
+    if (state.forced_card_player != Player::NONE &&
+        !in_hand_of(state.card_locations[card_ids::MISSILE_ENVY], state.forced_card_player)) {
+        state.forced_card_player = Player::NONE;
+        state.forced_card_id = 0;
+    }
     if (state.ctx_stack_depth != depth) return true;
     DecisionContext& c = state.ctx();
     if (order != 0 && placing) {
@@ -1287,6 +1299,13 @@ bool StateMachine::step_impl(GameState& state, const MicroAction& action, const 
                         state.ctx().decision_player = Player::NONE;
                         state.ctx().decision_type = DecisionType::ROLL_DIE;
                         return true;
+                    }
+                    // A trapped round is a discard, or a scoring card; nothing else may be
+                    // played in it. A card the trap will not take used to fall through to an
+                    // ordinary play: Missile Envy under Red Scare/Purge is 1 Op, the forced-play
+                    // mask offered it alone, and the trapped player couped with it.
+                    if (!CardData::is_scoring_card(card)) {
+                        return false;
                     }
                 }
 

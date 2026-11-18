@@ -8,6 +8,10 @@
 #include "ts/ops.hpp"
 #include "ts/action_mask.hpp"
 
+#include <algorithm>
+#include <initializer_list>
+#include <vector>
+
 // =============================================================================
 // 1. Flower Power Comprehensive Matrix
 // =============================================================================
@@ -477,6 +481,182 @@ TEST(CardInteractionTest, Quagmire_MaskOnlyAllows2PlusOpsCards) {
     ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
     ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 3, 0, 0}));
     ASSERT_FALSE(state.has_flag(ts::effect_bits::QUAGMIRE_ACTIVE));
+}
+
+// -----------------------------------------------------------------------------
+// 10b. A trap and a Missile Envy obligation together (owner's ruling, 2026-11-18)
+//
+// Missile Envy is played at the first opportunity: under a trap that is the discard, Missile
+// Envy being 2 Ops. Red Scare/Purge makes it 1, which the trap will not take; then the player
+// discards other cards (or plays scoring cards, as for any trapped player with nothing to
+// discard) and Missile Envy stays owed until they are out, Red Scare/Purge ends, or
+// Containment / Brezhnev Doctrine lifts it back to 2. Reported from the web page: a trapped US
+// under Red Scare/Purge was offered Missile Envy alone, the trap refused it as a discard, and
+// it fell through to an ordinary play -- the US couped with it.
+//
+// And a card that takes Missile Envy out of its holder's hand ends the obligation.
+// -----------------------------------------------------------------------------
+
+namespace {
+
+ts::GameState action_round_for(ts::Player p, std::initializer_list<uint8_t> hand) {
+    ts::GameState state{};
+    ts::Engine::init_game(state, 42);
+    state.current_phase = ts::Phase::ACTION_ROUND;
+    state.turn = 5;
+    state.action_round = 2;
+    state.phasing_player = p;
+    state.ctx().decision_player = p;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+    for (uint8_t i = 1; i <= 110; ++i) {
+        if (ts::is_in_any_hand(state.card_locations[i])) {
+            state.card_locations[i] = ts::CardLocation::DRAW_DECK;
+        }
+    }
+    for (uint8_t c : hand) state.card_locations[c] = ts::hand_of(p);
+    return state;
+}
+
+ts::GameState trapped_owing_envy(ts::Player p, uint64_t effects, std::initializer_list<uint8_t> hand) {
+    ts::GameState state = action_round_for(p, hand);
+    state.card_locations[ts::card_ids::MISSILE_ENVY] = ts::hand_of(p);
+    state.set_flag(p == ts::Player::US ? ts::effect_bits::QUAGMIRE_ACTIVE
+                                       : ts::effect_bits::BEAR_TRAP_ACTIVE);
+    state.persistent_effects |= effects;
+    state.forced_card_player = p;
+    state.forced_card_id = ts::card_ids::MISSILE_ENVY;
+    return state;
+}
+
+std::vector<uint8_t> offered_cards(const ts::GameState& state) {
+    uint8_t mask[ts::FLAT_ACTION_SPACE_SIZE]{};
+    ts::ActionMask::generate_flat_mask_212(state, mask);
+    std::vector<uint8_t> out;
+    for (uint8_t c = 1; c <= 110; ++c) {
+        if (mask[ts::flat_slots::CARD + c - 1]) out.push_back(c);
+    }
+    return out;
+}
+
+bool select_card(ts::GameState& state, uint8_t card) {
+    return ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_CARD, card, 0, 0});
+}
+
+}  // namespace
+
+TEST(CardInteractionTest, TrapAndMissileEnvy_EnvyIsTheDiscard) {
+    auto state = trapped_owing_envy(ts::Player::US, 0, {ts::card_ids::DUCK_AND_COVER});
+    ASSERT_TRUE(offered_cards(state) == std::vector<uint8_t>{ts::card_ids::MISSILE_ENVY});
+    ASSERT_TRUE(select_card(state, ts::card_ids::MISSILE_ENVY));
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+    ASSERT_EQ(state.card_locations[ts::card_ids::MISSILE_ENVY], ts::CardLocation::DISCARD_PILE);
+    ASSERT_EQ(state.forced_card_player, ts::Player::NONE);
+}
+
+TEST(CardInteractionTest, TrapAndMissileEnvy_PurgedEnvyDefersToAnotherDiscard) {
+    auto state = trapped_owing_envy(ts::Player::US, ts::effect_bits::PURGE_US_ACTIVE,
+                                    {ts::card_ids::DUCK_AND_COVER, ts::card_ids::TRUMAN_DOCTRINE});
+    // Duck and Cover is 2 under Red Scare/Purge; Missile Envy and Truman Doctrine are 1.
+    ASSERT_TRUE(offered_cards(state) == std::vector<uint8_t>{ts::card_ids::DUCK_AND_COVER});
+    // Refused outright -- never an ordinary play inside a trapped round.
+    ASSERT_FALSE(select_card(state, ts::card_ids::MISSILE_ENVY));
+    ASSERT_TRUE(select_card(state, ts::card_ids::DUCK_AND_COVER));
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::ROLL_DIE);
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 6, 0, 0}));
+    ASSERT_TRUE(state.has_flag(ts::effect_bits::QUAGMIRE_ACTIVE));
+    // Still owed.
+    ASSERT_EQ(state.forced_card_player, ts::Player::US);
+    ASSERT_TRUE(ts::in_hand_of(state.card_locations[ts::card_ids::MISSILE_ENVY], ts::Player::US));
+}
+
+TEST(CardInteractionTest, TrapAndMissileEnvy_PurgedEnvyWithNothingEligiblePlaysScoring) {
+    auto state = trapped_owing_envy(ts::Player::US, ts::effect_bits::PURGE_US_ACTIVE,
+                                    {ts::card_ids::TRUMAN_DOCTRINE, ts::card_ids::EUROPE_SCORING});
+    ASSERT_TRUE(offered_cards(state) == std::vector<uint8_t>{ts::card_ids::EUROPE_SCORING});
+    ASSERT_FALSE(select_card(state, ts::card_ids::MISSILE_ENVY));
+}
+
+TEST(CardInteractionTest, TrapAndMissileEnvy_ContainmentMakesEnvyTheDiscardAgain) {
+    auto state = trapped_owing_envy(ts::Player::US,
+                                    ts::effect_bits::PURGE_US_ACTIVE | ts::effect_bits::CONTAINMENT_ACTIVE,
+                                    {ts::card_ids::DUCK_AND_COVER});
+    ASSERT_TRUE(offered_cards(state) == std::vector<uint8_t>{ts::card_ids::MISSILE_ENVY});
+}
+
+TEST(CardInteractionTest, TrapAndMissileEnvy_BearTrapMirror) {
+    auto state = trapped_owing_envy(ts::Player::USSR, ts::effect_bits::PURGE_USSR_ACTIVE,
+                                    {ts::card_ids::WARSAW_PACT});
+    ASSERT_TRUE(offered_cards(state) == std::vector<uint8_t>{ts::card_ids::WARSAW_PACT});
+    ASSERT_FALSE(select_card(state, ts::card_ids::MISSILE_ENVY));
+    state.set_flag(ts::effect_bits::BREZHNEV_DOCTRINE_ACTIVE);
+    ASSERT_TRUE(offered_cards(state) == std::vector<uint8_t>{ts::card_ids::MISSILE_ENVY});
+}
+
+TEST(CardInteractionTest, TrapAndMissileEnvy_OutOfTheTrapEnvyBindsForOperations) {
+    auto state = trapped_owing_envy(ts::Player::US, ts::effect_bits::PURGE_US_ACTIVE,
+                                    {ts::card_ids::DUCK_AND_COVER, ts::card_ids::TRUMAN_DOCTRINE});
+    ASSERT_TRUE(select_card(state, ts::card_ids::DUCK_AND_COVER));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::ROLL_DIE, 1, 0, 0}));
+    ASSERT_FALSE(state.has_flag(ts::effect_bits::QUAGMIRE_ACTIVE));
+    // The US's next action round.
+    state.phasing_player = ts::Player::US;
+    state.ctx().decision_player = ts::Player::US;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+    ASSERT_TRUE(offered_cards(state) == std::vector<uint8_t>{ts::card_ids::MISSILE_ENVY});
+    ASSERT_TRUE(select_card(state, ts::card_ids::MISSILE_ENVY));
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_PLAY_MODE);
+    ASSERT_FALSE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE,
+                                                        static_cast<uint8_t>(ts::Resolution::EVENT), 0, 0}));
+}
+
+TEST(CardInteractionTest, MissileEnvy_DiscardedByAldrichAmes_EndsTheObligation) {
+    auto state = action_round_for(ts::Player::US, {ts::card_ids::DUCK_AND_COVER, ts::card_ids::MISSILE_ENVY});
+    state.forced_card_player = ts::Player::US;
+    state.forced_card_id = ts::card_ids::MISSILE_ENVY;
+    // The USSR's Aldrich Ames: it picks the US card to discard.
+    state.phasing_player = ts::Player::USSR;
+    ts::CardHandlers::trigger_event(state, ts::card_ids::ALDRICH_AMES, ts::Player::USSR);
+    ASSERT_TRUE(select_card(state, ts::card_ids::MISSILE_ENVY));
+    ASSERT_EQ(state.card_locations[ts::card_ids::MISSILE_ENVY], ts::CardLocation::DISCARD_PILE);
+    ASSERT_EQ(state.forced_card_player, ts::Player::NONE);
+    ASSERT_EQ(state.forced_card_id, 0);
+    // Reshuffled and dealt back to the US later: an ordinary card again.
+    state.card_locations[ts::card_ids::MISSILE_ENVY] = ts::hand_of(ts::Player::US);
+    state.phasing_player = ts::Player::US;
+    state.ctx().decision_player = ts::Player::US;
+    state.ctx().decision_type = ts::DecisionType::SELECT_CARD;
+    const auto offered = offered_cards(state);
+    ASSERT_TRUE(std::find(offered.begin(), offered.end(), ts::card_ids::DUCK_AND_COVER) != offered.end());
+}
+
+TEST(CardInteractionTest, MissileEnvy_DiscardedByFiveYearPlan_EndsTheObligation) {
+    auto state = action_round_for(ts::Player::US, {ts::card_ids::FIVE_YEAR_PLAN});
+    state.card_locations[ts::card_ids::MISSILE_ENVY] = ts::hand_of(ts::Player::USSR);
+    state.forced_card_player = ts::Player::USSR;
+    state.forced_card_id = ts::card_ids::MISSILE_ENVY;
+    // The USSR's only card, so the random discard is Missile Envy.
+    ASSERT_TRUE(select_card(state, ts::card_ids::FIVE_YEAR_PLAN));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE,
+                                                       static_cast<uint8_t>(ts::Resolution::EVENT), 0, 0}));
+    ASSERT_EQ(state.card_locations[ts::card_ids::MISSILE_ENVY], ts::CardLocation::DISCARD_PILE);
+    ASSERT_EQ(state.forced_card_player, ts::Player::NONE);
+}
+
+TEST(CardInteractionTest, MissileEnvy_DrawnByGrainSales_EndsTheObligation) {
+    auto state = action_round_for(ts::Player::US, {ts::card_ids::GRAIN_SALES});
+    state.card_locations[ts::card_ids::MISSILE_ENVY] = ts::hand_of(ts::Player::USSR);
+    state.forced_card_player = ts::Player::USSR;
+    state.forced_card_id = ts::card_ids::MISSILE_ENVY;
+    ASSERT_TRUE(select_card(state, ts::card_ids::GRAIN_SALES));
+    ASSERT_TRUE(ts::Engine::step(state, ts::MicroAction{ts::DecisionType::SELECT_PLAY_MODE,
+                                                       static_cast<uint8_t>(ts::Resolution::EVENT), 0, 0}));
+    // Drawn: the USSR's only card.
+    ASSERT_TRUE(ts::in_hand_of(state.card_locations[ts::card_ids::MISSILE_ENVY], ts::Player::US));
+    ASSERT_EQ(state.forced_card_player, ts::Player::NONE);
+    // Handed back: still ended.
+    ASSERT_TRUE(ts::Engine::step_flat(state, ts::flat_slots::CONFIRM_DONE));
+    ASSERT_TRUE(ts::in_hand_of(state.card_locations[ts::card_ids::MISSILE_ENVY], ts::Player::USSR));
+    ASSERT_EQ(state.forced_card_player, ts::Player::NONE);
 }
 
 // =============================================================================

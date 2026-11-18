@@ -188,7 +188,17 @@ from it the same way, with `ASAN_OPTIONS=detect_leaks=0`.
    headline cards — a card played *through* one (Grain Sales) would otherwise stay in hand.
 9. **Traps judge a card on its effective Ops**: Quagmire / Bear Trap eligibility is
    `Operations::get_effective_ops(state, card, p)` with no target region (Containment, Brezhnev
-   Doctrine, Red Scare/Purge move it), and the mask and the `SELECT_CARD` handler must agree.
+   Doctrine, Red Scare/Purge move it), and the mask and the `SELECT_CARD` handler must agree. A
+   trapped round is a discard or a scoring card: the handler refuses any other card rather than
+   playing it normally. **Missile Envy owed under a trap** (owner, 2026-11-18) is the discard at the
+   first opportunity; when Red Scare/Purge makes it 1 Op the trap outranks the force and defers it
+   (as held scoring does): the player discards another eligible card or plays scoring, and Missile
+   Envy stays owed until they escape, Red Scare/Purge ends, or Containment / Brezhnev Doctrine lifts
+   it to 2. Before this the forced-play mask offered it alone and it was played for Ops -- a trapped
+   US couped with it. **The obligation ends when Missile Envy leaves its holder's hand** (Five Year
+   Plan, Terrorism, Blockade, Latin American Debt Crisis, Aldrich Ames, Ask Not, a trap, or drawn by
+   Grain Sales, even if handed back): cleared once, in `StateMachine::step`, not at each site.
+   Pinned by `TrapAndMissileEnvy_*` / `MissileEnvy_*Ends*` in `tests/test_card_interactions.cpp`.
 10. **A card in play is not in hand**: an Ops card stays in its owner's hand until the play finishes,
    so Grain Sales, Five Year Plan, Terrorism and Missile Envy skip whatever `resolving_card` names.
 11. **Cancelling Cuban Missile Crisis is a choice, at two moments**: at the head of the payer's own
