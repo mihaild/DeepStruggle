@@ -1379,6 +1379,22 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Positions kept per turn bucket.")
     parser.add_argument("--start-pool-episodes", type=int, default=600,
                         help="Self-play episodes per pool refresh. Refreshing costs a few seconds -- batched rollout runs ~13x faster than training -- and happens at every snapshot evaluation so the pool tracks the policy rather than preserving an older one.")
+    parser.add_argument("--restart-pool-frac", type=float, default=0.0,
+                        help="P48b: the share of envs that start each game from a position the run's own whole games "
+                             "passed through (ai/training/restart_pool.py): pre-deal turn-boundary states, admitted by "
+                             "the critic's openness, checked out while played, put back by their continuations' "
+                             "results. 0 = off. Pure self-play only (--opponent-frac 0).")
+    parser.add_argument("--restart-pool-capacity", type=int, default=1000,
+                        help="Positions the restart pool holds in all, in per-turn buckets sized by the turn weights.")
+    parser.add_argument("--restart-turn-weights", type=str, default=None,
+                        help="'turn:weight,...' share of restart draws per turn (default 3:5,4:5,5:10,6:10,7:15,8:20,"
+                             "9:20,10:15).")
+    parser.add_argument("--restart-max-continuations", type=int, default=8,
+                        help="A restart position is retired after this many continuations.")
+    parser.add_argument("--restart-max-age-steps", type=int, default=10_000_000,
+                        help="A restart position is retired this many env steps after admission.")
+    parser.add_argument("--restart-critic-weight", type=float, default=2.0,
+                        help="How many continuation results the critic's value counts as in a position's estimate.")
     parser.add_argument("--priority-alpha", type=float, default=0.0,
                         help="Sample minibatches weighted by |advantage|^alpha so rare decisive transitions are not drowned by routine ones (0 = uniform). Deliberately biases the gradient toward high-swing states; try 0.5.")
     parser.add_argument("--output-dir", "--save-path", type=str, default=None, help="Output directory for checkpoints (default: data/checkpoints/run_[version]_[start date]_[start time])")
@@ -1529,6 +1545,12 @@ def main():
             start_pool_frac=args.start_pool_frac,
             start_pool_capacity=args.start_pool_capacity,
             start_pool_episodes=args.start_pool_episodes,
+            restart_pool_frac=args.restart_pool_frac,
+            restart_pool_capacity=args.restart_pool_capacity,
+            restart_turn_weights=args.restart_turn_weights,
+            restart_max_continuations=args.restart_max_continuations,
+            restart_max_age_steps=args.restart_max_age_steps,
+            restart_critic_weight=args.restart_critic_weight,
             entropy_coef=args.entropy_coef,
             reward_scheme=eff_reward_scheme,
             output_dir=args.output_dir,

@@ -268,6 +268,11 @@ Every iteration goes to `<run>/training_metrics.jsonl` and to TensorBoard under 
   turns played); prefer it to `mean_turn`, whose completed games read turn 11.
 * `entropy_fixed_probe` is entropy on a frozen set of positions, immune to state-distribution
   drift. Per-seat `adv_*_us/ussr` and `entropy_us/ussr` are the side-collapse signal.
+* With the restart pool (`--restart-pool-frac`, P48b, `ai/training/restart_pool.py`) the unsuffixed game
+  series are the whole games alone, `*_restart` the restarted ones, and `restart/*` the pool: size by turn,
+  admission rate and the openness of the admitted, continuations handed out, n at retirement, put-backs
+  and the share of them the disagreement term decided, z, and by turn the critic's error beyond chance
+  at retirement. A restart's game is kept out of the critic tracker too.
 * Not logged on purpose: auxiliary losses whose term is off, and `game_start<N>/` breakdowns
   without a start pool. `steps_per_sec` is since the previous iteration; `steps_per_sec_avg`
   overstates a resumed run's rate (its clock includes the previous leg).

@@ -110,7 +110,8 @@ graph TD
 │   │                           # kept so older checkpoints load; grow.py (in-place widening)
 │   ├── training/               # train.py (CLI behind tools/train.py), nash_pg.py, rollout_buffer.py,
 │   │                           # opponent_pool.py, behavioral_cloning.py, warmup_dataset_loader.py,
-│   │                           # human_corpus_dataset.py, search_workers.py, start_pool.py, ...
+│   │                           # human_corpus_dataset.py, search_workers.py, start_pool.py,
+│   │                           # restart_pool.py (P48b: restarts from the run's own positions), ...
 │   ├── rewards/                # reward_calculator.py: perspective-aligned zero-sum reward schemes
 │   ├── search/                 # rollout_root.py, gumbel_root.py, batched_mcts.py, dmcts.py,
 │   │                           # pimcts.py, heuristic_mcts.py

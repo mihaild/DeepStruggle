@@ -43,6 +43,7 @@ from ai.training.rollout_buffer import RolloutBuffer
 from ai.training.run_name import is_run_name
 from ai.training.schedule import WeightEMA, scheduled_lr, warmup_factor
 from ai.training.nash_pg import DEFAULT_ROLLOUT_TEMPS, NashPGTrainer, regroup_optimizer_state
+from ai.training.restart_pool import RestartPool, parse_turn_weights
 from ai.training.start_pool import DEFAULT_TURN_MIX, StartPositionPool
 from ai.eval.agreement import evaluate_dataset
 from ai.training.human_corpus_dataset import HumanCorpusDataset
@@ -651,7 +652,17 @@ def summarize_completed_episodes(episodes: List[Dict[str, Any]]) -> Dict[str, fl
     its unsuffixed twin: a 320M run logged ten such copies for 1,220 iterations. Start sampling is
     settled negative (3.2, 3.3) and --start-pool-frac defaults to 0, so that is every ordinary run.
     """
-    stats = _episode_group_stats(episodes, "")
+    # P48b: with restarts in the mix, the unsuffixed series describe whole games only (a restart's game is neither
+    # the real game's length nor its ending mix), and the restarts get their own `_restart` series.
+    all_episodes = episodes
+    whole = [ep for ep in episodes if int(ep.get("start_turn", 1)) == 1]
+    restarted = [ep for ep in episodes if int(ep.get("start_turn", 1)) > 1]
+    if restarted:
+        stats = _episode_group_stats(whole, "") if whole else {}
+        stats.update(_episode_group_stats(restarted, "_restart"))
+        episodes = whole
+    else:
+        stats = _episode_group_stats(episodes, "")
 
     # Length and ending mix split by which side won. The two are not interchangeable in human
     # play and the difference is a real signal: in the ITS corpus a US win runs 8.62 turns and a
@@ -662,7 +673,7 @@ def summarize_completed_episodes(episodes: List[Dict[str, Any]]) -> Dict[str, fl
         stats.update(_episode_group_stats(group, tag, include_outcome=False))
 
     by_start: Dict[int, List[Dict[str, Any]]] = collections.defaultdict(list)
-    for ep in episodes:
+    for ep in all_episodes:
         by_start[int(ep.get("start_turn", 1))].append(ep)
     if len(by_start) > 1:
         for start_turn, group in by_start.items():
@@ -2063,6 +2074,12 @@ def train_pipeline(
     start_pool_frac: float = 0.0,
     start_pool_capacity: int = 512,
     start_pool_episodes: int = 600,
+    restart_pool_frac: float = 0.0,
+    restart_pool_capacity: int = 1000,
+    restart_turn_weights: Optional[str] = None,
+    restart_max_continuations: int = 8,
+    restart_max_age_steps: int = 10_000_000,
+    restart_critic_weight: float = 2.0,
     ref_update_freq: int = 200_000,
     gae_lambda: float = 0.98,
     merged_influence: bool = False,
@@ -2521,6 +2538,12 @@ def train_pipeline(
         "start_pool_frac": float(start_pool_frac),
         "start_pool_capacity": int(start_pool_capacity),
         "start_pool_episodes": int(start_pool_episodes),
+        "restart_pool_frac": float(restart_pool_frac),
+        "restart_pool_capacity": int(restart_pool_capacity),
+        "restart_turn_weights": restart_turn_weights,
+        "restart_max_continuations": int(restart_max_continuations),
+        "restart_max_age_steps": int(restart_max_age_steps),
+        "restart_critic_weight": float(restart_critic_weight),
         "inject_dataset": inject_dataset,
         "inject_every": int(inject_every),
         "inject_weight": float(inject_weight),
@@ -2629,6 +2652,7 @@ def train_pipeline(
     # plays it badly, so a share of environments resume from saved turn-boundary positions
     # instead. The pool is rebuilt as the policy moves on; see ai/training/start_pool.py.
     start_pool: Optional[StartPositionPool] = None
+    restart_pool: Optional[RestartPool] = None
     env_start_turns: List[Optional[int]] = [None] * num_envs
     if forced_opening:
         # Every game starts from a scripted setup (tools/lib/openings.py): each fresh deal has
@@ -2652,6 +2676,26 @@ def train_pipeline(
         print(f"[forced opening] every game starts after the '{forced_opening}' setup: "
               f"USSR {OPENINGS[forced_opening]['USSR']}, US {OPENINGS[forced_opening]['US']}",
               flush=True)
+    elif restart_pool_frac > 0.0:
+        # P48b: a share of envs restarts from positions the run's own whole games pass through (restart_pool.py).
+        if start_pool_frac > 0.0:
+            raise ValueError("--restart-pool-frac and --start-pool-frac are two start pools; use one")
+        if opponent_frac > 0.0:
+            raise ValueError("--restart-pool-frac is built for pure self-play (--opponent-frac 0): its envs and a "
+                             "pool's mixed envs would overlap")
+        restart_pool = RestartPool(
+            num_envs, frac=restart_pool_frac, capacity=restart_pool_capacity,
+            turn_weights=parse_turn_weights(restart_turn_weights) if restart_turn_weights else None,
+            max_continuations=restart_max_continuations, max_age_steps=restart_max_age_steps,
+            critic_weight=restart_critic_weight, seed=env_base_seed + 7919)
+        env = TsVectorizedEnv(num_envs=num_envs, base_seed=env_base_seed, game_seed=env_base_seed,
+                              reward_calculator=reward_calc,
+                              start_provider=restart_pool.provide,
+                              window_provoked_defcon=window_provoked_defcon)
+        print(f"[restart pool] {int(restart_pool.restart_env.sum())}/{num_envs} envs restart from the pool; turns "
+              f"{restart_pool.turn_weights}, capacity {sum(restart_pool.capacity.values())}, at most "
+              f"{restart_max_continuations} continuations a position, {restart_max_age_steps / 1e6:.0f}M steps "
+              f"old at most", flush=True)
     elif start_pool_frac > 0.0:
         mix = dict(DEFAULT_TURN_MIX)
         pool_turns = tuple(t for t in mix if t != 1)
@@ -2888,6 +2932,7 @@ def train_pipeline(
         cuda_graphs=cuda_graphs,
         device=dev,
     )
+    trainer.restart_pool = restart_pool
     if active_search_spec:
         # P36's gated active search: the search CE weight is its own, so no queued searcher may be on.
         if search_ce_coef > 0.0 or search_value_beta > 0.0 or search_rollout_horizon > 0:
@@ -3616,7 +3661,9 @@ def train_pipeline(
         # correct and only the forwarding was not. A prefix cannot go stale the same way.
         for _ok, _ov in iteration_metrics.items():
             # P46: the critic prior's metrics (prior_gain_*, prior_shift_*) by prefix too, for the same reason.
-            if (_ok.startswith("opp_") or _ok.startswith("prior_")) and isinstance(_ov, (int, float)):
+            # P48b: the restart pool's (restart/...) by prefix as well.
+            if (_ok.startswith("opp_") or _ok.startswith("prior_") or _ok.startswith("restart/")) \
+                    and isinstance(_ov, (int, float)):
                 step_metrics[_ok] = float(_ov)
         # Per-seat learning signal, by name pattern for the same reason: the buffer computed
         # adv_mean/std/n per seat on every iteration and this list dropped all six, so the

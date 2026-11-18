@@ -29,6 +29,7 @@ import ts_engine as ts
 from ai.models.coldwar_net_v2 import VP_LIMIT
 from ai.search.batched_mcts import BatchedMCTS, BatchedMCTSConfig
 from ai.training.card_event_targets import aux_label
+from ai.training.restart_pool import critic_judge
 from tools.lib.openings import FORCED_OPENINGS_US, FORCED_OPENINGS_USSR, NODE_OFFSET as _NODE, OPENINGS
 
 from bindings.ts_env import TsVectorizedEnv, model_obs_features
@@ -901,6 +902,11 @@ class BaseNashPGTrainer:
         #: Optional frozen-opponent pool. None means ordinary self-play, where the
         #: learner plays both sides and every transition receives policy gradient.
         self.opponent_pool: Any = None
+        #: P48b: the restart pool (ai/training/restart_pool.py), set by the trainer when --restart-pool-frac > 0. Its
+        #: environments start from pooled positions; their games train as any other, but are kept out of the
+        #: whole-game statistics and the critic tracker.
+        self.restart_pool: Any = None
+        self._restart_judge: Any = None
         #: Which environments are pure self-play. Game statistics are reported over
         #: these only, so a pooled run stays comparable with an unpooled one.
         self._selfplay_mask = np.ones(self.num_envs, dtype=bool)
@@ -1913,6 +1919,9 @@ class BaseNashPGTrainer:
                         logits.index_copy_(0, opp_idx, opp_logits.float())
                 v_win_t = v_win_t.squeeze(-1)
                 v_vp_t = v_vp_t.squeeze(-1)
+                if self.restart_pool is not None and self.restart_pool.awaiting_v.any():
+                    # A restart's first decision: the critic's US win probability there is its v (P48b).
+                    self.restart_pool.first_values((v_win_t.float().cpu().numpy() * _dp + 1.0) / 2.0)
                 if self.critic_prior:
                     _turns_np = np.asarray(self.env.runner.get_turns())
                     _shift_t = self._prior_shift_rollout(obs_t, v_win_t, _dp, _turns_np, self.buffer.step)
@@ -2099,11 +2108,27 @@ class BaseNashPGTrainer:
             # P43 V3: a CANONICAL_LEARNED run opening now takes its order from the logits of whoever decides it
             # (learner or pool member, as `logits` holds) before the step. Nothing happens without the bit.
             self.env.give_run_priorities(logits)
+            # P48b: which envs play a whole game this step (a restart's game is not offered to the pool, and stays
+            # out of the whole-game statistics), and their pre-step states, the candidates at a turn rollover.
+            _whole = self.env.env_start_turn == 1
+            _sp_now = self._selfplay_mask & _whole if self.restart_pool is not None else self._selfplay_mask
+            if self.restart_pool is not None:
+                self.restart_pool.steps = int(self.total_env_steps + self.buffer.step * self.num_envs)
+                self.restart_pool.before_step(self.env.runner, _whole)
             if _hold is not None:
                 next_obs_np, next_masks_np, rewards_np, self._dones_np, self._info = self.env.step(
                     actions_np, hold=_hold)
             else:
                 next_obs_np, next_masks_np, rewards_np, self._dones_np, self._info = self.env.step(actions_np)
+            if self.restart_pool is not None:
+                if self._restart_judge is None:
+                    self._restart_judge = critic_judge(self.active_net, self.obs_features, self.device)
+                self.restart_pool.after_step(self.env.runner, _whole, self._dones_np, self._restart_judge)
+                for _e in self._info.get("completed_episodes", []):
+                    if int(_e.get("start_turn", 1)) > 1:
+                        _w = str(_e.get("winner", ""))
+                        self.restart_pool.complete(int(_e["env_idx"]),
+                                                   1.0 if _w == "US" else 0.0 if _w == "USSR" else 0.5)
             if self._predeal_on:
                 _pf, _pus, _pussr = self.env.runner.get_predeal()
                 _pe = np.flatnonzero(np.asarray(_pf))
@@ -2189,12 +2214,12 @@ class BaseNashPGTrainer:
             self.critic_tracker.observe(
                 v_win_t.detach().cpu().numpy() * acting,
                 np.asarray(self._info["turns"]),
-                self._selfplay_mask,
+                _sp_now,
             )
             for _i, _reason in enumerate(self._info.get("ending_reasons", [])):
                 if not _reason:
                     continue
-                if self._selfplay_mask[_i]:
+                if _sp_now[_i]:
                     _vp = float(self._info["victory_points"][_i])
                     self.critic_tracker.resolve(_i, None if _vp == 0 else _vp > 0)
                     if self.critic_prior and self.opponent_pool is not None:
@@ -2333,6 +2358,8 @@ class BaseNashPGTrainer:
             metrics.update(self.opponent_pool.stats())
         if self.searched_opp is not None:
             metrics.update(self.searched_opp.stats())
+        if self.restart_pool is not None:
+            metrics.update(self.restart_pool.metrics())
         # How much of the searcher's answer the real mask rejected. A determinized search can
         # legitimately propose an action that is illegal in the true state, so a small nonzero
         # rate is expected and healthy; it going to zero would mean the filter is not reaching

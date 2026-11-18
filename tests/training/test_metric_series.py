@@ -35,12 +35,14 @@ class TestPerStartTurnSeries:
         assert suffixed == [], f"emitted duplicate per-start series with no pool in use: {suffixed}"
 
     def test_suffixed_series_appear_when_starts_actually_differ(self) -> None:
-        """The case they exist for: a pooled mean turn then describes neither population."""
+        """The case they exist for: a pooled mean turn would describe neither population. Since P48b (2026-11-18)
+        the unsuffixed series are the whole games alone and the restarted games have their own `_restart` series."""
         eps = [_ep(7, "US"), _ep(9, "USSR", start_turn=6), _ep(10, "US", start_turn=6)]
         stats = summarize_completed_episodes(eps)
         assert stats["mean_turn_start1"] == 7.0
         assert stats["mean_turn_start6"] == 9.5
-        assert stats["mean_turn"] != stats["mean_turn_start1"], "pooled must not equal a group"
+        assert stats["mean_turn"] == stats["mean_turn_start1"], "the unsuffixed series are the whole games"
+        assert stats["mean_turn_restart"] == 9.5 and stats["episodes_completed_restart"] == 2.0
         assert stats["episodes_completed_start6"] == 2.0
 
     def test_suffixed_keys_are_held_back_with_the_group_they_belong_to(self) -> None:
