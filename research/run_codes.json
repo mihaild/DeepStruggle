@@ -2783,6 +2783,21 @@
     "batch_size": 16384,
     "no_blunder_window": true
    }
+  },
+  "R138": {
+   "description": "R132 with a quarter of envs restarting from the restart pool (--restart-pool-frac 0.25; P48b, ai/training/restart_pool.py, the plans session's rules and constants): B6 from 11,600M (owner, 2026-11-18)",
+   "first": "E8.1-A8-R132-S45@11600M+R138_20261118_015831",
+   "flags": {
+    "reward_scheme": "terminal",
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true,
+    "restart_pool_frac": 0.25
+   }
   }
  },
  "views": {
@@ -3113,7 +3128,8 @@
   "E8.1-A8-R132-S45@11600M+R134_20261117_170350": "E8.1-A8-R132-S45@11600M+R134",
   "E8.1-A8-R132-S45@11600M+R135_20261117_170430": "E8.1-A8-R132-S45@11600M+R135",
   "E8-A8-R102-S44@9990M+R136_20261117_233419": "E8-A8-R102-S44@9990M+R136",
-  "E8-A8-R102-S44@9990M+R137_20261117_233428": "E8-A8-R102-S44@9990M+R137"
+  "E8-A8-R102-S44@9990M+R137_20261117_233428": "E8-A8-R102-S44@9990M+R137",
+  "E8.1-A8-R132-S45@11600M+R138_20261118_015831": "E8.1-A8-R132-S45@11600M+R138"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
