@@ -122,6 +122,16 @@
           "mcts": "82d657a03e816fde58997aeac83bf093c455a9c1d355ea5b4c66c090d435b2af"
         },
         "why": "Main's b5c07d7 (2026-11-16): Aldrich Ames reveals the US hand for the rest of the turn, so Ask Not's replacements drawn under it enter face up (engine/AGENTS.md). Only the runner's stream moves (what the USSR observes after Ames and Ask Not in one turn); the state, rollout and search sections are unchanged. A minor fix that stays in E8 (owner, 2026-11-17)."
+      },
+      {
+        "behaviour": {
+          "version": 3,
+          "runner": "f3ed0ab9c81f66fb6178462033bce697cab5d41f205deeb4e44d8b513462417d",
+          "state": "b12f367387dfd16ce5a2490bcfe6b00d1047ab96e82ce8467e39b77df57b8c01",
+          "rollout": "58f32effbc8e273223029a95040b228a1fc569727a46efe1aa3f464437e1c48c",
+          "mcts": "4ee2ae05c8bddf67a6cb51daa8177be9e52022c10c06c294d05eca6cc13ff51f"
+        },
+        "why": "Main's 4ef7a6a with the Missile Envy fix on top (2026-11-18). 4ef7a6a (Star Wars may not take UN Intervention from the discard in a headline) moves the runner, rollout and search sections; the state section is unchanged. The Missile Envy fix -- its highest Ops card is the giver's effective Ops, so Purge, Brezhnev Doctrine and Containment can make a tie the giver chooses from (engine/AGENTS.md section 6, item 9) -- moves none of the four: the build without it measures the same digest. Minor fixes that stay in E8 (owner, 2026-11-18)."
       }
     ]
   }
