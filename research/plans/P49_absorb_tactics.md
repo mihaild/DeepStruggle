@@ -178,3 +178,40 @@ opponent, to learn which of the three additions carried it.
   opponent's earlier moves in the input, which is the owner's memory decision; nothing here depends on it.
 
 ## Runs (filled in while running)
+
+### P49a, 2026-11-18 (CPU, greedy, 2,000 deals a cell, each seat its own rule bits; `data/reports/p49a.json`)
+
+X is R136's newest SWA, **11,920-12,000M** (the run's last; it ran to 12,000M, past the 11,520-11,600M named above),
+with the 11,520-11,600M SWA on the target as the bridge to the cross-table's 67.8%. VP is + for the US; "Europe
+battlegrounds" are the US's controlled ones of France, East Germany, Italy, Poland and West Germany at the first
+state of turn 4 (of the games that reach it). ± is one SE.
+
+| X as the US against | US score | US 20 VP (in T6-8) | USSR Europe Control (by T5) | VP end T3 | VP end T5 | US Europe BGs end T3 |
+|:---|---:|---:|---:|---:|---:|---:|
+| B6 10,800M (−800M) | **68.8** ± 1.0 | 54.8 (28.9) | 14.9 (11.3) | −2.2 | +2.4 | 0.00 |
+| B6 11,200M (−400M) | **65.5** ± 1.1 | 49.1 (25.1) | 18.2 (14.1) | −3.1 | +1.5 | 0.00 |
+| B6 11,600M, its target | **67.5** ± 1.0 | 50.0 (26.9) | 18.0 (13.6) | −2.2 | +2.1 | 0.00 |
+| B6 12,000M (+400M) | **61.3** ± 1.1 | 41.6 (20.3) | 19.2 (13.1) | −3.5 | +0.5 | 0.00 |
+| B6 12,400M (+800M) | **56.1** ± 1.1 | 37.1 (18.4) | 19.9 (13.2) | −4.4 | −0.4 | 0.00 |
+| B6's soup | **68.3** ± 1.0 | 54.3 (27.8) | 17.5 (13.9) | −2.3 | +2.4 | 0.00 |
+| (X at 11,600M) B6 11,600M | 68.8 ± 1.0 | 52.6 (27.0) | 16.9 (13.0) | −1.6 | +2.3 | 0.00 |
+| *B6 11,600M against itself* | *49.9* ± 1.1 | *22.4 (10.8)* | *3.2 (1.7)* | *−1.6* | *−1.1* | *2.00* |
+
+1. **The robust margin is not one number: it is the snapshot's age.** Against B6's *earlier* states and the soup X
+   scores as on its target (65.5-68.8%); against B6's *later* ones it falls, 61.3% at +400M and 56.1% at +800M.
+   Over B6's own 49-50% that is +16 to +19 points backwards and +11 / +6 forwards. The registered expectation
+   (57-60% at 400-800M away) holds forwards only. B6 kept moving after 11,600M in a direction that partly
+   defends this line (its 12,400M state is also where its J1 read was lowest), while its soup -- made of
+   11,520-11,600M states -- has the hole whole.
+2. **The signature is the 10,800M one, stronger**, and the same against every B6 state: US 20 VP wins 37-55% of
+   games (B6 itself 22%), about half of them in turns 6-8; USSR Europe Control 15-20% (B6 3%), three quarters of
+   it by turn 5; VP behind at the end of turn 3 (−2 to −4) and ahead or level at the end of turn 5. **X controls
+   no European battleground at the end of turn 3 -- in 1 to 3 games of ~1,745 a cell -- where B6 controls 2.0.**
+   The reason is its setup: X's US places nothing in West Germany or France (58% of setups: Canada 2,
+   Spain/Portugal 2, Turkey 2, Denmark 1, Greece 1, Italy 1; every one of its 19 distinct setups is of that kind),
+   and the 13% of its games that end before turn 4 are the USSR's Europe Control in 84% of cases (211 of 251 on the target). A P49b exploiter
+   that finds "the 20 VP race" without that setup has found a different tactic.
+3. **The other seat**, from what exists: B6's own USSR exploiter (R135) read +1.4 / −1.6 over its 51.0% bar at
+   12,000 / 12,400M; J1's USSR exploiter of B6 (R137) read 46.6% at 10,400M against a 43.0% bar (+3.6) and was
+   stopped there. No USSR-seat exploiter has found a hole in B6's US of the US seat's size; none has been run
+   long from outside B6's lineage.
