@@ -14,7 +14,10 @@ The rules (P48b, the plans session's; the starred constants are its choices, not
 * **Admission, by the critic.** p = the learner's US win probability at the pre-deal state, its two seats' values
   averaged (P48a's test); openness o = 4p(1 - p). Admitted with probability 0.2 + 0.8 o at turns 3-7 and 0.4 + 0.6 o
   at turns 8-10, where P48a found the critic calls 13-16% of open positions decided. The floor is the unfiltered share.
-  A full bucket drops its oldest position.
+  A full bucket refuses new positions: a checked-out position keeps its place, so its put-back always fits, and a
+  position leaves only by the put-back rule or its age. (Whole games offer several times more positions than the
+  restarts use, so a bucket that dropped its oldest instead would evict every put-back -- it is the oldest -- and
+  every position would be played once; the first launch did exactly that and was voided.)
 * **Check-out.** A drawn position leaves the pool until its continuation ends, so one position never runs in two games
   at once. Draw: a turn by the weights among the stocked buckets, then uniformly in the bucket; nothing stocked gives a
   whole game.
@@ -119,6 +122,8 @@ class RestartPool:
         self.restart_env = np.zeros(self.num_envs, dtype=bool)
         self.restart_env[:n_restart] = True
         self.buckets: Dict[int, List[RestartPosition]] = {t: [] for t in self.turn_weights}
+        #: Positions of each turn checked out and being played: they keep their place in the bucket's capacity.
+        self.out: Dict[int, int] = {t: 0 for t in self.turn_weights}
         #: The position each env is playing (checked out), and the one whose game just ended, until its result is read.
         self.playing: List[Optional[RestartPosition]] = [None] * self.num_envs
         self.finished: List[Optional[RestartPosition]] = [None] * self.num_envs
@@ -175,6 +180,7 @@ class RestartPool:
         bucket[at] = bucket[-1]
         bucket.pop()
         self.playing[env_idx] = pos
+        self.out[turn] += 1
         self.awaiting_v[env_idx] = True
         self.v_now[env_idx] = None
         self.handed_out += 1
@@ -225,11 +231,9 @@ class RestartPool:
 
     def _admit(self, pos: RestartPosition) -> None:
         bucket = self.buckets[pos.turn]
-        if len(bucket) >= self.capacity[pos.turn]:
-            oldest = min(range(len(bucket)), key=lambda k: bucket[k].admitted_step)
-            bucket[oldest] = bucket[-1]
-            bucket.pop()
+        if len(bucket) + self.out[pos.turn] >= self.capacity[pos.turn]:
             self.dropped_full += 1
+            return
         pos.admitted_step = self.steps
         bucket.append(pos)
         self.admitted += 1
@@ -245,6 +249,7 @@ class RestartPool:
         self.v_now[env_idx] = None
         if pos is None:
             return
+        self.out[pos.turn] -= 1
         pos.n += 1
         pos.score_sum += us_score
         if v is None:
@@ -257,8 +262,7 @@ class RestartPool:
         too_old = self.steps - pos.admitted_step > self.max_age_steps
         if pos.n < self.max_continuations and not too_old:
             u = self.rng.random()
-            if u < put_back_probability(pos.n, mean, v_mean, self.critic_weight) \
-                    and len(self.buckets[pos.turn]) < self.capacity[pos.turn]:
+            if u < put_back_probability(pos.n, mean, v_mean, self.critic_weight):
                 self.put_back += 1
                 if u >= put_back_probability(pos.n, mean, v_mean, self.critic_weight, use_disagreement=False):
                     self.put_back_by_z += 1

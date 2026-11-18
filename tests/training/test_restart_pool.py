@@ -126,3 +126,19 @@ def test_whole_game_statistics_leave_restarts_out() -> None:
     shared = [k for k in alone if k in with_restarts and not k.startswith("_")]
     assert shared and all(with_restarts[k] == alone[k] for k in shared if "_start" not in k)
     assert any(k.endswith("_restart") for k in with_restarts)
+
+
+def test_a_full_bucket_refuses_newcomers_and_keeps_a_put_back_its_place() -> None:
+    pool = RestartPool(8, frac=0.5, turn_weights={8: 1.0}, capacity=2, seed=3)
+    for _ in range(3):
+        pool._admit(RestartPosition(state=_state(8), turn=8, admitted_step=0, p_admit=0.5))
+    assert pool.size_now() == 2 and pool.dropped_full == 1, "a full bucket refuses, it does not evict"
+    pool.provide(0)
+    pool._admit(RestartPosition(state=_state(8), turn=8, admitted_step=0, p_admit=0.5))
+    assert pool.size_now() == 1 and pool.dropped_full == 2, "the checked-out position keeps its place"
+    pool.first_values(np.full(8, 0.5))
+    pool.provide(0)                      # its game ended
+    pool.rng.random = lambda: 0.0        # type: ignore[method-assign]  # the rule says: put back
+    pool.complete(0, 1.0)
+    # Env 0's next start checked out the other position, so one is back in the bucket and one is out.
+    assert pool.size_now() == 1 and pool.out[8] == 1 and pool.put_back == 1, "the put-back fits in its own place"
