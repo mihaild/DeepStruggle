@@ -14,10 +14,12 @@ The rules (P48b, the plans session's; the starred constants are its choices, not
 * **Admission, by the critic.** p = the learner's US win probability at the pre-deal state, its two seats' values
   averaged (P48a's test); openness o = 4p(1 - p). Admitted with probability 0.2 + 0.8 o at turns 3-7 and 0.4 + 0.6 o
   at turns 8-10, where P48a found the critic calls 13-16% of open positions decided. The floor is the unfiltered share.
-  A full bucket refuses new positions: a checked-out position keeps its place, so its put-back always fits, and a
-  position leaves only by the put-back rule or its age. (Whole games offer several times more positions than the
-  restarts use, so a bucket that dropped its oldest instead would evict every put-back -- it is the oldest -- and
-  every position would be played once; the first launch did exactly that and was voided.)
+  In a full bucket a newcomer replaces the oldest never-played position (n = 0), and is refused when there is none: a
+  position with a result (checked out or put back) keeps its place, so its put-back always fits and it leaves only by
+  the put-back rule or its age. An unplayed position carries no information, so swapping it for a newer one is free,
+  and with offers several times the use the unplayed stock comes from the newest games. (A bucket that dropped its
+  oldest outright evicted every put-back -- it is the oldest -- and each position was played once: the first launch,
+  voided. One that refused every newcomer kept unplayed positions from the run's past; the second, voided too.)
 * **Check-out.** A drawn position leaves the pool until its continuation ends, so one position never runs in two games
   at once. Draw: a turn by the weights among the stocked buckets, then uniformly in the bucket; nothing stocked gives a
   whole game.
@@ -98,6 +100,8 @@ class RestartPosition:
     score_sum: float = 0.0
     #: The critic's US win probability at each continuation's first decision.
     v_values: List[float] = field(default_factory=list)
+    #: The step it last entered the bucket (admission or put-back).
+    stocked_step: int = 0
 
 
 class RestartPool:
@@ -154,7 +158,11 @@ class RestartPool:
         self.retired_excess: List[float] = []
         self.z_values: List[float] = []
         self.dropped_full = 0
+        self.replaced_unplayed = 0
         self.dropped_old = 0
+        #: Steps a drawn position waited in the bucket since it entered it: unplayed, and put back.
+        self.wait_fresh: List[int] = []
+        self.wait_back: List[int] = []
         #: Put-backs, and of them those the disagreement term decided (back with it, retired without it).
         self.put_back = 0
         self.put_back_by_z = 0
@@ -179,6 +187,7 @@ class RestartPool:
         pos = bucket[at]
         bucket[at] = bucket[-1]
         bucket.pop()
+        (self.wait_back if pos.n else self.wait_fresh).append(self.steps - pos.stocked_step)
         self.playing[env_idx] = pos
         self.out[turn] += 1
         self.awaiting_v[env_idx] = True
@@ -232,9 +241,16 @@ class RestartPool:
     def _admit(self, pos: RestartPosition) -> None:
         bucket = self.buckets[pos.turn]
         if len(bucket) + self.out[pos.turn] >= self.capacity[pos.turn]:
-            self.dropped_full += 1
-            return
+            unplayed = [k for k in range(len(bucket)) if bucket[k].n == 0]
+            if not unplayed:
+                self.dropped_full += 1
+                return
+            oldest = min(unplayed, key=lambda k: bucket[k].admitted_step)
+            bucket[oldest] = bucket[-1]
+            bucket.pop()
+            self.replaced_unplayed += 1
         pos.admitted_step = self.steps
+        pos.stocked_step = self.steps
         bucket.append(pos)
         self.admitted += 1
         self.admitted_openness += 4.0 * pos.p_admit * (1.0 - pos.p_admit)
@@ -266,6 +282,7 @@ class RestartPool:
                 self.put_back += 1
                 if u >= put_back_probability(pos.n, mean, v_mean, self.critic_weight, use_disagreement=False):
                     self.put_back_by_z += 1
+                pos.stocked_step = self.steps
                 self.buckets[pos.turn].append(pos)
                 return
         if too_old:
@@ -287,6 +304,13 @@ class RestartPool:
         out["restart/no_stock"] = float(self.no_stock)
         out["restart/dropped_full"] = float(self.dropped_full)
         out["restart/dropped_old"] = float(self.dropped_old)
+        out["restart/replaced_unplayed"] = float(self.replaced_unplayed)
+        out["restart/pool_unplayed"] = float(sum(p.n == 0 for b in self.buckets.values() for p in b))
+        if self.wait_fresh:
+            out["restart/wait_fresh_median"] = float(np.median(self.wait_fresh))
+        if self.wait_back:
+            out["restart/wait_back_median"] = float(np.median(self.wait_back))
+            out["restart/wait_back_p90"] = float(np.percentile(self.wait_back, 90))
         if self.retired_n:
             out["restart/retired"] = float(len(self.retired_n))
             out["restart/n_at_retirement"] = float(np.mean(self.retired_n))
