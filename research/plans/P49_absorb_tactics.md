@@ -39,7 +39,8 @@ Numbers and instruments: [`../log/P49_exploiter_cross_table.md`](../log/P49_expl
   state it trained on and 55.0% against B6 800M later. The prize is nearer 7-13 points than 20, and an
   exploiter should not train against one frozen network.
 * **The machinery exists:** the seat-true league and its driver (P45), the opponent prior with a learned gain
-  (P46c), one opponent per game (P47), the restart pool (P48b).
+  (P46c), one opponent per game (P47), the restart pool (P48b). **The prior is used in every game the main plays
+  against an opponent that is not itself** (P49c says how, and why the restarts are needed beside it).
 
 ## P49a — the target and the signature (CPU, no training)
 
@@ -80,39 +81,57 @@ source of unfamiliar play.
 
 ## P49c — absorption: defence, attack, retention
 
-The new main is B6 from its 11,600M state, the no-pool recipe (R132), with three additions and nothing from
-another lineage. 800M, then 800M.
+The new main is B6 from its 11,600M state, the no-pool recipe (R132), with three kinds of game added and
+nothing from another lineage. 800M, then 800M.
 
-| share of games | what | what it teaches |
-|:---|:---|:---|
-| 70% | self-play, as now | everything else |
-| 15% | **the P49b exploiter, in its seat**, one opponent a game, the prior with a learned gain | the USSR meets the line from the first move: defence |
-| 10% | **restarts from the league games' own positions** (the turn boundaries of turns 2-6, where the line's shape is on the board), the main playing both sides from there | the critic learns what those positions are worth, and the main's own US learns to steer into them: attack, with no imitation term |
-| 5% | **B6's 11,600M state as a fixed opponent**, both seats, the prior on | punishing the old weakness stays rewarded after the main's own USSR has stopped showing it: retention |
+**The critic prior is used: in every game against the exploiter and against the old state** (P46c's form, the
+gain learned, as built for R128). It is zero in self-play and in the restarts.
 
-* The restart pool takes its positions from the league games in this arm (a source switch on `restart_pool`),
-  admitted without the critic's openness test for the first 200M -- the critic misjudging these positions is
-  the starting condition, not a reason to skip them -- and by P48b's put-back rule after.
-* If the main's US has not moved by the first read (below), a small pull of its US play toward the exploiter's
-  on the league games' positions, fading to zero over 400M, is the one addition; it is not in the first run.
+| kind of game | share | who plays | the value the critic predicts | what it teaches |
+|:---|---:|:---|:---|:---|
+| self-play | 70% | the main, both seats | `sigmoid(c(s))` -- no prior | everything else |
+| **against the exploiter** | 15% | the P49b exploiter in its seat (the US), the main in the other; one opponent for the whole game | `sigmoid(c(s) +- g(s) * beta)`, **`beta` the prior**: the main's running score against this exploiter in this seat, in log-odds against its self-play rate there; + on the main's rows, - on the exploiter's | the USSR meets the line from the first move: defence |
+| restarts from those games | 10% | the main, both seats, from the turn boundaries of turns 2-6 of the games against the exploiter | `sigmoid(c(s))` -- no prior, the exploiter is no longer playing | what the line's positions are worth, and the main's own US steering into them: attack, with no imitation term |
+| **against B6's 11,600M state** | 5% | the old state in either seat, the main in the other; one opponent a game | `sigmoid(c(s) +- g(s) * beta)`, **`beta` the prior** for that state and seat | punishing the old weakness stays rewarded: retention |
 
-**Keeping the critic on the position and not on the style (owner, 2026-11-18).** P44-P46's trap was a critic
-that read "plays unlike the current self" as "loses". Here the unfamiliar side wins, so the same shortcut
-would read "the US plays the line" as "the US wins" and credit the main's own US for positions that are good
-only in the exploiter's hands. Three things, all in the arm:
+`c(s)` is the critic's win logit and `g(s)` its gain head, both reading the position only; `beta` is the one
+number from outside the network, kept by the trainer per opponent and seat as a running average. The shifted
+value is the one stored for GAE, bootstrapped from and fitted in the value loss, on every row of the game; the
+policy loss takes the main's rows only, as in every game against a fixed opponent.
 
-* **The prior with the learned gain on every game against the exploiter and against the old state** (P46c):
-  the opponent's strength enters the value as `g(s) * beta`, zero in self-play.
-* **The prior alone is not enough for an exploiter:** its strength is not one number -- it is strong where its
-  line is on the board and weak elsewhere -- so what the shift leaves unexplained is correlated with style.
-  The restarts close that: the same positions with the main on both sides have `beta = 0`, so they fix the
-  position's own value `c(s)`, and the excess in the exploiter's games can only go into the gain. Without
-  those rows `c` and `g` are not told apart on the line's positions. The restarts are therefore part of the
-  critic's correctness, not only the attack, and their share is not cut below the league's by more than half.
-* **A check with a fallback:** the handover test from the exploiter (the exploiter plays the US's first three
-  turns, the main then plays both sides; the critic at that point against sixteen continuations), at every
-  read. Over 3 points in the US's favour -> the league games' rows leave the value loss (`--value-selfplay-only`'s
-  form for the league only; R124 showed the policy tolerates it) and the arm continues.
+### Why the prior, and why it is not enough by itself
+
+P44-P46's trap was a critic that read "plays unlike the current self" as "loses", because the unfamiliar side
+(old pool members) lost. Here the unfamiliar side wins. Without a prior the critic would learn "the US is
+playing this line, so the US wins", and would then credit the main's own US for positions that are good only
+in the exploiter's hands.
+
+* **With the prior**, the exploiter's edge is carried by `g(s) * beta`, and `c(s)` is left to say what the
+  position is worth between two copies of the main.
+* **The prior alone does not guarantee that**, because an exploiter's strength is not one number: it is strong
+  where its line is on the board and weak elsewhere. `g(s)` reads the position, so it can carry that -- but in
+  the exploiter's games alone nothing says how to split a line position's value between `c` and `g`.
+* **The restarts make the split determinate.** They are the same positions with the main on both sides and
+  `beta = 0`, so they fit `c(s)` directly, and what is left over in the exploiter's games can only go into the
+  gain. They are therefore part of the critic's correctness and not only of the attack: their share is not cut
+  below half the league's.
+
+So: the prior on every game against an opponent, **and** the restarts, together.
+
+**The check, at every read:** the handover test from the exploiter -- the exploiter plays the US's first three
+turns, the main then plays both sides; the critic's value at that point against sixteen continuations. The
+critic should be within 3 points. **The fallback:** over 3 points in the US's favour -> the rows of the games
+against the exploiter leave the value loss (the form of `--value-selfplay-only`, for those games only; R124
+showed the policy tolerates it), the prior stays for their advantages, and the arm continues.
+
+### The restarts
+
+The restart pool takes its positions from the games against the exploiter in this arm (a source switch on
+`restart_pool`), admitted without the critic's openness test for the first 200M -- the critic misjudging these
+positions is the starting condition, not a reason to skip them -- and by P48b's put-back rule after.
+
+If the main's US has not moved by the first read, a small pull of its US play toward the exploiter's on those
+positions, fading to zero over 400M, is the one addition; it is not in the first run.
 
 **Reads** at +400M, +800M and +1,600M, per seat from the JSON, beside B6's own continuation:
 
@@ -120,8 +139,9 @@ only in the exploiter's hands. Three things, all in the arm:
 2. the main as the USSR against the exploiter it trains with (now about 32%; back to its self-play rate);
 3. **the main as the USSR against X, which it never met** (X's US now 68%; under 55% is the pass);
 4. the control, J1's best and the old reference (not below B6's continuation at the same step);
-5. setups, the handover test from the exploiter (above; within 3 points), the learned gain on the line's
-   positions beside its value elsewhere, and the share of the main's own US games that carry P49a's signature.
+5. the critic: the handover test from the exploiter (above; within 3 points), the prior the trainer holds for
+   the exploiter and for the old state, and the learned gain on the line's positions beside its value elsewhere;
+6. setups, and the share of the main's own US games that carry P49a's signature.
 
 **Prediction.** Read 2 within 3 points of the self-play rate by +400M; read 3 under 55% by +800M; read 1 at half
 the robust margin by +800M and at it by +1,600M; read 4 level.
