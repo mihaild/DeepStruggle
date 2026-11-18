@@ -630,8 +630,10 @@ namespace obs_features {
     constexpr uint32_t OWN_EVENT_GATED = 1u << 9;
     // A rule bit (no width, owner 2026-11-11): Blockade and Latin American Debt Crisis ask the US even
     // when it holds no card of 3+ Ops (its one answer is then "done"), so the USSR never learns that it
-    // had none. Read on either seat: it guards the USSR's ignorance and asks the US. With auto-advance
-    // the game is the same as without it -- one forced decision more; clear, the event resolves at once.
+    // had none; and Missile Envy asks its giver even when one card qualifies, so its player never learns
+    // there was no tie. Read on either seat: it guards the event player's ignorance and asks the other.
+    // With auto-advance the game is the same as without it -- one forced decision more; clear, the
+    // event resolves at once.
     constexpr uint32_t ALWAYS_ASK_DISCARD = 1u << 10;
     constexpr float BOARD_BLOCKED_BY_ORDER = 0.5f;
     constexpr size_t BOARD_MY_PLACEABLE = 19;

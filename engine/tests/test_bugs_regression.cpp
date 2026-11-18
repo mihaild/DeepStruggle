@@ -1071,6 +1071,53 @@ TEST(RegressionTest, AlwaysAskDiscardAsksLatinAmericanDebtCrisisWithNothingToDis
     ASSERT_EQ(state.ctx().decision_type, DecisionType::POINT_NODE);
 }
 
+// ALWAYS_ASK_DISCARD also asks Missile Envy's giver when only one card qualifies, so the player of
+// Missile Envy does not learn there was no tie. Either seat's bit asks; the one legal answer is that
+// card (no "done": choosing is not optional), and answering it makes the exchange the unseated engine
+// makes at once.
+TEST(RegressionTest, AlwaysAskDiscardAsksMissileEnvyWithOneCandidate) {
+    const auto deal = [](GameState& s) {
+        s.card_locations[card_ids::DUCK_AND_COVER] = hand_of(Player::US);  // 3 Ops, the only highest
+        s.card_locations[card_ids::FIDEL] = hand_of(Player::US);           // 2 Ops
+        s.card_locations[card_ids::MISSILE_ENVY] = hand_of(Player::USSR);
+        s.phasing_player = Player::USSR;
+        s.current_phase = Phase::ACTION_ROUND;
+    };
+    {
+        GameState state{};                                                 // unseated: at once, as before
+        deal(state);
+        ASSERT_FALSE(CardHandlers::trigger_event(state, card_ids::MISSILE_ENVY, Player::USSR));
+        ASSERT_EQ(state.ctx().decision_player, Player::USSR);
+        ASSERT_EQ(state.ctx().decision_type, DecisionType::SELECT_OP_MODE);
+        ASSERT_EQ(state.ctx().pending_op_card, card_ids::DUCK_AND_COVER);
+    }
+    for (const Player seat : {Player::US, Player::USSR}) {
+        GameState state{};
+        deal(state);
+        seat_obs_features(state, seat, obs_features::ALWAYS_ASK_DISCARD);
+        ASSERT_FALSE(CardHandlers::trigger_event(state, card_ids::MISSILE_ENVY, Player::USSR));
+        ASSERT_EQ(state.ctx().decision_player, Player::US);
+        ASSERT_EQ(state.ctx().decision_type, DecisionType::SELECT_CARD);
+        ASSERT_EQ(state.ctx().resolving_card, card_ids::MISSILE_ENVY);
+        ASSERT_EQ(state.card_locations[card_ids::DUCK_AND_COVER], hand_of(Player::US));
+
+        uint8_t flat[FLAT_ACTION_SPACE_SIZE]{};
+        ActionMask::generate_flat_mask_212(state, flat);
+        int legal = 0;
+        for (size_t i = 0; i < FLAT_ACTION_SPACE_SIZE; ++i) legal += flat[i];
+        ASSERT_EQ(legal, 1);
+        ASSERT_EQ(flat[flat_slots::CONFIRM_DONE], 0);
+
+        ASSERT_FALSE(CardHandlers::handle_event_step(
+            state, MicroAction(DecisionType::SELECT_CARD, card_ids::DUCK_AND_COVER, 0, 0)));
+        ASSERT_EQ(state.ctx().decision_player, Player::USSR);
+        ASSERT_EQ(state.ctx().decision_type, DecisionType::SELECT_OP_MODE);
+        ASSERT_EQ(state.ctx().pending_op_card, card_ids::DUCK_AND_COVER);
+        ASSERT_TRUE(in_hand_of(state.card_locations[card_ids::MISSILE_ENVY], Player::US));
+        ASSERT_EQ(state.forced_card_id, card_ids::MISSILE_ENVY);
+    }
+}
+
 // ENG-10: a target is offered only if its cost fits the budget that spending there keeps.
 // The region bonuses were withdrawn only after the Op was spent, so the last one could go
 // anywhere: the China Card under Vietnam Revolts placed five Ops in Southeast Asia and the

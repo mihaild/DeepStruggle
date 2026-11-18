@@ -669,11 +669,13 @@ digest is unchanged (E8's, as on `main`).
   card of 3+ effective Ops; its one legal answer is then CONFIRM_DONE. Resolving at once told the USSR the
   US hand held no such card, which at a table nobody learns. Read on **either** seat
   (`either_seat_plays_rule`): it guards the USSR's ignorance as much as it asks the US, so a person on either
-  side of a game against a network gets it. With auto-advance the game is the same as without the bit (the
-  forced "done" is taken), one micro-step longer.
+  side of a game against a network gets it. The same bit asks **Missile Envy**'s giver even when only one
+  non-scoring card has the highest Ops (2026-11-18): exchanging at once told the Missile Envy player there was
+  no tie. The giver gets the `SELECT_CARD` a tie gets, its one legal answer that card (no "done"). With
+  auto-advance the game is the same as without the bit (the forced answer is taken), one micro-step longer.
 
 The page also has a display-only hook here: `StateMachine::pause_between_headlines` (thread-local, off
 except inside the wasm `ts_first_headline_json`) stops a copy of the game between the two headlines, so the
 first headline's VP can be shown alone.
 
-Tests: `OwnEventGated*`, `AlwaysAskDiscard*` in `engine/tests/test_bugs_regression.cpp`.
+Tests: `OwnEventGated*`, `AlwaysAskDiscard*` (Blockade, Latin American Debt Crisis, Missile Envy) in `engine/tests/test_bugs_regression.cpp`.

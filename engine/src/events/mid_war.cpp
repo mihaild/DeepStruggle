@@ -153,7 +153,10 @@ bool trigger_missile_envy(GameState& state, Player p) noexcept {
 
     if (tied_cnt == 0) return true;
 
-    if (tied_cnt == 1) {
+    // Under ALWAYS_ASK_DISCARD the giver is asked even when one card qualifies (the mask then
+    // holds just that card): exchanging at once told the Missile Envy player there was no tie,
+    // which at a table nobody learns. Read on either seat, as for Blockade.
+    if (tied_cnt == 1 && !either_seat_plays_rule(state, obs_features::ALWAYS_ASK_DISCARD)) {
         uint8_t chosen_card = first_tied;
         // Exchange cards
         // Both halves of the exchange are public: the opponent hands over a named card and
@@ -197,7 +200,8 @@ bool trigger_missile_envy(GameState& state, Player p) noexcept {
             return false;
         }
     } else {
-        // Opponent selects which tied card to give. Which cards those are is recomputed from
+        // Opponent selects which tied card to give (or, under ALWAYS_ASK_DISCARD, hands over
+        // the only one). Which cards those are is recomputed from
         // their hand wherever it is asked -- the mask and the validation both do it -- so the
         // tie is not written down anywhere it could go stale.
         state.ctx().decision_player = opp;
