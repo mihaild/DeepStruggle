@@ -21,7 +21,8 @@ import pytest
 import torch
 import torch.nn as nn
 
-from ai.training.generic_trainer import (RESUME_FILENAME, load_resume_state, save_resume_state)
+from ai.training.generic_trainer import (RESUME_FILENAME, _load_optimizer_state, load_resume_state,
+                                         save_resume_state)
 
 
 class _FakeTrainer:
@@ -156,3 +157,15 @@ def test_rng_state_round_trips(tmp_path) -> None:
     load_resume_state(path, model, trainer)
     assert torch.allclose(torch.randn(3), expected_torch), "torch RNG did not round-trip"
     assert np.allclose(np.random.rand(3), expected_np), "numpy RNG did not round-trip"
+
+
+def test_a_resume_trains_at_the_launch_learning_rate_not_the_saved_one() -> None:
+    """torch's load_state_dict restores the saved groups' lr; a branch resumed with a new --lr must train at it."""
+    net = torch.nn.Linear(4, 2)
+    old = torch.optim.AdamW(net.parameters(), lr=3e-4, weight_decay=1e-4)
+    net(torch.ones(1, 4)).sum().backward()
+    old.step()
+    new = torch.optim.AdamW(net.parameters(), lr=3e-5, weight_decay=1e-4)
+    _load_optimizer_state(new, old.state_dict())
+    assert new.param_groups[0]["lr"] == 3e-5, "the launch's lr, not the saved 3e-4"
+    assert new.state, "the Adam moments come from the saved state"

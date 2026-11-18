@@ -1525,6 +1525,21 @@ def _load_optimizer_state(optimizer: torch.optim.Optimizer, saved: Dict[str, Any
     same = len(now) == len(saved["param_groups"]) and all(
         len(a["params"]) == len(b["params"]) for a, b in zip(now, saved["param_groups"]))
     optimizer.load_state_dict(saved if same else regroup_optimizer_state(saved, optimizer))
+    # The moments come from the state, the hyperparameters from this launch. torch's load_state_dict restores each
+    # group's saved lr, weight decay, betas and eps, and with a constant schedule nothing set them again, so a branch
+    # resumed with a new --lr (or --weight-decay, --adam-beta2, --adam-eps) silently trained at the parent's values.
+    changed = []
+    for group, configured in zip(optimizer.param_groups, now):
+        for key, value in configured.items():
+            if key != "params" and group.get(key) != value:
+                if key == "lr" and not changed:
+                    changed.append(f"lr {group[key]:.3g} -> {value:.3g}")
+                elif key != "lr":
+                    changed.append(f"{key} {group.get(key)} -> {value}")
+                group[key] = value
+    if changed:
+        print(f"[resume] optimizer hyperparameters from this launch, not the saved state: {', '.join(changed)}",
+              flush=True)
 
 
 def _optimizer_state_with_added(model: nn.Module, added: Sequence[str], saved: Dict[str, Any]) -> Dict[str, Any]:
