@@ -1950,6 +1950,8 @@ def train_pipeline(
     search_rollout_stop: str = "boundaries",
     search_rollout_leaf_side: str = "mover",
     predeal_value_coef: float = 0.0,
+    afterstate_value_coef: float = 0.0,
+    afterstate_frac: float = 0.25,
     searched_games_workers: int = 0,
     searched_games_envs: int = 32,
     searched_value_coef: float = 0.0,
@@ -2331,6 +2333,8 @@ def train_pipeline(
         "search_rollout_stop": str(search_rollout_stop),
         "search_rollout_leaf_side": str(search_rollout_leaf_side),
         "predeal_value_coef": float(predeal_value_coef),
+        "afterstate_value_coef": float(afterstate_value_coef),
+        "afterstate_frac": float(afterstate_frac),
         "searched_games_workers": int(searched_games_workers),
         "searched_games_envs": int(searched_games_envs),
         "searched_value_coef": float(searched_value_coef),
@@ -2844,6 +2848,8 @@ def train_pipeline(
         search_rollout_stop=search_rollout_stop,
         search_rollout_leaf_side=search_rollout_leaf_side,
         predeal_value_coef=predeal_value_coef,
+        afterstate_value_coef=afterstate_value_coef,
+        afterstate_frac=afterstate_frac,
         searched_games_workers=searched_games_workers,
         searched_games_envs=searched_games_envs,
         searched_value_coef=searched_value_coef,
@@ -3677,7 +3683,8 @@ def train_pipeline(
         for _ok, _ov in iteration_metrics.items():
             # P46: the critic prior's metrics (prior_gain_*, prior_shift_*) by prefix too, for the same reason.
             # P48b: the restart pool's (restart/...) by prefix as well.
-            if (_ok.startswith("opp_") or _ok.startswith("prior_") or _ok.startswith("restart/")) \
+            if (_ok.startswith("opp_") or _ok.startswith("prior_") or _ok.startswith("restart/")
+                    or _ok.startswith("afterstate")) \
                     and isinstance(_ov, (int, float)):
                 step_metrics[_ok] = float(_ov)
         # Per-seat learning signal, by name pattern for the same reason: the buffer computed

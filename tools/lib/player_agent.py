@@ -19,6 +19,7 @@ from ai.models.coldwar_net_v2 import (ColdWarNetV2, check_checkpoint_layout,
                                      static_input_mask)
 from ai.models.ladder_net import create_ladder_net, ladder_config_from_state_dict
 from ai.search.batched_mcts import BatchedMCTSAgent, BatchedMCTSConfig
+from ai.search.critic_argmax import CriticArgmaxAgent
 from ai.search.heuristic_mcts import HeuristicMCTSConfig, make_heuristic_mcts_agent
 from ai.search.rollout_root import (EntryRolloutAgent, RolloutRootAgent, SparseRolloutAgent, rollout_spec_config,
                                     rollout_spec_leaf)
@@ -684,6 +685,18 @@ def load_agent(spec: str, device: Union[torch.device, str] = "cuda") -> PlayerAg
         if not isinstance(inner, RolloutRootAgent):
             raise ValueError(f"entry: needs a rollout: spec, not {s.split(':', 1)[1]!r}")
         return EntryRolloutAgent(inner)
+    if s.lower().startswith("critic:"):
+        # critic:<checkpoint>[:worlds] -- every legal move played on a determinized copy and the one whose resulting
+        # position the network's critic values highest taken (ai/search/critic_argmax.py), averaged over <worlds>
+        # copies (1). The measure of a network trained with --afterstate-value-coef.
+        rest = s[len("critic:"):]
+        path, _, w_str = rest.rpartition(":") if rest.rsplit(":", 1)[-1].isdigit() else (rest, "", "1")
+        base = _e4_network(NeuralAgent.from_checkpoint(path, device=device), s)
+        worlds = int(w_str)
+        agent = CriticArgmaxAgent(base.model, f"{base.name}~critic" + (f"(worlds={worlds})" if worlds != 1 else ""),
+                                  device=resolve_device(device), worlds=worlds)
+        atexit.register(lambda: print(f"[critic] {agent.stats()}", flush=True))
+        return agent
     if s.lower().startswith("rollout:"):
         # rollout:<checkpoint>[:k[:worlds[:horizon[:rule[:leaf checkpoint]]]]] -- the network's top k
         # moves played out by the network in sampled worlds, a cautious choice (ai/search/rollout_root.py);

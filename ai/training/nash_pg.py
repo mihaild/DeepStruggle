@@ -29,6 +29,9 @@ import ts_engine as ts
 from ai.models.coldwar_net_v2 import VP_LIMIT
 from ai.search.batched_mcts import BatchedMCTS, BatchedMCTSConfig
 from ai.training.card_event_targets import aux_label
+from ai.training.afterstate_critic import KIND_NAMES as AFTERSTATE_KINDS
+from ai.training.afterstate_critic import AfterstateCapture, AfterstateRows
+from ai.training.afterstate_critic import build_targets as build_afterstate_targets
 from ai.training.restart_pool import critic_judge
 from tools.lib.openings import FORCED_OPENINGS_US, FORCED_OPENINGS_USSR, NODE_OFFSET as _NODE, OPENINGS
 
@@ -402,6 +405,8 @@ class BaseNashPGTrainer:
         search_rollout_stop: str = "boundaries",   # where the rollout root's playouts stop (STOPS)
         search_rollout_leaf_side: str = "mover",   # whose side its leaves are read from (LEAF_SIDES)
         predeal_value_coef: float = 0.0,  # P33: the critic on both sides at the turn-end park (0 = off)
+        afterstate_value_coef: float = 0.0,  # the critic right after a side's decision and around its rolls (0 = off)
+        afterstate_frac: float = 0.25,    # the share of the learner's decisions whose moments are captured
         searched_games_workers: int = 0,  # P33: worker processes playing whole games with the rollout root
         searched_games_envs: int = 32,    # games each of them plays at once
         searched_value_coef: float = 0.0,  # weight of the value loss on those games' decisions
@@ -693,6 +698,16 @@ class BaseNashPGTrainer:
         #: with that side's next-decision lambda-return as its target (the result where the game ends
         #: first). _predeal_rows holds each step's parks until the update.
         self.predeal_value_coef = float(predeal_value_coef)
+        #: The critic at every moment of a side's turn (ai/training/afterstate_critic.py, owner 2026-11-18): right after
+        #: its decision and before / after each of its die rolls, from its own perspective, with the pre-deal rows'
+        #: target. Built at the first rollout (it needs the buffer's width and the env's settle mode).
+        self.afterstate_value_coef = float(afterstate_value_coef)
+        self.afterstate_frac = float(afterstate_frac)
+        self.afterstate: Optional[AfterstateCapture] = None
+        self._as_rows: List[AfterstateRows] = []
+        self._as_obs: Optional[torch.Tensor] = None
+        self._as_tgt: Optional[torch.Tensor] = None
+        self._as_kind: Optional[torch.Tensor] = None
         self._predeal_on = False
         self._predeal_rows: List[PredealRows] = []
         self._pd_obs: Optional[torch.Tensor] = None
@@ -2112,6 +2127,14 @@ class BaseNashPGTrainer:
             # out of the whole-game statistics), and their pre-step states, the candidates at a turn rollover.
             _whole = self.env.env_start_turn == 1
             _sp_now = self._selfplay_mask & _whole if self.restart_pool is not None else self._selfplay_mask
+            if self.afterstate_value_coef > 0.0:
+                if self.afterstate is None:
+                    self.afterstate = AfterstateCapture(self.afterstate_frac, self.obs_features, self.buffer.obs_dim,
+                                                        forced=bool(self.env._auto_advance),
+                                                        seed=int(np.random.randint(1 << 30)))
+                _view = np.where(np.asarray(_dp) == 1, self.env.view_us, self.env.view_ussr)
+                self.afterstate.before(self.env.runner, np.asarray(learner_np, dtype=bool), np.asarray(_dp),
+                                       actions_np, merged=_view == 1, macro=_view == 2)
             if self.restart_pool is not None:
                 self.restart_pool.steps = int(self.total_env_steps + self.buffer.step * self.num_envs)
                 self.restart_pool.before_step(self.env.runner, _whole)
@@ -2129,6 +2152,11 @@ class BaseNashPGTrainer:
                         _w = str(_e.get("winner", ""))
                         self.restart_pool.complete(int(_e["env_idx"]),
                                                    1.0 if _w == "US" else 0.0 if _w == "USSR" else 0.5)
+            if self.afterstate is not None:
+                _asr = self.afterstate.after(self.env.runner, self.buffer.step, np.asarray(self._dones_np) > 0.5,
+                                             self.device)
+                if _asr is not None:
+                    self._as_rows.append(_asr)
             if self._predeal_on:
                 _pf, _pus, _pussr = self.env.runner.get_predeal()
                 _pe = np.flatnonzero(np.asarray(_pf))
@@ -2360,6 +2388,8 @@ class BaseNashPGTrainer:
             metrics.update(self.searched_opp.stats())
         if self.restart_pool is not None:
             metrics.update(self.restart_pool.metrics())
+        if self.afterstate is not None:
+            metrics.update(self.afterstate.metrics())
         # How much of the searcher's answer the real mask rejected. A determinized search can
         # legitimately propose an action that is illegal in the true state, so a small nonzero
         # rate is expected and healthy; it going to zero would mean the filter is not reaching
@@ -2984,6 +3014,17 @@ class NashPGTrainer(BaseNashPGTrainer):
         teacher_kl_t, teacher_rows_t = _z(), _z()
         self._build_predeal_targets()
         pd_loss_t, pd_batches = _z(), 0
+        # The afterstate rows of this rollout with their targets (the pre-deal rule, one side each).
+        self._as_obs = self._as_tgt = self._as_kind = None
+        if self._as_rows:
+            _rows, self._as_rows = self._as_rows, []
+            self._as_obs, self._as_tgt, self._as_kind = build_afterstate_targets(
+                _rows, self.buffer.players.cpu().numpy(), self.buffer.dones.cpu().numpy() > 0.5,
+                self.buffer.rewards.float().cpu().numpy(), self.buffer.returns_win.float().cpu().numpy(),
+                self.buffer.learner.float().cpu().numpy() > 0.5, self.device)
+        _as_rows_n = 0 if self._as_tgt is None else int(self._as_tgt.shape[0])
+        as_se_kind = torch.zeros(len(AFTERSTATE_KINDS), device=self.device)
+        as_n_kind = torch.zeros(len(AFTERSTATE_KINDS), device=self.device)
         sg_added = self._ingest_searched_games()
         sg_loss_t, sg_batches = _z(), 0
         _pd_rows = 0 if self._pd_tgt is None else int(self._pd_tgt.shape[0])
@@ -2993,6 +3034,9 @@ class NashPGTrainer(BaseNashPGTrainer):
             _pd_chunks: List[torch.Tensor] = (
                 list(torch.tensor_split(torch.randperm(_pd_rows, device=self.device),
                                         max(1, -(-_n_all // self.batch_size)))) if _pd_rows else [])
+            _as_chunks: List[torch.Tensor] = (
+                list(torch.tensor_split(torch.randperm(_as_rows_n, device=self.device),
+                                        max(1, -(-_n_all // self.batch_size)))) if _as_rows_n else [])
             _mb = 0
             for (b_obs, b_mask, b_act, b_old_lp, b_adv, b_ret_win, b_ret_vp,
                  b_defcon_risk, b_learner, b_search_pi, b_has_search,
@@ -3301,6 +3345,15 @@ class NashPGTrainer(BaseNashPGTrainer):
                     loss = loss + self.vf_coef * self.predeal_value_coef * _pd_loss
                     pd_loss_t += _pd_loss.detach()
                     pd_batches += 1
+                if _mb < len(_as_chunks) and _as_chunks[_mb].numel() and self._as_obs is not None \
+                        and self._as_tgt is not None and self._as_kind is not None:
+                    _sel = _as_chunks[_mb]
+                    _as_v = self.active_net(self._as_obs.index_select(0, _sel), None)[1].squeeze(-1).float()
+                    _as_se = (_as_v - self._as_tgt.index_select(0, _sel)) ** 2
+                    loss = loss + self.vf_coef * self.afterstate_value_coef * _as_se.mean()
+                    _k = self._as_kind.index_select(0, _sel)
+                    as_se_kind.index_add_(0, _k, _as_se.detach())
+                    as_n_kind.index_add_(0, _k, torch.ones_like(_as_se))
                 _mb += 1
                 if self._sg_size and self._sg_obs is not None and self._sg_tgt is not None:
                     _si = torch.randint(self._sg_size, (self.searched_value_batch,))
@@ -3395,6 +3448,12 @@ class NashPGTrainer(BaseNashPGTrainer):
             "val_loss": val_loss_accum / max(1, num_updates),
             **({"predeal_value_loss": float(pd_loss_t) / max(1, pd_batches), "predeal_rows": _pd_rows}
                if self.predeal_value_coef > 0.0 else {}),
+            # The afterstate rows' value MSE by kind (after the decision, before a roll, after a roll), beside
+            # val_loss on the decisions themselves; afterstate/* (capture counts) come from the rollout.
+            **({"afterstate_rows": float(_as_rows_n),
+                **{f"afterstate_value_loss_{name}": float(as_se_kind[k]) / max(1.0, float(as_n_kind[k]))
+                   for k, name in enumerate(AFTERSTATE_KINDS) if float(as_n_kind[k]) > 0}}
+               if self.afterstate_value_coef > 0.0 else {}),
             **({"searched_value_loss": float(sg_loss_t) / max(1, sg_batches), "searched_rows": self._sg_size,
                 "searched_rows_added": sg_added, "searched_games": 0 if self._sg is None else self._sg.games}
                if self.searched_games_workers > 0 else {}),

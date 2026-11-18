@@ -268,6 +268,11 @@ Every iteration goes to `<run>/training_metrics.jsonl` and to TensorBoard under 
   turns played); prefer it to `mean_turn`, whose completed games read turn 11.
 * `entropy_fixed_probe` is entropy on a frozen set of positions, immune to state-distribution
   drift. Per-seat `adv_*_us/ussr` and `entropy_us/ussr` are the side-collapse signal.
+* With the afterstate critic (`--afterstate-value-coef`, `ai/training/afterstate_critic.py`): `afterstate/*` counts the
+  sampled decisions and the rows captured by kind (after the decision, before a roll, after a roll) and
+  `afterstate/mismatched` the replays that disagreed with the runner (always 0 so far: such rows are dropped);
+  `afterstate_value_loss_<kind>` is their value MSE beside `val_loss`. The `critic:<checkpoint>[:worlds]` player
+  (`ai/search/critic_argmax.py`) is the move whose afterstate that critic values highest.
 * With the restart pool (`--restart-pool-frac`, P48b, `ai/training/restart_pool.py`) the unsuffixed game
   series are the whole games alone, `*_restart` the restarted ones, and `restart/*` the pool: size by turn,
   admission rate and the openness of the admitted, continuations handed out, n at retirement, put-backs

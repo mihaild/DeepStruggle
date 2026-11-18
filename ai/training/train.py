@@ -1239,6 +1239,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Weight (times --vf-coef) of the value loss on searched games' decisions, a sample of --searched-value-batch from their replay store per minibatch.")
     parser.add_argument("--searched-value-batch", type=int, default=1024,
                         help="Searched-game rows sampled from the replay store per minibatch.")
+    parser.add_argument("--afterstate-value-coef", type=float, default=0.0,
+                        help="The critic at every moment of a side's turn (ai/training/afterstate_critic.py, owner 2026-11-18): right after its decision and before / after each of its die rolls, from its own perspective, as extra value-loss rows weighted by this x --vf-coef, each with the lambda-return of the side's next decision (the result where the game ends first). 0 = off. Lets a player read the critic after any move (CriticArgmaxAgent, critic: specs).")
+    parser.add_argument("--afterstate-frac", type=float, default=0.25,
+                        help="The share of the learner's decisions whose moments --afterstate-value-coef captures (about 7 us each on the CPU).")
     parser.add_argument("--predeal-value-coef", type=float, default=0.0,
                         help="P33, the pre-deal critic: weight (times --vf-coef) of a value loss on each env's turn-end park -- after a turn's last action, before the deal, nobody's decision -- read from both sides, each with its own next decision's lambda-return as the target (the result where the game ends first). The rollout root's stop=predeal reads the critic there. 0 = off.")
     parser.add_argument("--search-rollout-leaf-side", choices=["mover", "decider", "own"], default="mover",
@@ -1506,6 +1510,8 @@ def main():
             search_rollout_stop=args.search_rollout_stop,
             search_rollout_leaf_side=args.search_rollout_leaf_side,
             predeal_value_coef=args.predeal_value_coef,
+            afterstate_value_coef=args.afterstate_value_coef,
+            afterstate_frac=args.afterstate_frac,
             searched_games_workers=args.searched_games_workers,
             searched_games_envs=args.searched_games_envs,
             searched_value_coef=args.searched_value_coef,
