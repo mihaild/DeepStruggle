@@ -214,6 +214,109 @@ TEST(RulesAudit, GrainSalesUNIntervention_OnAWarCardChargesNoFlowerPower) {
     ASSERT_EQ(s.victory_points, 0);
 }
 
+// --- UN Intervention may not be played in a headline, by any route -----------------------------
+//
+// "This card cannot be played during the Headline Phase." A card the US comes by during its
+// headline -- drawn by Grain Sales, taken out of the discard by Star Wars -- is played in that
+// headline, so UN Intervention is refused there. In an action round both routes offer it.
+
+namespace {
+
+// The US headlines `us_headline` (2 Ops) against the USSR's Vietnam Revolts (2 Ops): the US wins
+// ties, so the US card resolves first. The US holds De Gaulle, a companion for UN Intervention.
+GameState un_headline(uint8_t us_headline, std::initializer_list<uint8_t> ussr_hand,
+                      std::initializer_list<uint8_t> discard) {
+    GameState s{};
+    Engine::init_game(s, 42);
+    for (uint8_t c = 1; c <= 110; ++c) {
+        if (is_in_any_hand(s.card_locations[c]) || s.card_locations[c] == CardLocation::DISCARD_PILE) {
+            s.card_locations[c] = CardLocation::DRAW_DECK;
+        }
+    }
+    s.current_phase = Phase::HEADLINE;
+    s.us_space_track = 3;   // Star Wars needs the US ahead in the Space Race
+    s.ussr_space_track = 0;
+    s.card_locations[us_headline] = hand_of(Player::US);
+    s.card_locations[card_ids::DE_GAULLE] = hand_of(Player::US);
+    s.card_locations[card_ids::VIETNAM_REVOLTS] = hand_of(Player::USSR);
+    for (uint8_t c : ussr_hand) s.card_locations[c] = hand_of(Player::USSR);
+    for (uint8_t c : discard) s.card_locations[c] = CardLocation::DISCARD_PILE;
+    s.ctx() = DecisionContext{};
+    s.ctx().decision_player = Player::US;
+    s.ctx().decision_type = DecisionType::SELECT_CARD;
+    ASSERT_TRUE(StateMachine::step(s, MicroAction{DecisionType::SELECT_CARD, us_headline, 0, 0}));
+    ASSERT_TRUE(StateMachine::step(s, MicroAction{DecisionType::SELECT_CARD, card_ids::VIETNAM_REVOLTS, 0, 0}));
+    return s;
+}
+
+}  // namespace
+
+TEST(RulesAudit, StarWarsHeadline_CannotTakeUNIntervention) {
+    GameState s = un_headline(card_ids::STAR_WARS, {}, {card_ids::UN_INTERVENTION, card_ids::DUCK_AND_COVER});
+    ASSERT_EQ(s.ctx().resolving_card, card_ids::STAR_WARS);
+    ASSERT_EQ(s.ctx().decision_type, DecisionType::SELECT_CARD);
+    uint8_t mask[FLAT_ACTION_SPACE_SIZE];
+    ActionMask::generate_flat_mask_212(s, mask);
+    ASSERT_EQ(mask[card_ids::UN_INTERVENTION - 1], 0);
+    ASSERT_EQ(mask[card_ids::DUCK_AND_COVER - 1], 1);   // the rest of the discard is still offered
+    ASSERT_FALSE(Engine::step(s, MicroAction{DecisionType::SELECT_CARD, card_ids::UN_INTERVENTION, 0, 0}));
+    ASSERT_EQ(s.card_locations[card_ids::UN_INTERVENTION], CardLocation::DISCARD_PILE);
+}
+
+TEST(RulesAudit, StarWarsActionRound_TakesUNIntervention) {
+    GameState s = action_round_for(Player::US);
+    s.us_space_track = 3;
+    s.ussr_space_track = 0;
+    s.card_locations[card_ids::STAR_WARS] = hand_of(Player::US);
+    s.card_locations[card_ids::DE_GAULLE] = hand_of(Player::US);
+    s.card_locations[card_ids::UN_INTERVENTION] = CardLocation::DISCARD_PILE;
+    ASSERT_TRUE(Engine::step(s, MicroAction{DecisionType::SELECT_CARD, card_ids::STAR_WARS, 0, 0}));
+    ASSERT_TRUE(Engine::step(s, MicroAction{DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(Resolution::EVENT), 0, 0}));
+    ASSERT_EQ(s.ctx().resolving_card, card_ids::STAR_WARS);
+    uint8_t mask[FLAT_ACTION_SPACE_SIZE];
+    ActionMask::generate_flat_mask_212(s, mask);
+    ASSERT_EQ(mask[card_ids::UN_INTERVENTION - 1], 1);
+    ASSERT_TRUE(Engine::step(s, MicroAction{DecisionType::SELECT_CARD, card_ids::UN_INTERVENTION, 0, 0}));
+    // Its Event now names the companion.
+    ASSERT_EQ(s.ctx().resolving_card, card_ids::UN_INTERVENTION);
+    ActionMask::generate_flat_mask_212(s, mask);
+    ASSERT_EQ(mask[card_ids::DE_GAULLE - 1], 1);
+}
+
+TEST(RulesAudit, GrainSalesHeadline_UNInterventionIsHandedBack) {
+    GameState s = un_headline(card_ids::GRAIN_SALES, {card_ids::UN_INTERVENTION}, {});
+    ASSERT_EQ(s.ctx().resolving_card, card_ids::GRAIN_SALES);
+    ASSERT_EQ(s.ctx().pending_op_card, card_ids::UN_INTERVENTION);
+    uint8_t mask[FLAT_ACTION_SPACE_SIZE];
+    ActionMask::generate_flat_mask_212(s, mask);
+    for (size_t i = 0; i < FLAT_ACTION_SPACE_SIZE; ++i) {
+        ASSERT_EQ(mask[i], i == flat_slots::CONFIRM_DONE ? 1 : 0);
+    }
+    ASSERT_TRUE(Engine::step(s, MicroAction{DecisionType::SELECT_PLAY_MODE, 0, 0, action_flags::CONFIRM_DONE}));
+    ASSERT_EQ(s.card_locations[card_ids::UN_INTERVENTION], hand_of(Player::USSR, /*known=*/true));
+    ASSERT_EQ(s.ctx().decision_type, DecisionType::SELECT_OP_MODE);   // Grain Sales' own 2 Ops
+}
+
+TEST(RulesAudit, GrainSalesActionRound_UNInterventionIsPlayable) {
+    GameState s = action_round_for(Player::US);
+    s.card_locations[card_ids::GRAIN_SALES] = hand_of(Player::US);
+    s.card_locations[card_ids::DE_GAULLE] = hand_of(Player::US);
+    s.card_locations[card_ids::UN_INTERVENTION] = hand_of(Player::USSR);
+    ASSERT_TRUE(Engine::step(s, MicroAction{DecisionType::SELECT_CARD, card_ids::GRAIN_SALES, 0, 0}));
+    ASSERT_TRUE(Engine::step(s, MicroAction{DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(Resolution::EVENT), 0, 0}));
+    ASSERT_EQ(s.ctx().resolving_card, card_ids::GRAIN_SALES);
+    ASSERT_EQ(s.ctx().pending_op_card, card_ids::UN_INTERVENTION);
+    uint8_t mask[FLAT_ACTION_SPACE_SIZE];
+    ActionMask::generate_flat_mask_212(s, mask);
+    ASSERT_EQ(mask[flat_slots::RESOLUTION + static_cast<size_t>(Resolution::EVENT)], 1);
+    ASSERT_EQ(mask[flat_slots::OPS_INFLUENCE], 1);
+    ASSERT_EQ(mask[flat_slots::CONFIRM_DONE], 1);
+    ASSERT_TRUE(Engine::step(s, MicroAction{DecisionType::SELECT_PLAY_MODE, static_cast<uint8_t>(Resolution::EVENT), 0, 0}));
+    ASSERT_EQ(s.ctx().resolving_card, card_ids::UN_INTERVENTION);
+    ActionMask::generate_flat_mask_212(s, mask);
+    ASSERT_EQ(mask[card_ids::DE_GAULLE - 1], 1);
+}
+
 // --- Summit counts regions without the scoring-only card effects -------------------------------
 
 namespace {

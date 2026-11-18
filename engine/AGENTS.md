@@ -679,3 +679,17 @@ except inside the wasm `ts_first_headline_json`) stops a copy of the game betwee
 first headline's VP can be shown alone.
 
 Tests: `OwnEventGated*`, `AlwaysAskDiscard*` (Blockade, Latin American Debt Crisis, Missile Envy) in `engine/tests/test_bugs_regression.cpp`.
+
+## 23. Star Wars may not take UN Intervention in a headline (2026-11-18)
+
+UN Intervention "cannot be played during the Headline Phase", and a card the US comes by during its
+headline is played in that headline. Grain Sales already refused it (its drawn UN Intervention offers only
+CONFIRM_DONE, the hand-back; `SELECT_PLAY_MODE` in `action_mask.cpp`), but Star Wars' discard pick
+(`get_event_action_mask`, `SELECT_CARD`) checked only `can_trigger_event`, which for UN Intervention asks
+whether the US holds a USSR card. So a US that headlined Star Wars -- or a Star Wars Grain Sales drew in a
+headline -- could take UN Intervention from the discard and name a companion in the headline. The pick now
+skips UN Intervention while `current_phase == HEADLINE`; in an action round both routes offer it as before
+(Event or Ops on Grain Sales' draw, the Event through Star Wars). No game of the human corpus took it.
+
+Tests: `RulesAudit.StarWarsHeadline_*`, `StarWarsActionRound_*`, `GrainSalesHeadline_*`,
+`GrainSalesActionRound_*` in `engine/tests/test_rules_audit.cpp`.

@@ -1996,6 +1996,11 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
         switch (card) {
             case card_ids::STAR_WARS:
                 for (uint8_t i = 1; i <= 110; ++i) {
+                    // UN Intervention may not be played in a headline (card text), and a
+                    // headlined Star Wars -- or one Grain Sales drew there -- plays the card it
+                    // takes in that headline. Grain Sales' own draw is refused the same way
+                    // (SELECT_PLAY_MODE in action_mask.cpp). In an action round it is offered.
+                    if (i == card_ids::UN_INTERVENTION && state.current_phase == Phase::HEADLINE) continue;
                     if (state.card_locations[i] == CardLocation::DISCARD_PILE && !CardData::is_scoring_card(i) && CardHandlers::can_trigger_event(state, i, Player::US)) {
                         mask_out[i] = 1;
                     }
