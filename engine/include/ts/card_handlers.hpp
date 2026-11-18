@@ -45,7 +45,8 @@ public:
     enum class Handover : uint8_t { Respect, Ignore };
 
     // The set of cards Missile Envy may take from `giver`: the non-scoring ones of highest
-    // Ops. A property of that hand, recomputed wherever it is asked -- the trigger, the legal
+    // Ops, valued as the giver would play them (Containment, Brezhnev Doctrine and Red
+    // Scare/Purge count; Vietnam Revolts does not). A property of that hand, recomputed wherever it is asked -- the trigger, the legal
     // mask and the validation all use these -- so there is no stored list to fall out of step
     // with the hand it describes. `highest_takeable_ops` returns 0 when there is nothing to
     // take. Both skip ctx().resolving_card, since the engine leaves an Ops card in its owner's

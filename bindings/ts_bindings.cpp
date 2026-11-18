@@ -713,7 +713,14 @@ NB_MODULE(ts_engine, m) {
 
     // Operations helpers
     nb::class_<ts::Operations>(m, "Operations")
-        .def_static("can_place_influence", &ts::Operations::can_place_influence);
+        .def_static("can_place_influence", &ts::Operations::can_place_influence)
+        .def_static("get_effective_ops", &ts::Operations::get_effective_ops,
+                    nb::arg("state"), nb::arg("card_id"), nb::arg("player"),
+                    nb::arg("target_region") = ts::Region::NONE_REGION,
+                    "A card's Ops as `player` would play it: Containment / Brezhnev Doctrine (+1, at most 4) "
+                    "and Red Scare/Purge (-1, at least 1); `target_region` ASIA adds the China Card's and "
+                    "Vietnam Revolts' bonuses, NONE_REGION (the default) neither -- the card's own value, "
+                    "which is what Missile Envy compares in its giver's hand.");
 
     // Scoring helpers
     nb::class_<ts::Scoring>(m, "Scoring")

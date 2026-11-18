@@ -819,6 +819,12 @@ class Operations:
     @staticmethod
     def can_place_influence(arg0: GameState, arg1: Player, arg2: int, /) -> bool: ...
 
+    @staticmethod
+    def get_effective_ops(state: GameState, card_id: int, player: Player, target_region: Region = Region.NONE_REGION) -> int:
+        """
+        A card's Ops as `player` would play it: Containment / Brezhnev Doctrine (+1, at most 4) and Red Scare/Purge (-1, at least 1); `target_region` ASIA adds the China Card's and Vietnam Revolts' bonuses, NONE_REGION (the default) neither -- the card's own value, which is what Missile Envy compares in its giver's hand.
+        """
+
 class Scoring:
     @staticmethod
     def score_region(arg0: GameState, arg1: Region, /) -> None: ...

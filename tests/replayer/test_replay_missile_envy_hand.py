@@ -6,14 +6,23 @@ holding one card too many therefore hands over the wrong card, and the wrong eve
 The turn's hand list in the log is everything a player held at some point during the turn,
 including what they picked up part way through it -- SALT Negotiations retrieves a card from
 the discard pile mid-turn, and that card appears in the list as though it had been dealt.
+
+"Highest" is the card's value to the giver (owner's ruling, 2026-11-18): Containment, Brezhnev
+Doctrine and Red Scare/Purge count, Vietnam Revolts does not, so a modifier can turn a card the
+cap would have set aside into a tie the giver chose from.
 """
 import ts_engine as ts
 
-from tools.lib.ts_replayer_convert import _seed_missile_envy_hand
+from tools.lib.ts_replayer_convert import _cap_draw_deck, _envy_modifier_flags, _seed_missile_envy_hand
 from tests.replay_corpus import ReplayCorpus
 
+DUCK_AND_COVER = 4
+CONTAINMENT = 25
+CIA_CREATED = 26
 SUEZ_CRISIS = 28
 RED_SCARE_PURGE = 31
+MISSILE_ENVY = 49
+BREZHNEV_DOCTRINE = 51
 CAMP_DAVID = 65
 
 
@@ -59,6 +68,60 @@ def test_a_scoring_card_is_never_set_aside() -> None:
     state = _state_with_us_hand([SUEZ_CRISIS, scoring])
     _seed_missile_envy_hand(state, SUEZ_CRISIS, ts.Player.US)
     assert scoring in _us_hand(state)
+
+
+def test_under_purge_a_card_that_ties_the_logged_one_stays() -> None:
+    """Purged, the US values Suez Crisis's 3 and Red Scare/Purge's 4 at 2 and 3: still above. But
+    Duck and Cover's 3 ties Suez Crisis at 2, so it may have been in the hand the US chose from."""
+    state = _state_with_us_hand([SUEZ_CRISIS, DUCK_AND_COVER, RED_SCARE_PURGE, CIA_CREATED])
+    state.set_flag(int(ts.EffectBits.PURGE_US_ACTIVE))
+    _seed_missile_envy_hand(state, SUEZ_CRISIS, ts.Player.US)
+    hand = _us_hand(state)
+    assert {SUEZ_CRISIS, DUCK_AND_COVER, CIA_CREATED} <= hand
+    assert RED_SCARE_PURGE not in hand
+
+
+def test_under_containment_a_four_ties_a_logged_three() -> None:
+    state = _state_with_us_hand([SUEZ_CRISIS, RED_SCARE_PURGE])
+    state.set_flag(int(ts.EffectBits.CONTAINMENT_ACTIVE))
+    _seed_missile_envy_hand(state, SUEZ_CRISIS, ts.Player.US)
+    assert RED_SCARE_PURGE in _us_hand(state), "3 and 4 are both 4 under Containment"
+
+
+def test_a_modifier_on_the_other_side_is_not_the_givers() -> None:
+    state = _state_with_us_hand([SUEZ_CRISIS, RED_SCARE_PURGE])
+    state.set_flag(int(ts.EffectBits.BREZHNEV_DOCTRINE_ACTIVE))
+    state.set_flag(int(ts.EffectBits.PURGE_USSR_ACTIVE))
+    _seed_missile_envy_hand(state, SUEZ_CRISIS, ts.Player.US)
+    assert RED_SCARE_PURGE not in _us_hand(state)
+
+
+def test_a_headline_resolving_first_sets_the_modifier_the_cap_reads() -> None:
+    """Headlined against Missile Envy, Containment / Brezhnev Doctrine / Red Scare/Purge resolve
+    first, inside the same engine step, so the cap must value the hand as they will leave it."""
+    assert _envy_modifier_flags({"US": CONTAINMENT, "USSR": MISSILE_ENVY}) == [
+        int(ts.EffectBits.CONTAINMENT_ACTIVE)]
+    assert _envy_modifier_flags({"US": MISSILE_ENVY, "USSR": BREZHNEV_DOCTRINE}) == [
+        int(ts.EffectBits.BREZHNEV_DOCTRINE_ACTIVE)]
+    assert _envy_modifier_flags({"US": MISSILE_ENVY, "USSR": RED_SCARE_PURGE}) == [
+        int(ts.EffectBits.PURGE_US_ACTIVE)]
+    assert _envy_modifier_flags({"US": CONTAINMENT}) == [], "no Missile Envy headlined"
+
+    state = _state_with_us_hand([SUEZ_CRISIS, RED_SCARE_PURGE])
+    _seed_missile_envy_hand(state, SUEZ_CRISIS, ts.Player.US,
+                            extra_flags=_envy_modifier_flags({"US": CONTAINMENT, "USSR": MISSILE_ENVY}))
+    assert RED_SCARE_PURGE in _us_hand(state)
+    assert not state.has_flag(int(ts.EffectBits.CONTAINMENT_ACTIVE)), "the state itself is not changed"
+
+
+def test_the_draw_deck_cap_values_cards_as_the_giver_would() -> None:
+    state = _state_with_us_hand([SUEZ_CRISIS])
+    for c in (DUCK_AND_COVER, RED_SCARE_PURGE):
+        state.set_card_location(c, ts.CardLocation.DRAW_DECK)
+    # Under Containment every card the US could draw is worth at most 4, as Suez Crisis is.
+    assert _cap_draw_deck(state, SUEZ_CRISIS, ts.Player.US, [int(ts.EffectBits.CONTAINMENT_ACTIVE)]) == []
+    parked = _cap_draw_deck(state, SUEZ_CRISIS, ts.Player.US)
+    assert RED_SCARE_PURGE in parked and DUCK_AND_COVER not in parked
 
 
 def test_replay_64_converts_end_to_end(corpus: ReplayCorpus) -> None:

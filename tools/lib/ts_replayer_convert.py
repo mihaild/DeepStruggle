@@ -601,6 +601,9 @@ _EAGLE_BEAR_LANDED_DISCARD = 250
 _OLYMPIC_GAMES = 20
 _HOW_I_LEARNED_TO_STOP_WORRYING = 46
 _TEAR_DOWN_THIS_WALL = 96
+_CONTAINMENT = 25
+_RED_SCARE_PURGE = 31
+_BREZHNEV_DOCTRINE = 51
 
 
 def _narrated_score(entry: Entry) -> Optional[int]:
@@ -1392,8 +1395,41 @@ def force_outcome(state: ts.GameState, action: int,
 _FREE_ACTION_CARDS = frozenset({47, _TEAR_DOWN_THIS_WALL})
 
 
+def _envy_modifier_flags(headline_ids: Dict[str, int]) -> List[int]:
+    """The Ops modifiers a headline sets before a headlined Missile Envy reads the giver's hand.
+
+    Missile Envy compares the giver's cards as the giver would play them (owner's ruling,
+    2026-11-18), so Containment, Brezhnev Doctrine and Red Scare/Purge change which card is
+    highest. Each outranks Missile Envy's 2 Ops, so headlined against it each resolves first --
+    inside the same engine step, where re-asserting the cap between steps cannot see it. Empty
+    unless Missile Envy is one of the headlines.
+    """
+    if _MISSILE_ENVY not in headline_ids.values():
+        return []
+    flags: List[int] = []
+    for side, cid in headline_ids.items():
+        if cid == _CONTAINMENT:
+            flags.append(int(ts.EffectBits.CONTAINMENT_ACTIVE))
+        elif cid == _BREZHNEV_DOCTRINE:
+            flags.append(int(ts.EffectBits.BREZHNEV_DOCTRINE_ACTIVE))
+        elif cid == _RED_SCARE_PURGE:   # on the headliner's opponent
+            flags.append(int(ts.EffectBits.PURGE_USSR_ACTIVE if side == "US" else ts.EffectBits.PURGE_US_ACTIVE))
+    return flags
+
+
+def _envy_values(state: ts.GameState, giver: ts.Player, extra_flags: List[int]) -> Callable[[int], int]:
+    """A card's Ops as Missile Envy compares them in `giver`'s hand: the engine's own value of the
+    card to its holder (Containment / Brezhnev +1, Red Scare/Purge -1; not Vietnam Revolts), under
+    the modifiers in force plus `extra_flags`, those a headline resolving first will set."""
+    valued = state.clone()
+    for f in extra_flags:
+        valued.set_flag(f)
+    return lambda c: int(ts.Operations.get_effective_ops(valued, c, giver))
+
+
 def _seed_missile_envy_hand(state: ts.GameState, revealed: int, giver: ts.Player,
-                            spent_first: Optional[Set[int]] = None) -> None:
+                            spent_first: Optional[Set[int]] = None,
+                            extra_flags: Optional[List[int]] = None) -> None:
     """Make the card the log says was handed over the highest Ops one the giver holds.
 
     Missile Envy takes the opponent's highest Ops card, so the engine's choice is forced by the
@@ -1413,21 +1449,26 @@ def _seed_missile_envy_hand(state: ts.GameState, revealed: int, giver: ts.Player
     You" among them. Setting that aside here instead left Ask Not one card short of the six the
     log names, and it discarded U2 Incident in its place: the very card Missile Envy was about
     to take, and 1 VP for the USSR that never happened.
+
+    "Higher" is as Missile Envy compares (_envy_values): under Red Scare/Purge a printed 2 the giver
+    holds ties a revealed 1 rather than outranking it, so it stays, and the giver's choice between
+    them is answered from the log.
     """
-    want = int(ts.CardData.get_card_info(revealed)["ops"])
+    value = _envy_values(state, giver, extra_flags or [])
+    want = value(revealed)
     spent_first = spent_first or set()
     for c in range(1, 111):
         if (c == revealed or c in spent_first
                 or not ts.in_hand_of(state.get_card_location(c), giver)):
             continue
-        info = ts.CardData.get_card_info(c)
-        if not info["is_scoring"] and int(info["ops"]) > want:
+        if not ts.CardData.get_card_info(c)["is_scoring"] and value(c) > want:
             state.set_card_location(c, ts.CardLocation.DISCARD_PILE)
     if not ts.in_hand_of(state.get_card_location(revealed), giver):
         state.set_card_location(revealed, ts.hand_of(giver))
 
 
-def _cap_draw_deck(state: ts.GameState, revealed: int) -> List[int]:
+def _cap_draw_deck(state: ts.GameState, revealed: int, giver: ts.Player,
+                   extra_flags: Optional[List[int]] = None) -> List[int]:
     """Hold the Missile Envy cap over the draw deck, and report what was set aside.
 
     _seed_missile_envy_hand fixes the hand as it stands. It cannot fix a hand the engine is
@@ -1445,15 +1486,16 @@ def _cap_draw_deck(state: ts.GameState, revealed: int) -> List[int]:
     DRAW_DECK and reshuffle_discard_into_draw reads DISCARD_PILE, so a parked card cannot come
     back through either, including when the deck runs out mid-draw. Every caller must hand them
     back on the far side of the step; the observation for the decision is recorded before this
-    runs, so no training sample ever sees the parked deck.
+    runs, so no training sample ever sees the parked deck. "Above" is in the giver's values, as
+    _seed_missile_envy_hand compares.
     """
-    want = int(ts.CardData.get_card_info(revealed)["ops"])
+    value = _envy_values(state, giver, extra_flags or [])
+    want = value(revealed)
     parked: List[int] = []
     for c in range(1, 111):
         if c == revealed or state.get_card_location(c) != ts.CardLocation.DRAW_DECK:
             continue
-        info = ts.CardData.get_card_info(c)
-        if not info["is_scoring"] and int(info["ops"]) > want:
+        if not ts.CardData.get_card_info(c)["is_scoring"] and value(c) > want:
             state.set_card_location(c, ts.CardLocation.UNAVAILABLE)
             parked.append(c)
     return parked
@@ -1962,11 +2004,12 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         envy_reveal = ("US" if giver == ts.Player.US else "USSR", reveal_queue[0])
     envy_giver: Optional[ts.Player] = None
     envy_spent_first: Set[int] = set()
+    envy_flags = _envy_modifier_flags(headline_ids)
     if envy_reveal is not None:
         envy_giver = ts.Player.US if envy_reveal[0] == "US" else ts.Player.USSR
         envy_spent_first = {c for c in (card_id(nm) for sd, nm in (e.discards or [])
                                         if sd == envy_reveal[0]) if c}
-        _seed_missile_envy_hand(state, envy_reveal[1], envy_giver, envy_spent_first)
+        _seed_missile_envy_hand(state, envy_reveal[1], envy_giver, envy_spent_first, envy_flags)
     # The level How I Learned To Stop Worrying sets, where the entry prints it.
     hils_defcon = _defcon_set_under(e, "Event: How I Learned To Stop Worrying*")
     # The die each war in this entry was decided on, in log order.
@@ -2103,7 +2146,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
             if ts.in_hand_of(state.get_card_location(_MISSILE_ENVY), envy_giver):
                 envy_giver = None
             else:
-                _seed_missile_envy_hand(state, envy_reveal[1], envy_giver, envy_spent_first)
+                _seed_missile_envy_hand(state, envy_reveal[1], envy_giver, envy_spent_first, envy_flags)
 
         # A die the previous decision already chose a seed for must be left alone: force_outcome
         # picks a seed by draining the coup's own chance node, and re-seeding here threw that
@@ -2882,7 +2925,7 @@ def _drive_entry(state: ts.GameState, e: Entry, conv: Conversion,
         # card the log says was handed over may be in that hand at any point before the exchange.
         # Held over the draw deck for the duration of the step, because an event resolving ahead
         # of Missile Envy in the same entry can replace the hand inside that same step.
-        envy_parked = (_cap_draw_deck(state, envy_reveal[1])
+        envy_parked = (_cap_draw_deck(state, envy_reveal[1], envy_giver, envy_flags)
                        if envy_giver is not None and envy_reveal is not None else [])
 
         ts.Engine.step_flat(state, int(chosen))

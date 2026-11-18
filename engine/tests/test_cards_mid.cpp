@@ -7,6 +7,8 @@
 #include "ts/constants.hpp"
 #include "ts/scoring.hpp"
 #include "ts/ops.hpp"
+#include <initializer_list>
+#include <vector>
 
 // Card 36: Brush War
 TEST(MidCardsTest, Card36_BrushWar_Success) {
@@ -340,6 +342,120 @@ TEST(MidCardsTest, Card49_MissileEnvy_SingleHighest) {
               ts::hand_of(ts::Player::USSR, /*known=*/true));
     ASSERT_EQ(state.forced_card_player, ts::Player::USSR);
     ASSERT_EQ(state.forced_card_id, ts::card_ids::MISSILE_ENVY);
+}
+
+// Missile Envy and the Ops modifiers (owner's ruling, 2026-11-18). "Highest" is the card's value to
+// the giver: Containment / Brezhnev Doctrine (+1, at most 4) and Red Scare/Purge (-1, at least 1)
+// count, so they can make a tie the giver chooses from; Vietnam Revolts does not (it adds Ops spent
+// in Southeast Asia, not to a card). The Ops the taker gets carry the taker's own modifiers.
+namespace {
+// `player` plays Missile Envy against a giver holding exactly `cards`, under `flags`.
+void missile_envy_against(ts::GameState& s, ts::Player player, std::initializer_list<uint8_t> cards,
+                          std::initializer_list<uint32_t> flags) {
+    const ts::Player giver = ts::get_opponent(player);
+    for (uint8_t c : cards) s.card_locations[c] = ts::hand_of(giver);
+    s.card_locations[ts::card_ids::MISSILE_ENVY] = ts::hand_of(player);
+    s.phasing_player = player;
+    s.current_phase = ts::Phase::ACTION_ROUND;
+    for (uint32_t f : flags) s.set_flag(f);
+    ts::CardHandlers::trigger_event(s, ts::card_ids::MISSILE_ENVY, player);
+}
+
+// The cards the giver is offered, in id order (empty when there is no decision to make).
+std::vector<uint8_t> missile_envy_offer(const ts::GameState& s) {
+    std::vector<uint8_t> out;
+    if (s.ctx().decision_type != ts::DecisionType::SELECT_CARD ||
+        s.ctx().resolving_card != ts::card_ids::MISSILE_ENVY) {
+        return out;
+    }
+    for (uint8_t c = 1; c <= 110; ++c) {
+        if (ts::CardHandlers::missile_envy_may_take(
+                s, c, s.ctx().decision_player, ts::CardHandlers::highest_takeable_ops(s, s.ctx().decision_player))) {
+            out.push_back(c);
+        }
+    }
+    return out;
+}
+
+void give(ts::GameState& s, uint8_t card) {
+    ASSERT_FALSE(ts::CardHandlers::handle_event_step(
+        s, ts::MicroAction(ts::DecisionType::SELECT_CARD, card, 0, 0)));
+}
+} // namespace
+
+TEST(MidCardsTest, Card49_MissileEnvy_GiverUnderPurgeTiesATwoAndAOne) {
+    ts::GameState state{};
+    missile_envy_against(state, ts::Player::US, {ts::card_ids::FIDEL, ts::card_ids::NASSER},
+                         {ts::effect_bits::PURGE_USSR_ACTIVE});
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::USSR);
+    ASSERT_EQ(missile_envy_offer(state), (std::vector<uint8_t>{ts::card_ids::FIDEL, ts::card_ids::NASSER}));
+    // The full 2 Ops reach the US: Purge is the USSR's, not on the card.
+    give(state, ts::card_ids::FIDEL);
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
+    ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::FIDEL);
+    ASSERT_EQ(state.ctx().pending_ops_value, 2);
+}
+
+TEST(MidCardsTest, Card49_MissileEnvy_GiverUnderBrezhnevTiesAFourAndAThree) {
+    ts::GameState state{};
+    missile_envy_against(state, ts::Player::US, {ts::card_ids::MUSLIM_REVOLUTION, ts::card_ids::COMECON},
+                         {ts::effect_bits::BREZHNEV_DOCTRINE_ACTIVE});
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::USSR);
+    ASSERT_EQ(missile_envy_offer(state),
+              (std::vector<uint8_t>{ts::card_ids::COMECON, ts::card_ids::MUSLIM_REVOLUTION}));
+    give(state, ts::card_ids::COMECON);
+    ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::COMECON);
+    ASSERT_EQ(state.ctx().pending_ops_value, 3);                       // Brezhnev is not the US's
+}
+
+TEST(MidCardsTest, Card49_MissileEnvy_GiverUnderContainmentTiesAFourAndAThree) {
+    ts::GameState state{};
+    missile_envy_against(state, ts::Player::USSR, {ts::card_ids::MARSHALL_PLAN, ts::card_ids::DUCK_AND_COVER},
+                         {ts::effect_bits::CONTAINMENT_ACTIVE});
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::US);
+    ASSERT_EQ(missile_envy_offer(state),
+              (std::vector<uint8_t>{ts::card_ids::DUCK_AND_COVER, ts::card_ids::MARSHALL_PLAN}));
+    give(state, ts::card_ids::DUCK_AND_COVER);
+    ASSERT_EQ(state.ctx().decision_player, ts::Player::USSR);
+    ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::DUCK_AND_COVER);
+    ASSERT_EQ(state.ctx().pending_ops_value, 3);                       // Containment is not the USSR's
+}
+
+TEST(MidCardsTest, Card49_MissileEnvy_GiverPurgeKeepsAStrictlyHigherCardHighest) {
+    ts::GameState state{};                                             // 3 -> 2 still beats 1
+    missile_envy_against(state, ts::Player::USSR, {ts::card_ids::DUCK_AND_COVER, ts::card_ids::CIA_CREATED},
+                         {ts::effect_bits::PURGE_US_ACTIVE});
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
+    ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::DUCK_AND_COVER);
+    ASSERT_EQ(state.ctx().pending_ops_value, 3);
+}
+
+TEST(MidCardsTest, Card49_MissileEnvy_VietnamRevoltsMakesNoTie) {
+    ts::GameState state{};                                             // the giver is the USSR
+    missile_envy_against(state, ts::Player::US, {ts::card_ids::FIDEL, ts::card_ids::NASSER},
+                         {ts::effect_bits::VIETNAM_REVOLTS_ACTIVE});
+    ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
+    ASSERT_EQ(state.ctx().pending_op_card, ts::card_ids::FIDEL);
+    ASSERT_EQ(state.ctx().pending_ops_value, 2);
+}
+
+TEST(MidCardsTest, Card49_MissileEnvy_TakerModifiersApplyToTheOpsItGets) {
+    struct Case { ts::Player player; uint8_t taken; uint8_t other; uint32_t flag; uint8_t ops; };
+    const Case cases[] = {
+        {ts::Player::US,   ts::card_ids::FIDEL,          ts::card_ids::NASSER,      ts::effect_bits::PURGE_US_ACTIVE,          1},
+        {ts::Player::US,   ts::card_ids::FIDEL,          ts::card_ids::NASSER,      ts::effect_bits::CONTAINMENT_ACTIVE,       3},
+        {ts::Player::USSR, ts::card_ids::DUCK_AND_COVER, ts::card_ids::CIA_CREATED, ts::effect_bits::BREZHNEV_DOCTRINE_ACTIVE, 4},
+        {ts::Player::USSR, ts::card_ids::DUCK_AND_COVER, ts::card_ids::CIA_CREATED, ts::effect_bits::PURGE_USSR_ACTIVE,        2},
+    };
+    for (const Case& c : cases) {
+        ts::GameState state{};
+        missile_envy_against(state, c.player, {c.taken, c.other}, {c.flag});
+        ASSERT_EQ(state.ctx().decision_player, c.player);
+        ASSERT_EQ(state.ctx().decision_type, ts::DecisionType::SELECT_OP_MODE);
+        ASSERT_EQ(state.ctx().pending_op_card, c.taken);
+        ASSERT_EQ(state.ctx().pending_ops_value, c.ops);
+    }
 }
 
 // Card 50: We Will Bury You

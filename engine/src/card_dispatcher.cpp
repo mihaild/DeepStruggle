@@ -250,6 +250,13 @@ bool any_card_at(const GameState& state, CardLocation where) noexcept {
 // take is therefore a property of that hand and is recomputed wherever it is needed, so there
 // is no stored list to fall out of step with the hand it describes.
 //
+// "Highest" is the card's value to its holder, the giver (owner's ruling, 2026-11-18): the
+// modifiers on the card -- Containment / Brezhnev Doctrine +1 to at most 4, Red Scare/Purge -1 to
+// at least 1 -- count, so under Purge a 2 and a 1 tie and under Brezhnev a 4 and a 3 tie, and the
+// giver chooses. Vietnam Revolts does not: it adds Ops spent in Southeast Asia, not to the card
+// (Region::NONE_REGION leaves it out). Until then the printed value decided, and the tie was never
+// offered. The taker's own modifiers apply to the Ops it then gets (grant_card_ops_to_ctx).
+//
 // `in_play` is the card currently resolving: the engine leaves an Ops card in its owner's hand
 // until the play finishes, so the event can otherwise find the very card in front of it.
 uint8_t CardHandlers::highest_takeable_ops(const GameState& state, Player giver) noexcept {
@@ -258,7 +265,7 @@ uint8_t CardHandlers::highest_takeable_ops(const GameState& state, Player giver)
     for (uint8_t c = 1; c <= 110; ++c) {
         if (c == in_play || !in_hand_of(state.card_locations[c], giver)) continue;
         if (CardData::is_scoring_card(c)) continue;
-        const uint8_t ops = CardData::get_card(c).ops;
+        const uint8_t ops = Operations::get_effective_ops(state, c, giver, Region::NONE_REGION);
         if (ops > best) best = ops;
     }
     return best;
@@ -270,7 +277,7 @@ bool CardHandlers::missile_envy_may_take(const GameState& state, uint8_t card, P
     if (card == state.ctx().resolving_card) return false;
     if (!in_hand_of(state.card_locations[card], giver)) return false;
     if (CardData::is_scoring_card(card)) return false;
-    return CardData::get_card(card).ops == best_ops;
+    return Operations::get_effective_ops(state, card, giver, Region::NONE_REGION) == best_ops;
 }
 
 bool CardHandlers::event_has_effect(const GameState& state, uint8_t card_id, Player player) noexcept {

@@ -113,6 +113,9 @@ are cited from elsewhere; keep them.
     comparing a location to a hand constant ([`engine/AGENTS.md`](../engine/AGENTS.md) §7).
   - Metadata helpers: `MapData`, `CardData`, `StateMachine`, `Operations`, `Scoring`,
     `CardHandlers`; the `EffectBits` submodule (named 64-bit continuous-effect flags).
+    `Operations.get_effective_ops(state, card, player)` is a card's Ops as that player would play
+    it (Containment / Brezhnev Doctrine / Red Scare/Purge; `target_region=ASIA` adds the China Card and
+    Vietnam Revolts bonuses) -- the value Missile Envy compares in its giver's hand.
   - Serialization: `state_to_dict()` / `GameState.to_dict()` (the display state),
     `GameState.to_display_json()`, `GameState.to_save_json()` (byte for byte
     `json.dumps(to_save_dict(), sort_keys=True, separators=(",", ":"))`), `state_from_save_json()`;

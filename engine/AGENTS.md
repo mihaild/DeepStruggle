@@ -199,6 +199,15 @@ from it the same way, with `ASAN_OPTIONS=detect_leaks=0`.
    Plan, Terrorism, Blockade, Latin American Debt Crisis, Aldrich Ames, Ask Not, a trap, or drawn by
    Grain Sales, even if handed back): cleared once, in `StateMachine::step`, not at each site.
    Pinned by `TrapAndMissileEnvy_*` / `MissileEnvy_*Ends*` in `tests/test_card_interactions.cpp`.
+   **Missile Envy's "highest Ops card" is the giver's effective Ops** too (owner, 2026-11-18):
+   `highest_takeable_ops` / `missile_envy_may_take` value each card as
+   `get_effective_ops(state, card, giver)`, no target region, so under Purge a 2 and a 1 tie, under
+   Brezhnev Doctrine or Containment a 4 and a 3 tie, and the giver chooses; Vietnam Revolts (Ops spent in
+   Southeast Asia, not on the card) does not count. The Ops the taker then gets carry the *taker's*
+   modifiers (`grant_card_ops_to_ctx`). Until then the printed value decided and those ties were never
+   offered. The behaviour digest did not move (E8). The replayer's hand cap (`_seed_missile_envy_hand`,
+   `_cap_draw_deck`) values cards the same way, through `ts.Operations.get_effective_ops`. Pinned by
+   `Card49_MissileEnvy_Giver*` / `_TakerModifiers*` / `_VietnamRevolts*` in `tests/test_cards_mid.cpp`.
 10. **A card in play is not in hand**: an Ops card stays in its owner's hand until the play finishes,
    so Grain Sales, Five Year Plan, Terrorism and Missile Envy skip whatever `resolving_card` names.
 11. **Cancelling Cuban Missile Crisis is a choice, at two moments**: at the head of the payer's own
