@@ -96,13 +96,32 @@ another lineage. 800M, then 800M.
 * If the main's US has not moved by the first read (below), a small pull of its US play toward the exploiter's
   on the league games' positions, fading to zero over 400M, is the one addition; it is not in the first run.
 
+**Keeping the critic on the position and not on the style (owner, 2026-11-18).** P44-P46's trap was a critic
+that read "plays unlike the current self" as "loses". Here the unfamiliar side wins, so the same shortcut
+would read "the US plays the line" as "the US wins" and credit the main's own US for positions that are good
+only in the exploiter's hands. Three things, all in the arm:
+
+* **The prior with the learned gain on every game against the exploiter and against the old state** (P46c):
+  the opponent's strength enters the value as `g(s) * beta`, zero in self-play.
+* **The prior alone is not enough for an exploiter:** its strength is not one number -- it is strong where its
+  line is on the board and weak elsewhere -- so what the shift leaves unexplained is correlated with style.
+  The restarts close that: the same positions with the main on both sides have `beta = 0`, so they fix the
+  position's own value `c(s)`, and the excess in the exploiter's games can only go into the gain. Without
+  those rows `c` and `g` are not told apart on the line's positions. The restarts are therefore part of the
+  critic's correctness, not only the attack, and their share is not cut below the league's by more than half.
+* **A check with a fallback:** the handover test from the exploiter (the exploiter plays the US's first three
+  turns, the main then plays both sides; the critic at that point against sixteen continuations), at every
+  read. Over 3 points in the US's favour -> the league games' rows leave the value loss (`--value-selfplay-only`'s
+  form for the league only; R124 showed the policy tolerates it) and the arm continues.
+
 **Reads** at +400M, +800M and +1,600M, per seat from the JSON, beside B6's own continuation:
 
 1. the main as the US against B6 at 11,600M and at 12,400M (now 49%; the target is P49a's robust margin);
 2. the main as the USSR against the exploiter it trains with (now about 32%; back to its self-play rate);
 3. **the main as the USSR against X, which it never met** (X's US now 68%; under 55% is the pass);
 4. the control, J1's best and the old reference (not below B6's continuation at the same step);
-5. setups, the handover check, and the share of the main's own US games that carry P49a's signature.
+5. setups, the handover test from the exploiter (above; within 3 points), the learned gain on the line's
+   positions beside its value elsewhere, and the share of the main's own US games that carry P49a's signature.
 
 **Prediction.** Read 2 within 3 points of the self-play rate by +400M; read 3 under 55% by +800M; read 1 at half
 the robust margin by +800M and at it by +1,600M; read 4 level.
