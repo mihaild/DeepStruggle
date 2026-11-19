@@ -3140,8 +3140,8 @@
    }
   },
   "R155": {
-   "description": "R139's recipe (B6 = R132's flags at lr 1e-4) on the engine with main's 2026-11-18/19 fixes (Missile Envy under Quagmire / Bear Trap and its giver's effective Ops, Star Wars / UN Intervention in a headline, Grain Sales' drawn card after a Coup or Realignment): R139 resumed at 12,400M for 800M, the new base model (owner, 2026-11-19)",
-   "first": "E8.1-A8-R132-S45@11600M+R139@12400M+R155_20261119_212520",
+   "description": "R139's recipe (B6 = R132's flags at lr 1e-4) on the engine with main's 2026-11-18/19 fixes (Missile Envy under Quagmire / Bear Trap and its giver's effective Ops, Star Wars / UN Intervention in a headline, Grain Sales' drawn card after a Coup or Realignment, the hand holding a card spends its Ops): R139 resumed at 12,400M for 800M, the new base model (owner, 2026-11-19). Its first launch (_20261119_212520, before the Ops-spender fix) was voided",
+   "first": "E8.1-A8-R132-S45@11600M+R139@12400M+R155_20261119_220546",
    "flags": {
     "reward_scheme": "terminal",
     "opponent_self_pool": true,
@@ -3152,7 +3152,7 @@
     "mup": true,
     "batch_size": 16384,
     "no_blunder_window": true,
-    "_note": "R139's flags on the engine with main's Missile Envy / Star Wars / Grain Sales fixes (owner, 2026-11-19: the new base model)"
+    "_note": "R139's flags on the engine with main's Missile Envy / Star Wars / Grain Sales / Ops-spender fixes (owner, 2026-11-19: the new base model)"
    }
   }
  },
@@ -3222,8 +3222,11 @@
   "E8-A34-R47-S44_20261022_222856": {
    "void": "E8 before ENG-5 (the alternating deal, folded into E8 inline on 2026-10-23): launched from a commit without it, so it dealt the old way; voided by the owner, 2026-10-25"
   },
-  "E8.1-A8-R132-S45@11600M+R139@12400M+R155_20261119_212520": {
-   "recipe_note": "R139's flags on the engine with main's Missile Envy / Star Wars / Grain Sales fixes (owner, 2026-11-19: the new base model)"
+  "E8.1-A8-R132-S45@11600M+R139@12400M+R155_20261119_220546": {
+   "recipe_note": "R139's flags on the engine with main's Missile Envy / Star Wars / Grain Sales / Ops-spender fixes (owner, 2026-11-19: the new base model)"
+  },
+  "E8.1-A8-R132-S45@11600M+R139@12400M+R155_20261119_212520_VOID": {
+   "void": "launched before main's Ops-spender fix (00c694c); stopped at ~12,460M and relaunched (owner, 2026-11-19)"
   }
  },
  "runs": {
@@ -3506,7 +3509,8 @@
   "E8.1-A8-R132-S45@11600M+R139@13200M+R152_20261119_164752": "E8.1-A8-R132-S45@11600M+R139@13200M+R152",
   "E8.1-A8-R132-S45@11600M+R139@13200M+R153_20261119_165713": "E8.1-A8-R132-S45@11600M+R139@13200M+R153",
   "E8.1-A8-R132-S45@11600M+R139@13200M+R154_20261119_165819": "E8.1-A8-R132-S45@11600M+R139@13200M+R154",
-  "E8.1-A8-R132-S45@11600M+R139@12400M+R155_20261119_212520": "E8.1-A8-R132-S45@11600M+R139@12400M+R155"
+  "E8.1-A8-R132-S45@11600M+R139@12400M+R155_20261119_212520": "E8.1-A8-R132-S45@11600M+R139@12400M+R155",
+  "E8.1-A8-R132-S45@11600M+R139@12400M+R155_20261119_220546": "E8.1-A8-R132-S45@11600M+R139@12400M+R155"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
