@@ -562,7 +562,9 @@ starred US or neutral card the US played for Ops was removed from the game as if
 occurred (Marshall Plan under a USSR headline of Grain Sales). Played by the US itself, or by the
 USSR for its Event, they were already right (the Event-first Coup/Realign case is the fix above).
 All three now ask `ops_spender(state, card)`: the hand's owner, the phasing player for a card in no
-hand (the China Card, one already placed). A US or neutral card the US plays for Ops fires no
+hand (the China Card, one already placed). The Event itself is fired by one function,
+`fire_owed_event(state, card, spender)`, which the three places call after their own guards (depth,
+headline cards) instead of each carrying a copy of the conditions. A US or neutral card the US plays for Ops fires no
 Event, and a starred one is discarded, not removed, in every path. Flower Power was right in all of
 them and is pinned: the US pays 2 VP for a drawn war card played for anything but the Space Race.
 Tests: `tests/engine_logic/test_grain_sales_drawn_card_by_trigger.py`.

@@ -355,6 +355,34 @@ Player ops_spender(const GameState& state, uint8_t card) noexcept {
     return state.phasing_player;
 }
 
+// What an Event owed after Operations came to.
+enum class OwedEvent { NOT_OWED, DONE, ASKED };
+
+// A card spent for Operations owes its Event to the opponent of its spender when it is the
+// opponent's, was played Ops first, and the Event is not suppressed (UN Intervention's named card).
+// The one place that fires it: where the Ops were spent decides only whether it may be asked (the
+// callers' guards) and what follows. DONE: the Event finished; ASKED: it stopped for a decision, or
+// the game ended, and its answer carries on. The Event runs in the frame the Ops were spent in, so
+// it starts from no early stop: after a realignment, or an influence play while that could stop,
+// Warsaw Pact Formed's mandatory choice offered CONFIRM_DONE and could be declined, and the free Op
+// from CIA Created or "Lone Gunman" showed the stop in the observation.
+OwedEvent fire_owed_event(GameState& state, uint8_t card, Player spender) noexcept {
+    if (state.ctx().suppress_op_card_event ||
+        state.ctx().timing_branch != static_cast<uint8_t>(TimingBranch::OPS_FIRST) ||
+        !CardData::is_opponent_card(card, spender)) {
+        return OwedEvent::NOT_OWED;
+    }
+    const Player opp = get_opponent(spender);
+    state.ctx().decision_player = opp;
+    state.ctx().resolving_card = card;
+    state.ctx().timing_branch = 255;   // cleared
+    state.ctx().allow_early_stop = 0;
+    const bool fired = CardHandlers::event_has_effect(state, card, opp);
+    const bool done = CardHandlers::trigger_event(state, card, opp);
+    CardHandlers::relocate_played_card(state, card, fired, CardHandlers::Handover::Respect);
+    return done ? OwedEvent::DONE : OwedEvent::ASKED;
+}
+
 // Ops spent on a pushed frame are usually granted by an Event, whose card was placed as soon as
 // the Event was triggered. But Grain Sales fired through another card's Event -- Star Wars, Five
 // Year Plan, Missile Envy -- plays the card it drew on the frame that was pushed for it, and that is
@@ -378,20 +406,15 @@ bool settle_card_played_on_pushed_frame(GameState& state) noexcept {
     // the US draws Quagmire and coups Angola with it (T8 AR1 of a game played on
     // twilightstruggle.app), and Quagmire never came into play and NORAD stayed.
     const Player spender = ops_spender(state, card);
-    if (!state.ctx().suppress_op_card_event &&
-        state.ctx().timing_branch == static_cast<uint8_t>(TimingBranch::OPS_FIRST) &&
-        CardData::is_opponent_card(card, spender)) {
-        const Player opp = get_opponent(spender);
-        state.ctx().decision_player = opp;
-        state.ctx().resolving_card = card;
-        state.ctx().timing_branch = 255; // cleared
-        state.ctx().allow_early_stop = 0;  // an Event starts from none, as below
-        const bool fired = CardHandlers::event_has_effect(state, card, opp);
-        const bool done = CardHandlers::trigger_event(state, card, opp);
-        CardHandlers::relocate_played_card(state, card, fired, CardHandlers::Handover::Respect);
-        if (!done || state.current_phase == Phase::GAME_OVER) return true;
-        state.ctx().resolving_card = 0;
-        return false;
+    switch (fire_owed_event(state, card, spender)) {
+        case OwedEvent::ASKED:
+            return true;
+        case OwedEvent::DONE:
+            if (state.current_phase == Phase::GAME_OVER) return true;
+            state.ctx().resolving_card = 0;
+            return false;
+        case OwedEvent::NOT_OWED:
+            break;
     }
     CardHandlers::relocate_played_card(state, card, event_occurred_on_ops_play(state, card, spender),
                                        CardHandlers::Handover::Ignore);
@@ -439,26 +462,13 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
         // Created (a US card) fired it a second time when the US finished spending the Op it
         // grants them, at turn 3's headline of ts-replayer game 101 and 8 games besides.
         uint8_t owed_card = state.ctx().pending_op_card;
-        Player card_player = ops_spender(state, owed_card);
-        if (state.ctx_stack_depth == 0 && !state.ctx().suppress_op_card_event &&
-            owed_card != state.headline_first_card && owed_card != state.headline_second_card &&
-            state.ctx().timing_branch == static_cast<uint8_t>(TimingBranch::OPS_FIRST) &&
-            CardData::is_opponent_card(owed_card, card_player)) {
-            Player opp = get_opponent(card_player);
-            state.ctx().decision_player = opp;
-            state.ctx().resolving_card = owed_card;
-            state.ctx().timing_branch = 255; // cleared
-            // The Event runs in the frame the Ops were spent in, so it must not inherit their stop
-            // -- see the action-round twin below.
-            state.ctx().allow_early_stop = 0;
-
-            const bool owed_fired = CardHandlers::event_has_effect(state, owed_card, opp);
-            bool done = CardHandlers::trigger_event(state, owed_card, opp);
-            CardHandlers::relocate_played_card(state, owed_card, owed_fired, CardHandlers::Handover::Respect);
+        if (state.ctx_stack_depth == 0 && owed_card != state.headline_first_card &&
+            owed_card != state.headline_second_card) {
             // An event that asks something of its player is not finished, and the headline
             // resumes here once it is.
-            if (!done || state.current_phase == Phase::GAME_OVER) return;
-            state.ctx().resolving_card = 0;
+            const OwedEvent owed = fire_owed_event(state, owed_card, ops_spender(state, owed_card));
+            if (owed == OwedEvent::ASKED || (owed == OwedEvent::DONE && state.current_phase == Phase::GAME_OVER)) return;
+            if (owed == OwedEvent::DONE) state.ctx().resolving_card = 0;
         }
         // Unwind whatever the headline's own events pushed. A card that grants Ops does not
         // finish when it is triggered, so the frame it was fired in stays open until those Ops
@@ -526,35 +536,16 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
 
     uint8_t card = state.ctx().pending_op_card;
     Player p = ops_spender(state, card);
-    uint8_t timing = state.ctx().timing_branch;
 
     // Only the phasing player's own card play can owe an opponent event here. When the
     // opponent is spending Ops granted BY that event -- Grain Sales handing the US two Ops,
     // say -- a frame is pushed, and the pushed frame starts zeroed. Zero is OPS_FIRST, so
     // without the depth guard this fires again on an EVENT_FIRST play: the opponent
     // resolves the event twice and the phasing player loses the Ops they paid for.
-    if (state.ctx_stack_depth == 0 && !state.ctx().suppress_op_card_event &&
-        timing == static_cast<uint8_t>(TimingBranch::OPS_FIRST) && CardData::is_opponent_card(card, p)) {
-        // Trigger opponent event!
-        Player opp = get_opponent(p);
-        state.ctx().decision_player = opp;
-        state.ctx().resolving_card = card;
-        state.ctx().timing_branch = 255; // cleared
-        // The Event runs in the frame the Ops were just spent in, and a handler that does not set
-        // allow_early_stop itself inherited theirs: after a realignment -- and after an influence
-        // play, while that could stop -- Warsaw Pact Formed's mandatory choice offered
-        // CONFIRM_DONE and could be declined, and the free Op from CIA Created or "Lone Gunman"
-        // showed the stop in the observation. An Event starts from none; the handlers that
-        // allow one set it.
-        state.ctx().allow_early_stop = 0;
-
-        const bool owed_fired = CardHandlers::event_has_effect(state, card, opp);
-        bool done = CardHandlers::trigger_event(state, card, opp);
-        CardHandlers::relocate_played_card(state, card, owed_fired, CardHandlers::Handover::Respect);
-        if (done) {
-            advance_after_action_round(state);
-        }
-        return;
+    if (state.ctx_stack_depth == 0) {
+        const OwedEvent owed = fire_owed_event(state, card, p);
+        if (owed == OwedEvent::DONE) advance_after_action_round(state);
+        if (owed != OwedEvent::NOT_OWED) return;
     }
 
     // Friendly / Neutral / Already triggered event
