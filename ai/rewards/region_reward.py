@@ -13,11 +13,11 @@ From the exploiter's side, per game:
 pays it at the end only if the exploiter won. Written zero-sum from the US's side, as the other targeted rewards, so GAE's
 alternating signs hold (the fixed opponent does not train).
 
-Attribution without an engine or bindings change: a scoring card selected at a decision (an action round or a headline,
-by either side) is valued on the state before that decision -- ``Scoring.evaluate_region`` (Southeast Asia: its own
-scoring on a copy). Known inexactness: a headline scoring resolves after the other headline's event; a scoring card
-played by a forced single-choice move, which the runner settles inside a step, is not seen. Final scoring's share is read
-on the finished game's state (final scoring adds VP; the board is the one it scored).
+The region's scorings are read exactly: the batch runner records, per env and card, the VP each Event moved during a
+step, across all of that step's micro-steps (``set_capture_tracks`` / ``get_step_track_vp``, owner's approval of the
+bindings change 2026-11-19), so a headline scoring, one played by a forced move, and either side's are all seen with
+the VP the engine actually gave. Final scoring's share is read on the finished game's state (final scoring adds VP;
+the board is the one it scored).
 """
 
 from __future__ import annotations
@@ -34,25 +34,6 @@ SCORING_CARDS: Dict[int, str] = {1: "asia", 2: "europe", 3: "middle_east", 37: "
 REGIONS: Dict[str, "ts.Region"] = {
     "europe": ts.Region.EUROPE, "asia": ts.Region.ASIA, "middle_east": ts.Region.MIDDLE_EAST,
     "africa": ts.Region.AFRICA, "central_america": ts.Region.CENTRAL_AMERICA, "south_america": ts.Region.SOUTH_AMERICA}
-SOUTHEAST_ASIA_SCORING = 38
-
-
-def selected_scoring_card(state: "ts.GameState", action: int) -> int:
-    """The scoring card `action` selects at `state` (a card choice of the player's own, not one inside an event), or 0."""
-    ctx = state.ctx()
-    if ctx.decision_type != ts.DecisionType.SELECT_CARD or int(ctx.resolving_card) != 0 or action >= 110:
-        return 0
-    card = int(ts.decode_flat_action(state, int(action)).primary_id)
-    return card if card in SCORING_CARDS else 0
-
-
-def scoring_value_us(state: "ts.GameState", card: int) -> float:
-    """The VP (+ US) that playing scoring `card` now would score, on the board of `state`."""
-    if card == SOUTHEAST_ASIA_SCORING:
-        s2 = state.clone()
-        ts.Scoring.score_southeast_asia(s2)
-        return float(int(s2.victory_points) - int(state.victory_points))
-    return float(ts.Scoring.evaluate_region(state, REGIONS[SCORING_CARDS[card]], False).net_delta)
 
 
 def final_share_us(state: "ts.GameState", region: str) -> float:
@@ -65,8 +46,8 @@ def reached_final_scoring(state: "ts.GameState") -> bool:
 
 
 class RegionTargetedReward:
-    """The per-region exploiter's reward (module docstring). `observe_actions` is called by the trainer before each env
-    step with the pre-step states' scoring choices; `compute_step_rewards` pays them at that step (or holds them)."""
+    """The per-region exploiter's reward (module docstring). The trainer `attach`es the env's runner, whose per-step
+    Event VP record `compute_step_rewards` reads (before the env resets finished games)."""
 
     def __init__(self, region: str, learner_side: int, scale: float, num_envs: int, weight: float = 0.8,
                  win_bonus: float = 0.2, pay: str = "always") -> None:
@@ -80,21 +61,27 @@ class RegionTargetedReward:
             raise ValueError(f"--region-pay must be always or won, got {pay!r}")
         self.region, self.learner_side, self.scale = region, int(learner_side), float(scale)
         self.weight, self.win_bonus, self.pay = float(weight), float(win_bonus), pay
-        self.pending_us = np.zeros(num_envs, dtype=np.float64)     # this step's scoring VP (+ US), per env
+        self.pending_us = np.zeros(num_envs, dtype=np.float64)     # this step's region scoring VP (+ US), per env
         self.held = np.zeros(num_envs, dtype=np.float64)           # pay="won": the region part so far, exploiter's side
         self.scored_vp = np.zeros(num_envs, dtype=np.float64)      # the game's region VP so far, exploiter's side
         self.finished: List[float] = []                            # region VP of finished games, exploiter's side
         self.scorings = 0
+        self.cards = [c for c, r in SCORING_CARDS.items() if r == region]
+        self.runner: Optional["ts.VectorizedBatchRunner"] = None
 
-    def observe_actions(self, runner: "ts.VectorizedBatchRunner", deciders: np.ndarray, actions: np.ndarray) -> None:
-        """Before an env step: value every scoring of the region about to be chosen, by either side."""
-        self.pending_us[:] = 0.0
-        for e in np.flatnonzero(np.asarray(deciders) != 0):
-            st = runner.get_state(int(e))
-            card = selected_scoring_card(st, int(actions[e]))
-            if card and SCORING_CARDS[card] == self.region:
-                self.pending_us[e] = scoring_value_us(st, card)
-                self.scorings += 1
+    def attach(self, runner: "ts.VectorizedBatchRunner") -> None:
+        """Read `runner`'s per-step Event VP record from now on (turns its capture on)."""
+        runner.set_capture_tracks(True)
+        self.runner = runner
+
+    def _step_vp_us(self) -> np.ndarray:
+        """This step's VP (+ US) from the region's scoring cards, per env."""
+        if self.runner is None:
+            raise RuntimeError("a region-targeted reward reads the runner's Event record: attach(env.runner) first")
+        rec = np.asarray(self.runner.get_step_track_vp())
+        vp = rec[:, self.cards].sum(axis=1).astype(np.float64)
+        self.scorings += int((rec[:, self.cards] != 0).sum())
+        return vp
 
     def _part(self, vp_us: float) -> float:
         """The region part, exploiter's side, of `vp_us` VP (+ US)."""
@@ -104,6 +91,8 @@ class RegionTargetedReward:
                              prev_victory_points: np.ndarray, curr_victory_points: np.ndarray,
                              states: Optional[List[Optional["ts.GameState"]]] = None) -> np.ndarray:
         u_learner = np.zeros(len(dones), dtype=np.float64)   # exploiter's side, this step
+        if self.runner is not None:
+            self.pending_us[:] = self._step_vp_us()
         for e in np.flatnonzero(self.pending_us != 0.0):
             part = self._part(float(self.pending_us[e]))
             self.scored_vp[e] += self.pending_us[e] * self.learner_side
@@ -137,7 +126,7 @@ class RegionTargetedReward:
         return (curr_players * next_players).float()
 
     def metrics(self) -> Dict[str, float]:
-        out = {"region/scorings": float(self.scorings)}
+        out = {"region/scorings": float(self.scorings)}   # scoring Events with a VP effect
         if self.finished:
             out["region/vp_per_game"] = float(np.mean(self.finished))
         self.finished = []

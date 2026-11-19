@@ -223,6 +223,9 @@ std::string game_state_to_display_json(const ts::GameState& state) {
     return sj::display_state(state).dump();
 }
 
+// Columns of VectorizedBatchRunner's per-step Event VP record: card ids 0..110.
+constexpr size_t kTrackCards = 111;
+
 NB_MODULE(ts_engine, m) {
     m.doc() = "Twilight Struggle C++ Simulation Engine Python Bindings (nanobind)";
 
@@ -1621,6 +1624,28 @@ NB_MODULE(ts_engine, m) {
             predeal_ussr.assign(capture_predeal ? num_envs * obs_width : 0, 0.0f);
         }
         void set_capture_predeal(bool on) { capture_predeal = on; alloc_predeal(); }
+        // Per-region exploiters (owner, 2026-11-19): with capture on, each env's VP change from every Event
+        // that resolved during the last step_flat_all, by card (GameState::last_event_tracks, which the
+        // engine resets at each micro-step, summed over all of that step's micro-steps: the action, the
+        // forced moves and chance nodes after it). Row i, column c: the VP (+ US) card c's Event moved
+        // in env i. The decision stream is unchanged: auto-advance runs one micro-step at a time, as
+        // the predeal capture does, and stops where it always stopped. Not seen: the inside of one
+        // composed MACRO / merged-influence action (two engine steps in one call).
+        bool capture_tracks = false;
+        std::vector<int16_t> track_vp;
+        void set_capture_tracks(bool on) {
+            capture_tracks = on;
+            track_vp.assign(on ? num_envs * kTrackCards : 0, 0);
+        }
+        void add_tracks(size_t idx) {
+            if (!capture_tracks) return;
+            const ts::GameState& g = st(idx);
+            int16_t* row = &track_vp[idx * kTrackCards];
+            for (uint8_t k = 0; k < g.last_event_track_count; ++k) {
+                const auto& e = g.last_event_tracks[k];
+                if (e.card_id < kTrackCards) row[e.card_id] = static_cast<int16_t>(row[e.card_id] + e.vp_delta);
+            }
+        }
         void record_predeal(size_t idx) {
             for (int side = 0; side < 2; ++side) {
                 const ts::Player p = side == 0 ? ts::Player::US : ts::Player::USSR;
@@ -1747,6 +1772,7 @@ NB_MODULE(ts_engine, m) {
                    st(idx).ctx().decision_type == ts::DecisionType::ROLL_DIE) {
                 const ts::MicroAction chance_ma{ts::DecisionType::ROLL_DIE, 0, 0, 0};
                 if (!slots[idx].step(chance_ma)) break;
+                add_tracks(idx);
             }
         }
 
@@ -1777,6 +1803,7 @@ NB_MODULE(ts_engine, m) {
             const size_t act_count = actions.size();
             gomp_parallel_for(static_cast<int64_t>(num_envs), [&](int64_t i) {
                 if (capture_predeal) predeal_flag[i] = 0;
+                if (capture_tracks) std::fill_n(&track_vp[static_cast<size_t>(i) * kTrackCards], kTrackCards, int16_t{0});
                 if (static_cast<size_t>(i) >= act_count) return;
                 if (ts::Engine::is_terminal(st(i))) {
                     results[i] = 2; // Terminal
@@ -1788,14 +1815,24 @@ NB_MODULE(ts_engine, m) {
                 const bool ok = slots[i].step_flat(
                     actions[i], view_for(static_cast<size_t>(i), decider(static_cast<size_t>(i))));
                 if (ok) {
+                    add_tracks(static_cast<size_t>(i));
                     if (auto_advance) {
                         if (capture_predeal) {
                             for (size_t k = 0; k < 256; ++k) {
                                 if (ts::rollout::at_turn_cleanup(st(i))) record_predeal(static_cast<size_t>(i));
                                 if (slots[i].auto_advance(1) == 0) break;
+                                add_tracks(static_cast<size_t>(i));
                             }
                         }
-                        slots[i].auto_advance();
+                        if (capture_tracks) {
+                            // auto_advance()'s 128 micro-steps, one at a time, to read each one's record.
+                            for (size_t k = 0; k < 128; ++k) {
+                                if (slots[i].auto_advance(1) == 0) break;
+                                add_tracks(static_cast<size_t>(i));
+                            }
+                        } else {
+                            slots[i].auto_advance();
+                        }
                     } else {
                         drain_chance(static_cast<size_t>(i));
                     }
@@ -2017,6 +2054,17 @@ NB_MODULE(ts_engine, m) {
         .def("set_capture_predeal", &VectorizedBatchRunner::set_capture_predeal, nb::arg("on"),
              "P33: record each env's turn-end park (after a turn's last action, before the deal) from both "
              "sides during step_flat_all's auto-advance; read it with get_predeal after the step.")
+        .def("set_capture_tracks", &VectorizedBatchRunner::set_capture_tracks, nb::arg("on"),
+             "Per-region exploiters: record, per env and card, the VP each Event moved during step_flat_all "
+             "(every micro-step of it); read it with get_step_track_vp after the step.")
+        .def("get_step_track_vp", [](VectorizedBatchRunner& self) {
+                 if (!self.capture_tracks) throw std::runtime_error("get_step_track_vp: capture is off (set_capture_tracks)");
+                 size_t shape[2] = { self.num_envs, kTrackCards };
+                 nb::handle owner = nb::find(&self);
+                 return nb::ndarray<nb::numpy, int16_t, nb::ndim<2>>(self.track_vp.data(), 2, shape, owner);
+             },
+             "(num_envs, 111) int16 view: row i, column c is the VP (+ US) card c's Event moved in env i during "
+             "the last step_flat_all; overwritten by the next one, so copy it to keep it.")
         .def("get_predeal", [](VectorizedBatchRunner& self) {
                  if (!self.capture_predeal) throw std::runtime_error("get_predeal: capture is off (set_capture_predeal)");
                  size_t shape[2] = { self.num_envs, self.obs_width };

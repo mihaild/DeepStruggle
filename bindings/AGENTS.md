@@ -179,7 +179,13 @@ are cited from elsewhere; keep them.
   `ts_rollout_reset`'s seventh argument (0 / 1 / 2 / 3; 4 / 5 for the pre-deal stops, Python
   `"predeal"` / `"earlier_predeal"`). The batch runner records the same park from both sides when
   `set_capture_predeal(True)` (read with `get_predeal()` after each step) -- the rows P33's pre-deal
-  critic trains on; the decision stream is unchanged. `Config::leaf` chooses whose side a leaf's
+  critic trains on; the decision stream is unchanged. With `set_capture_tracks(True)` it also records,
+  per env and card, the VP each Event moved during the last `step_flat_all` (`GameState::last_event_tracks`,
+  which the engine resets at every micro-step, summed over the action, the forced moves and the chance nodes
+  after it; auto-advance then runs one micro-step at a time, so the stream is unchanged): `get_step_track_vp()`,
+  a `(num_envs, 111)` int16 view, overwritten by the next step. The per-region exploiters' reward reads it
+  (`ai/rewards/region_reward.py`; owner, 2026-11-19); `tests/bindings/test_step_track_vp.py` holds it to a
+  hand-stepped game. `Config::leaf` chooses whose side a leaf's
   critic is read from: `kMover` (the default and the measured root: the root mover's at every leaf) or
   `kDecider` (the leaf's decider's, the side the critic is trained on, its value negated into the
   mover's frame where that is the opponent) or `kOwn` (past the stop, play on to the root mover's next

@@ -8,8 +8,7 @@ import numpy as np
 import pytest
 import ts_engine as ts
 
-from ai.rewards.region_reward import (RegionTargetedReward, final_share_us, reached_final_scoring,
-                                      scoring_value_us, selected_scoring_card)
+from ai.rewards.region_reward import RegionTargetedReward, final_share_us, reached_final_scoring
 from bindings.ts_env import TsVectorizedEnv
 
 
@@ -51,23 +50,24 @@ def test_won_mode_holds_the_region_part_until_a_win() -> None:
     assert r.held[0] == pytest.approx(0.8 * 4.0 / 5.0)
 
 
-def test_scoring_cards_are_seen_and_valued_on_the_board() -> None:
-    env = TsVectorizedEnv(num_envs=64, base_seed=7)
+def test_an_attached_env_pays_each_scoring_of_the_region_the_engine_records_at_its_step() -> None:
+    r = RegionTargetedReward("asia", learner_side=1, scale=10.0, num_envs=64, weight=0.8, win_bonus=0.2)
+    env = TsVectorizedEnv(num_envs=64, base_seed=7, reward_calculator=r)
+    r.attach(env.runner)
     _, masks, _ = env.reset_all()
     rng = np.random.default_rng(3)
-    seen = 0
+    paid = 0
     for _ in range(4000):
-        dp = np.asarray(env.runner.get_decision_players())
+        movers = np.asarray(env.runner.get_decision_players(), dtype=np.float64)
         acts = np.array([int(rng.choice(np.flatnonzero(m))) for m in np.asarray(masks)])
-        for e in np.flatnonzero(dp != 0):
-            st = env.runner.get_state(int(e))
-            card = selected_scoring_card(st, int(acts[e]))
-            if card:
-                v = scoring_value_us(st, card)
-                assert float(v).is_integer() and abs(v) <= 20, (card, v)
-                seen += 1
-        _, masks, _, _, _ = env.step(acts)
-    assert seen > 0, "no scoring card played in 4,000 random steps"
+        _, masks, rew, dones, _ = env.step(acts)
+        rec = np.asarray(env.runner.get_step_track_vp())
+        asia = rec[:, [1, 38]].sum(axis=1)
+        for e in np.flatnonzero(~np.asarray(dones, dtype=bool)):
+            # The US learner's region part, as the mover's reward.
+            assert rew[e] == pytest.approx(0.8 * asia[e] / 10.0 * movers[e], abs=1e-6), (e, asia[e], rew[e])
+            paid += int(asia[e] != 0)
+    assert paid > 0, "no Asia scoring in 4,000 random steps of 64 games"
 
 
 def test_it_needs_a_locked_seat_a_region_and_a_scale() -> None:

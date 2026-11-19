@@ -1356,6 +1356,16 @@ class VectorizedBatchRunner:
         P33: record each env's turn-end park (after a turn's last action, before the deal) from both sides during step_flat_all's auto-advance; read it with get_predeal after the step.
         """
 
+    def set_capture_tracks(self, on: bool) -> None:
+        """
+        Per-region exploiters: record, per env and card, the VP each Event moved during step_flat_all (every micro-step of it); read it with get_step_track_vp after the step.
+        """
+
+    def get_step_track_vp(self) -> Annotated[NDArray[numpy.int16], dict(shape=(None, None))]:
+        """
+        (num_envs, 111) int16 view: row i, column c is the VP (+ US) card c's Event moved in env i during the last step_flat_all; overwritten by the next one, so copy it to keep it.
+        """
+
     def get_predeal(self) -> tuple:
         """
         (flags, obs_us, obs_ussr) of the last step: per env, whether it passed its turn-end park, and that position's observation from each side. Views into the runner: copy before the next step.

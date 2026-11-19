@@ -33,6 +33,7 @@ from ai.training.afterstate_critic import KIND_NAMES as AFTERSTATE_KINDS
 from ai.training.afterstate_critic import AfterstateCapture, AfterstateRows
 from ai.training.afterstate_critic import build_targets as build_afterstate_targets
 from ai.training.restart_pool import critic_judge
+from ai.rewards.region_reward import RegionTargetedReward
 from tools.lib.openings import FORCED_OPENINGS_US, FORCED_OPENINGS_USSR, NODE_OFFSET as _NODE, OPENINGS
 
 from bindings.ts_env import TsVectorizedEnv, model_obs_features
@@ -2156,10 +2157,6 @@ class BaseNashPGTrainer:
                 _view = np.where(np.asarray(_dp) == 1, self.env.view_us, self.env.view_ussr)
                 self.afterstate.before(self.env.runner, np.asarray(learner_np, dtype=bool), np.asarray(_dp),
                                        actions_np, merged=_view == 1, macro=_view == 2)
-            if hasattr(self.env.reward_calc, "observe_actions"):
-                # A per-region exploiter (ai/rewards/region_reward.py) values each scoring about to be played, by
-                # either side, on the pre-step state; the env's reward call pays it at this step.
-                self.env.reward_calc.observe_actions(self.env.runner, np.asarray(_dp), actions_np)
             if self.restart_pool is not None:
                 self.restart_pool.steps = int(self.total_env_steps + self.buffer.step * self.num_envs)
                 self.restart_pool.before_step(self.env.runner, _whole)
@@ -2420,7 +2417,7 @@ class BaseNashPGTrainer:
             metrics.update(self.restart_pool.metrics())
         if self.afterstate is not None:
             metrics.update(self.afterstate.metrics())
-        if hasattr(self.env.reward_calc, "metrics") and hasattr(self.env.reward_calc, "observe_actions"):
+        if isinstance(self.env.reward_calc, RegionTargetedReward):
             metrics.update(self.env.reward_calc.metrics())
         if self.setup_random_frac > 0.0:
             metrics["setup_random_forced"] = float(self.setup_random_forced)

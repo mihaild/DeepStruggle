@@ -2766,6 +2766,8 @@ def train_pipeline(
         env = TsVectorizedEnv(num_envs=num_envs, base_seed=env_base_seed, game_seed=env_base_seed,
                               reward_calculator=reward_calc,
                               window_provoked_defcon=window_provoked_defcon)
+    if isinstance(reward_calc, RegionTargetedReward):
+        reward_calc.attach(env.runner)   # it reads the runner's per-step Event VP record
 
     # Curriculum timing configuration
     if is_curriculum:
