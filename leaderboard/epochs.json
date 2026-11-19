@@ -142,6 +142,16 @@
           "mcts": "2806a121e607d87b16fa9f6ffb79611c540c0167df262207758a3f605ea28c02"
         },
         "why": "A card Grain Sales draws fires its Event after a Coup or a Realignment too (engine/AGENTS.md section 16, 2026-11-19): those finish from the die roll, whose decision player is nobody's, and the drawn opponent card was judged against it, so its Event was dropped and the card discarded unplayed -- the US coups with a drawn Quagmire and Quagmire never came into play. Games reaching that path do differ, which is why runner, rollout and mcts move (the state section does not), but it is rare: none of the 300 ts-replayer games or the 2,538 submitted games of the stats exports plays differently. A minor fix that stays in E8, and stored games no longer valid are discarded (owner, 2026-11-19)."
+      },
+      {
+        "behaviour": {
+          "version": 3,
+          "runner": "c6fdcb0ef779422db075c56217457748db5abe98cf55dd6f0b7240b084f23e75",
+          "state": "e86c2c8bbd78fd3f300c0b65178c25febbbc70d9bb1bc2540d52244e114620e3",
+          "rollout": "ebcaa33d42b0d879a7d66d0aa2abdbb6012b769bf6e3294f5a1243749d2b2ce9",
+          "mcts": "d6a21a05eda3f5e71c0e800f851e3b3160690bec194a1e3a106bcaba72008723"
+        },
+        "why": "On top of the previous entry (engine/AGENTS.md section 16, 2026-11-19): the player who spends a card's Ops is the player whose hand holds it (`ops_spender`), not the phasing player. A card Grain Sales hands the US while the USSR plays Grain Sales for Ops, or headlines it, now owes its Event when it is a USSR card, and a US or neutral starred card the US plays for Ops is discarded instead of being removed from the game as if its Event had occurred. Flower Power was already right in every path and is pinned. Every digest section moves, the state one too, because the seeded random games reach these paths; in play it is rare: 33 of 20,000 games of the E8.1 R132 soup in self-play (0.17%), none of the 300 ts-replayer games or the 2,538 submitted games of the stats exports. A minor fix that stays in E8, and stored games no longer valid are discarded (owner, 2026-11-19)."
       }
     ]
   }
