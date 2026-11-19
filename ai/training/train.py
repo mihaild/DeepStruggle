@@ -1241,6 +1241,15 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Searched-game rows sampled from the replay store per minibatch.")
     parser.add_argument("--afterstate-value-coef", type=float, default=0.0,
                         help="The critic at every moment of a side's turn (ai/training/afterstate_critic.py, owner 2026-11-18): right after its decision and before / after each of its die rolls, from its own perspective, as extra value-loss rows weighted by this x --vf-coef, each with the lambda-return of the side's next decision (the result where the game ends first). 0 = off. Lets a player read the critic after any move (CriticArgmaxAgent, critic: specs).")
+    parser.add_argument("--target-region", default=None,
+                        choices=["europe", "asia", "middle_east", "africa", "central_america", "south_america"],
+                        help="A per-region exploiter (owner, 2026-11-19; ai/rewards/region_reward.py): with the terminal scheme and --opponent-lock-side, the learner seat is paid --region-weight x its net VP from the region (every scoring of it, either side's card, and its share of final scoring; Southeast Asia counts as Asia) / --region-scale, plus --region-win-bonus for any win and -1 for any loss.")
+    parser.add_argument("--region-scale", type=float, default=0.0,
+                        help="The region's 90th-percentile net VP in the main's own self-play in that seat (required with --target-region).")
+    parser.add_argument("--region-pay", choices=["always", "won"], default="always",
+                        help="always: the region part is paid at each scoring in every game; won: held and paid at the end only if the exploiter won.")
+    parser.add_argument("--region-weight", type=float, default=0.8)
+    parser.add_argument("--region-win-bonus", type=float, default=0.2)
     parser.add_argument("--target-endings", nargs="+", default=None,
                         choices=["20vp", "europe_control", "defcon", "wargames", "final_scoring"],
                         help="An exploiter that pursues one way of winning (owner, 2026-11-18): with the terminal scheme and --opponent-lock-side, the learner seat is paid +1 for a win by one of these endings, -1 for any loss, 0 for a win any other way or a draw. defcon is either DEFCON 1 ending won by the learner.")
@@ -1519,6 +1528,11 @@ def main():
             afterstate_frac=args.afterstate_frac,
             setup_random_frac=args.setup_random_frac,
             target_endings=args.target_endings,
+            target_region=args.target_region,
+            region_scale=args.region_scale,
+            region_pay=args.region_pay,
+            region_weight=args.region_weight,
+            region_win_bonus=args.region_win_bonus,
             searched_games_workers=args.searched_games_workers,
             searched_games_envs=args.searched_games_envs,
             searched_value_coef=args.searched_value_coef,

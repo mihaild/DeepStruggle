@@ -34,6 +34,7 @@ from ai.models.hyperspherical import SphereTrunk
 from ai.models.ladder_net import LadderNet, create_ladder_net
 from ai.models.mup import (base_shapes_for, combine_lr_mults, mup_lr_mults, policy_head_lr_mults,
                            zero_output_layers)
+from ai.rewards.region_reward import RegionTargetedReward
 from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator, UsefulActionsReward, VPPotentialShaping, EndingTargetedReward
 from bindings.ts_env import (OBS_LAYOUT_NAME, TsVectorizedEnv, check_obs_width,
                              model_obs_features)
@@ -1954,6 +1955,11 @@ def train_pipeline(
     afterstate_frac: float = 0.25,
     setup_random_frac: float = 0.0,
     target_endings: Optional[Sequence[str]] = None,
+    target_region: Optional[str] = None,
+    region_scale: float = 0.0,
+    region_pay: str = "always",
+    region_weight: float = 0.8,
+    region_win_bonus: float = 0.2,
     searched_games_workers: int = 0,
     searched_games_envs: int = 32,
     searched_value_coef: float = 0.0,
@@ -2339,6 +2345,11 @@ def train_pipeline(
         "afterstate_frac": float(afterstate_frac),
         "setup_random_frac": float(setup_random_frac),
         "target_endings": list(target_endings) if target_endings else None,
+        "target_region": target_region,
+        "region_scale": float(region_scale),
+        "region_pay": region_pay,
+        "region_weight": float(region_weight),
+        "region_win_bonus": float(region_win_bonus),
         "searched_games_workers": int(searched_games_workers),
         "searched_games_envs": int(searched_games_envs),
         "searched_value_coef": float(searched_value_coef),
@@ -2652,6 +2663,8 @@ def train_pipeline(
 
     # 3. Setup Reward Calculator & Vectorized Env
     is_curriculum = (reward_scheme == "curriculum")
+    if target_region and (target_endings or reward_scheme != "terminal"):
+        raise ValueError("--target-region replaces the terminal scheme's payoff and does not combine with --target-endings")
     if target_endings and reward_scheme != "terminal":
         raise ValueError(f"--target-endings replaces the terminal scheme's payoff; --reward-scheme {reward_scheme} would "
                          "ignore it")
@@ -2666,6 +2679,13 @@ def train_pipeline(
                                                    held_scoring_blunder=held_scoring_blunder)
     elif reward_scheme == "shaped":
         reward_calc = ShapedZeroSumReward()
+    elif target_region:
+        reward_calc = RegionTargetedReward(target_region, {"us": 1, "ussr": -1}.get(str(opponent_lock_side), 0),
+                                           float(region_scale), int(num_envs), weight=float(region_weight),
+                                           win_bonus=float(region_win_bonus), pay=str(region_pay))
+        print(f"[reward] region-targeted ({target_region}): {region_weight:g} x the {opponent_lock_side} seat's net VP "
+              f"from it (in game and final scoring) / {region_scale:g}, paid {region_pay}; +{region_win_bonus:g} for a "
+              f"win, -1 for a loss", flush=True)
     elif target_endings:
         reward_calc = EndingTargetedReward(list(target_endings), {"us": 1, "ussr": -1}.get(str(opponent_lock_side), 0))
         print(f"[reward] ending-targeted: +1 for the {opponent_lock_side} seat's wins by {sorted(target_endings)}, "
@@ -3696,7 +3716,8 @@ def train_pipeline(
             # P46: the critic prior's metrics (prior_gain_*, prior_shift_*) by prefix too, for the same reason.
             # P48b: the restart pool's (restart/...) by prefix as well.
             if (_ok.startswith("opp_") or _ok.startswith("prior_") or _ok.startswith("restart/")
-                    or _ok.startswith("afterstate") or _ok.startswith("setup_random")) \
+                    or _ok.startswith("afterstate") or _ok.startswith("setup_random")
+                    or _ok.startswith("region/")) \
                     and isinstance(_ov, (int, float)):
                 step_metrics[_ok] = float(_ov)
         # Per-seat learning signal, by name pattern for the same reason: the buffer computed

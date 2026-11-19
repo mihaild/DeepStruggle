@@ -268,6 +268,8 @@ Every iteration goes to `<run>/training_metrics.jsonl` and to TensorBoard under 
   turns played); prefer it to `mean_turn`, whose completed games read turn 11.
 * `entropy_fixed_probe` is entropy on a frozen set of positions, immune to state-distribution
   drift. Per-seat `adv_*_us/ussr` and `entropy_us/ussr` are the side-collapse signal.
+* A per-region exploiter (`--target-region`, `ai/rewards/region_reward.py`) logs `region/scorings` (the region's
+  scorings it valued this iteration) and `region/vp_per_game` (its seat's net VP from the region per finished game).
 * With `--setup-random-frac` (P49b arm S) `setup_random_forced` / `setup_random_games` count the learner-seat
   setup placements the environment chose (learner 0) and the games drawn for it since the last iteration.
 * With the afterstate critic (`--afterstate-value-coef`, `ai/training/afterstate_critic.py`): `afterstate/*` counts the
