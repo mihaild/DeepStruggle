@@ -1957,7 +1957,9 @@ def train_pipeline(
     target_endings: Optional[Sequence[str]] = None,
     target_region: Optional[str] = None,
     region_scale: float = 0.0,
-    region_pay: str = "always",
+    region_loss_share: float = 0.2,
+    region_floor: float = -1.0,
+    region_cap: float = 2.0,
     region_weight: float = 0.8,
     region_win_bonus: float = 0.2,
     searched_games_workers: int = 0,
@@ -2347,7 +2349,9 @@ def train_pipeline(
         "target_endings": list(target_endings) if target_endings else None,
         "target_region": target_region,
         "region_scale": float(region_scale),
-        "region_pay": region_pay,
+        "region_loss_share": float(region_loss_share),
+        "region_floor": float(region_floor),
+        "region_cap": float(region_cap),
         "region_weight": float(region_weight),
         "region_win_bonus": float(region_win_bonus),
         "searched_games_workers": int(searched_games_workers),
@@ -2682,10 +2686,12 @@ def train_pipeline(
     elif target_region:
         reward_calc = RegionTargetedReward(target_region, {"us": 1, "ussr": -1}.get(str(opponent_lock_side), 0),
                                            float(region_scale), int(num_envs), weight=float(region_weight),
-                                           win_bonus=float(region_win_bonus), pay=str(region_pay))
-        print(f"[reward] region-targeted ({target_region}): {region_weight:g} x the {opponent_lock_side} seat's net VP "
-              f"from it (in game and final scoring) / {region_scale:g}, paid {region_pay}; +{region_win_bonus:g} for a "
-              f"win, -1 for a loss", flush=True)
+                                           win_bonus=float(region_win_bonus), loss_share=float(region_loss_share),
+                                           floor=float(region_floor), cap=float(region_cap))
+        print(f"[reward] region-targeted ({target_region}): x = the {opponent_lock_side} seat's net VP from it (in game "
+              f"and final scoring) / {region_scale:g}, clipped to [{region_floor:g}, {region_cap:g}]; a win pays "
+              f"{region_win_bonus:g} + {region_weight:g}x, a loss -1 + {region_loss_share * region_weight:g}x, a draw "
+              f"{region_loss_share * region_weight:g}x", flush=True)
     elif target_endings:
         reward_calc = EndingTargetedReward(list(target_endings), {"us": 1, "ussr": -1}.get(str(opponent_lock_side), 0))
         print(f"[reward] ending-targeted: +1 for the {opponent_lock_side} seat's wins by {sorted(target_endings)}, "

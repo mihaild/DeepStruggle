@@ -24,30 +24,49 @@ def _finished(seed: int) -> Any:
     raise AssertionError("no finished game")
 
 
-def test_a_scoring_of_the_region_pays_its_vp_from_the_learners_side_at_that_step() -> None:
-    r = RegionTargetedReward("asia", learner_side=-1, scale=10.0, num_envs=2, weight=0.8, win_bonus=0.2)
-    r.pending_us[:] = [5.0, 0.0]          # env 0: Asia scored +5 for the US
-    rew = r.compute_step_rewards(np.array([1, -1]), np.array([False, False]), np.zeros(2), np.zeros(2), np.zeros(2))
-    # The USSR learner loses 0.8 * 5 / 10 = 0.4; the US mover's reward is +0.4, a USSR mover's would be -0.4.
-    assert rew[0] == pytest.approx(0.4) and rew[1] == 0.0
-    assert r.pending_us.sum() == 0.0, "paid once"
+def _game(r: RegionTargetedReward, scorings_us: list[float], u: float, st: Any) -> float:
+    """The learner's total reward over a game with these region scorings (+ US) and terminal utility `u`."""
+    total = 0.0
+    for vp in scorings_us:
+        r.pending_us[:] = [vp]
+        total += float(r.compute_step_rewards(np.array([r.learner_side]), np.array([False]), np.zeros(1), np.zeros(1),
+                                              np.zeros(1))[0])
+    total += float(r.compute_step_rewards(np.array([r.learner_side]), np.array([True]), np.array([u]), np.zeros(1),
+                                          np.zeros(1), [st])[0])
+    return total
 
 
-def test_the_end_pays_the_outcome_and_final_scorings_share() -> None:
+def test_a_win_pays_the_region_in_full_a_loss_a_small_share() -> None:
     st = _finished(11)
-    u = float(ts.Engine.get_terminal_utility(st))
-    share = final_share_us(st, "europe") if reached_final_scoring(st) else 0.0
-    r = RegionTargetedReward("europe", learner_side=1, scale=10.0, num_envs=1)
-    rew = r.compute_step_rewards(np.array([1]), np.array([True]), np.array([u]), np.zeros(1), np.zeros(1), [st])
-    outcome = 0.2 if u > 0 else -1.0 if u < 0 else 0.0
-    assert rew[0] == pytest.approx(outcome + 0.8 * share / 10.0, abs=1e-6)
+    share = final_share_us(st, "asia") if reached_final_scoring(st) else 0.0
+    for side in (1, -1):
+        def make() -> RegionTargetedReward:
+            return RegionTargetedReward("asia", learner_side=side, scale=10.0, num_envs=1)
+        vp = 5.0 * side            # +5 for the learner from an Asia scoring
+        x = float(np.clip((vp + share) * side / 10.0, -1.0, 2.0))
+        assert _game(make(), [vp], float(side), st) == pytest.approx(0.2 + 0.8 * x, abs=1e-6)
+        assert _game(make(), [vp], -float(side), st) == pytest.approx(-1.0 + 0.2 * 0.8 * x, abs=1e-6)
+        assert _game(make(), [vp], 0.0, st) == pytest.approx(0.2 * 0.8 * x, abs=1e-6)
 
 
-def test_won_mode_holds_the_region_part_until_a_win() -> None:
-    r = RegionTargetedReward("africa", learner_side=1, scale=5.0, num_envs=1, pay="won")
-    r.pending_us[:] = [4.0]
-    assert r.compute_step_rewards(np.array([1]), np.array([False]), np.zeros(1), np.zeros(1), np.zeros(1))[0] == 0.0
-    assert r.held[0] == pytest.approx(0.8 * 4.0 / 5.0)
+def test_the_loss_share_is_paid_at_the_scoring_and_the_term_is_clipped() -> None:
+    r = RegionTargetedReward("asia", learner_side=-1, scale=10.0, num_envs=2)
+    r.pending_us[:] = [-5.0, 0.0]          # env 0: Asia scored 5 for the USSR learner
+    rew = r.compute_step_rewards(np.array([-1, 1]), np.array([False, False]), np.zeros(2), np.zeros(2), np.zeros(2))
+    assert rew[0] == pytest.approx(0.2 * 0.8 * 0.5) and rew[1] == 0.0      # the USSR mover's reward
+    r.pending_us[:] = [-40.0, 0.0]         # past the cap (2): only up to it is paid
+    rew = r.compute_step_rewards(np.array([-1, 1]), np.array([False, False]), np.zeros(2), np.zeros(2), np.zeros(2))
+    assert rew[0] == pytest.approx(0.2 * 0.8 * (2.0 - 0.5))
+
+
+def test_every_win_pays_more_than_every_loss() -> None:
+    st = _finished(11)
+    worst_win = _game(RegionTargetedReward("africa", 1, 5.0, 1), [-100.0], 1.0, st)
+    best_loss = _game(RegionTargetedReward("africa", 1, 5.0, 1), [100.0], -1.0, st)
+    assert worst_win == pytest.approx(0.2 - 0.8) and best_loss == pytest.approx(-1.0 + 0.2 * 0.8 * 2.0)
+    assert worst_win > best_loss
+    with pytest.raises(ValueError):
+        RegionTargetedReward("africa", 1, 5.0, 1, loss_share=0.5)    # best loss -0.2 > worst win -0.6
 
 
 def test_an_attached_env_pays_each_scoring_of_the_region_the_engine_records_at_its_step() -> None:
@@ -64,8 +83,10 @@ def test_an_attached_env_pays_each_scoring_of_the_region_the_engine_records_at_i
         rec = np.asarray(env.runner.get_step_track_vp())
         asia = rec[:, [1, 38]].sum(axis=1)
         for e in np.flatnonzero(~np.asarray(dones, dtype=bool)):
-            # The US learner's region part, as the mover's reward.
-            assert rew[e] == pytest.approx(0.8 * asia[e] / 10.0 * movers[e], abs=1e-6), (e, asia[e], rew[e])
+            # The US learner's loss share of the scoring, as the mover's reward (within the clip).
+            before, after = r.scored_vp[e] - asia[e], r.scored_vp[e]
+            if -10.0 <= before <= 20.0 and -10.0 <= after <= 20.0:
+                assert rew[e] == pytest.approx(0.2 * 0.8 * asia[e] / 10.0 * movers[e], abs=1e-6), (e, asia[e], rew[e])
             paid += int(asia[e] != 0)
     assert paid > 0, "no Asia scoring in 4,000 random steps of 64 games"
 
