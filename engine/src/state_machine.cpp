@@ -340,6 +340,21 @@ bool event_occurred_on_ops_play(const GameState& state, uint8_t card, Player p) 
     return state.ctx().suppress_op_card_event == 0;
 }
 
+// Who spends the Ops of `card`: the player whose hand holds it. That is the phasing player, but
+// not for a card Grain Sales moved out of the USSR hand into the US's to play: the US spends it
+// during the USSR's round, or in the USSR's headline. Judging it against the phasing player took
+// a USSR card the US coups with for the USSR's own -- no Event owed, and a US or neutral starred
+// card was removed as if its Event had occurred -- and judging it against the decision player,
+// which is nobody's during a die roll, dropped the Event of a Coup or a Realignment. A card in no
+// hand (the China Card; one already placed, as on an Event-first play) has the phasing player.
+Player ops_spender(const GameState& state, uint8_t card) noexcept {
+    if (card >= 1 && card <= 110) {
+        if (in_hand_of(state.card_locations[card], Player::US)) return Player::US;
+        if (in_hand_of(state.card_locations[card], Player::USSR)) return Player::USSR;
+    }
+    return state.phasing_player;
+}
+
 // Ops spent on a pushed frame are usually granted by an Event, whose card was placed as soon as
 // the Event was triggered. But Grain Sales fired through another card's Event -- Star Wars, Five
 // Year Plan, Missile Envy -- plays the card it drew on the frame that was pushed for it, and that is
@@ -358,15 +373,11 @@ bool settle_card_played_on_pushed_frame(GameState& state) noexcept {
         !is_in_any_hand(state.card_locations[card])) {
         return false;
     }
-    // Who spends the Ops. Usually the decision player, but a Coup or a Realignment finishes from
-    // the die roll, whose decision is nobody's (NONE), and `is_opponent_card` is false for NONE:
-    // the card's Event was silently dropped and the card discarded as if it had none. The USSR
-    // plays Grain Sales, the US draws Quagmire and coups Angola with it (T8 AR1 of a game played
-    // on twilightstruggle.app), and Quagmire never came into play and NORAD stayed. The roller is
-    // the spender -- `roll_actor`, set by both -- and the same two Ops played as Influence, which
-    // has no roll, always fired it.
-    Player spender = state.ctx().decision_player;
-    if (spender == Player::NONE) spender = state.ctx().roll_actor;
+    // Not the decision player: a Coup or a Realignment finishes from the die roll, whose decision
+    // is nobody's (NONE), and `is_opponent_card` is false for NONE -- the USSR plays Grain Sales,
+    // the US draws Quagmire and coups Angola with it (T8 AR1 of a game played on
+    // twilightstruggle.app), and Quagmire never came into play and NORAD stayed.
+    const Player spender = ops_spender(state, card);
     if (!state.ctx().suppress_op_card_event &&
         state.ctx().timing_branch == static_cast<uint8_t>(TimingBranch::OPS_FIRST) &&
         CardData::is_opponent_card(card, spender)) {
@@ -428,7 +439,7 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
         // Created (a US card) fired it a second time when the US finished spending the Op it
         // grants them, at turn 3's headline of ts-replayer game 101 and 8 games besides.
         uint8_t owed_card = state.ctx().pending_op_card;
-        Player card_player = state.phasing_player;
+        Player card_player = ops_spender(state, owed_card);
         if (state.ctx_stack_depth == 0 && !state.ctx().suppress_op_card_event &&
             owed_card != state.headline_first_card && owed_card != state.headline_second_card &&
             state.ctx().timing_branch == static_cast<uint8_t>(TimingBranch::OPS_FIRST) &&
@@ -485,7 +496,7 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
             // that answer away and remove a card whose Event never happened.
             CardHandlers::relocate_played_card(state, op_card,
                                  event_occurred_on_ops_play(state, op_card,
-                                                            state.phasing_player),
+                                                            ops_spender(state, op_card)),
                                  CardHandlers::Handover::Respect);
         }
         advance_headline_step(state);
@@ -514,7 +525,7 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
     }
 
     uint8_t card = state.ctx().pending_op_card;
-    Player p = state.phasing_player;
+    Player p = ops_spender(state, card);
     uint8_t timing = state.ctx().timing_branch;
 
     // Only the phasing player's own card play can owe an opponent event here. When the

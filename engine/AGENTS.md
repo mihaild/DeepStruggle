@@ -551,6 +551,22 @@ drawn Quagmire: no Quagmire, NORAD stays, no forced discard; T8 AR1 of a twiligh
 The spender is now `roll_actor` when the decision is nobody's. Tests:
 `tests/engine_logic/test_grain_sales_drawn_card_event_after_roll.py`.
 
+**Who spends the Ops is the player whose hand holds the card (`ops_spender`, 2026-11-19).** The
+three places that decide whether a card played for Ops owes its Event, or whether it leaves the
+game -- the pushed-frame settle above, the action-round and the headline branches of
+`advance_after_ops` -- each took the spender from a different field (the decision player, the
+phasing player), and each was wrong for a card Grain Sales moved into the US hand during the USSR's
+round or headline. Played by the **USSR for Ops** (Ops first, its Event after) or **headlined** by
+the USSR, the drawn USSR card's Event was dropped in every Ops mode, Influence included, and a
+starred US or neutral card the US played for Ops was removed from the game as if its Event had
+occurred (Marshall Plan under a USSR headline of Grain Sales). Played by the US itself, or by the
+USSR for its Event, they were already right (the Event-first Coup/Realign case is the fix above).
+All three now ask `ops_spender(state, card)`: the hand's owner, the phasing player for a card in no
+hand (the China Card, one already placed). A US or neutral card the US plays for Ops fires no
+Event, and a starred one is discarded, not removed, in every path. Flower Power was right in all of
+them and is pinned: the US pays 2 VP for a drawn war card played for anything but the Space Race.
+Tests: `tests/engine_logic/test_grain_sales_drawn_card_by_trigger.py`.
+
 ## 17. Eagle/Bear Has Landed may not discard a scoring card (ENG-7, E8 in place, 2026-11-04)
 
 Space Race box 6 lets its holder discard a held card at the end of the turn, and the discard runs
