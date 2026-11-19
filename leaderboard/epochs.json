@@ -132,6 +132,16 @@
           "mcts": "4ee2ae05c8bddf67a6cb51daa8177be9e52022c10c06c294d05eca6cc13ff51f"
         },
         "why": "Main's 4ef7a6a with the Missile Envy fix on top (2026-11-18). 4ef7a6a (Star Wars may not take UN Intervention from the discard in a headline) moves the runner, rollout and search sections; the state section is unchanged. The Missile Envy fix -- its highest Ops card is the giver's effective Ops, so Purge, Brezhnev Doctrine and Containment can make a tie the giver chooses from (engine/AGENTS.md section 6, item 9) -- moves none of the four: the build without it measures the same digest. Minor fixes that stay in E8 (owner, 2026-11-18)."
+      },
+      {
+        "behaviour": {
+          "version": 3,
+          "runner": "664c37f054b937a01d4b981d02f1a280cabda90d13c9aee7eb7e38344e6ce950",
+          "state": "b12f367387dfd16ce5a2490bcfe6b00d1047ab96e82ce8467e39b77df57b8c01",
+          "rollout": "af187ace2b83e2b612926d2069a5b1855cd4f7e8bc5b824943ec6638b03080e5",
+          "mcts": "2806a121e607d87b16fa9f6ffb79611c540c0167df262207758a3f605ea28c02"
+        },
+        "why": "A card Grain Sales draws fires its Event after a Coup or a Realignment too (engine/AGENTS.md section 16, 2026-11-19): those finish from the die roll, whose decision player is nobody's, and the drawn opponent card was judged against it, so its Event was dropped and the card discarded unplayed -- the US coups with a drawn Quagmire and Quagmire never came into play. Games reaching that path do differ, which is why runner, rollout and mcts move (the state section does not), but it is rare: none of the 300 ts-replayer games or the 2,538 submitted games of the stats exports plays differently. A minor fix that stays in E8, and stored games no longer valid are discarded (owner, 2026-11-19)."
       }
     ]
   }
