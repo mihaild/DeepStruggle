@@ -544,6 +544,13 @@ the same test the base frame uses. `finish_play_without_ops` unwinds the Event a
 depth guards on the base frame's owed Event stay: a pushed frame starts zeroed, which reads as
 OPS_FIRST. Tests: `PushedFrame.*` in `engine/tests/test_rules_audit.cpp`.
 
+A Coup or a Realignment finishes from the die roll, whose `decision_player` is `NONE`, and
+`is_opponent_card(card, NONE)` is false: the drawn card's Event was dropped and the card discarded
+unplayed, where the same Ops as Influence fired it (the USSR's Grain Sales, the US coups with the
+drawn Quagmire: no Quagmire, NORAD stays, no forced discard; T8 AR1 of a twilightstruggle.app game).
+The spender is now `roll_actor` when the decision is nobody's. Tests:
+`tests/engine_logic/test_grain_sales_drawn_card_event_after_roll.py`.
+
 ## 17. Eagle/Bear Has Landed may not discard a scoring card (ENG-7, E8 in place, 2026-11-04)
 
 Space Race box 6 lets its holder discard a held card at the end of the turn, and the discard runs

@@ -358,7 +358,15 @@ bool settle_card_played_on_pushed_frame(GameState& state) noexcept {
         !is_in_any_hand(state.card_locations[card])) {
         return false;
     }
-    const Player spender = state.ctx().decision_player;
+    // Who spends the Ops. Usually the decision player, but a Coup or a Realignment finishes from
+    // the die roll, whose decision is nobody's (NONE), and `is_opponent_card` is false for NONE:
+    // the card's Event was silently dropped and the card discarded as if it had none. The USSR
+    // plays Grain Sales, the US draws Quagmire and coups Angola with it (T8 AR1 of a game played
+    // on twilightstruggle.app), and Quagmire never came into play and NORAD stayed. The roller is
+    // the spender -- `roll_actor`, set by both -- and the same two Ops played as Influence, which
+    // has no roll, always fired it.
+    Player spender = state.ctx().decision_player;
+    if (spender == Player::NONE) spender = state.ctx().roll_actor;
     if (!state.ctx().suppress_op_card_event &&
         state.ctx().timing_branch == static_cast<uint8_t>(TimingBranch::OPS_FIRST) &&
         CardData::is_opponent_card(card, spender)) {
