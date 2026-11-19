@@ -26,7 +26,7 @@ the board is the one it scored).
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 import numpy as np
 import torch
@@ -54,13 +54,19 @@ class RegionTargetedReward:
     Event VP record `compute_step_rewards` reads (before the env resets finished games)."""
 
     def __init__(self, region: str, learner_side: int, scale: float, num_envs: int, weight: float = 0.8,
-                 win_bonus: float = 0.2, loss_share: float = 0.2, floor: float = -1.0, cap: float = 2.0) -> None:
+                 win_bonus: float = 0.2, loss_share: float = 0.2, floor: float = -1.0, cap: float = 2.0,
+                 scale_ussr: Optional[float] = None) -> None:
+        """`learner_side` 1 / -1 locks the exploiter's seat; 0 plays both, each game's seat read from the opponent pool
+        (`attach_sides`). `scale` is the US seat's scale (or the locked seat's), `scale_ussr` the USSR seat's when both
+        are played (owner, 2026-11-19: one exploiter per region, both sides)."""
         if region not in REGIONS:
             raise ValueError(f"--target-region must be one of {sorted(REGIONS)}, got {region!r}")
-        if learner_side not in (1, -1):
-            raise ValueError("--target-region needs the learner's seat locked (--opponent-lock-side us|ussr)")
-        if not scale > 0.0:
-            raise ValueError(f"--region-scale must be > 0, got {scale}")
+        if learner_side not in (1, -1, 0):
+            raise ValueError(f"learner_side must be 1, -1 or 0 (both seats), got {learner_side}")
+        if learner_side == 0 and scale_ussr is None:
+            raise ValueError("a both-seat region exploiter needs each seat's scale (--region-scale and --region-scale-ussr)")
+        if not scale > 0.0 or not (scale_ussr is None or scale_ussr > 0.0):
+            raise ValueError(f"--region-scale / --region-scale-ussr must be > 0, got {scale}, {scale_ussr}")
         if not 0.0 <= loss_share <= 1.0 or not floor < 0.0 < cap:
             raise ValueError(f"--region-loss-share must be in [0, 1] and --region-floor < 0 < --region-cap, got "
                              f"{loss_share}, {floor}, {cap}")
@@ -69,11 +75,17 @@ class RegionTargetedReward:
                              f"({-1.0 + loss_share * weight * cap:+.2f}): lower --region-weight, --region-cap or "
                              f"--region-loss-share, or raise --region-floor or --region-win-bonus")
         self.region, self.learner_side, self.scale = region, int(learner_side), float(scale)
+        # Per seat (+1 US, -1 USSR): the locked seat's scale, or each seat's when both are played.
+        self.scale_of = {1: float(scale), -1: float(scale if scale_ussr is None else scale_ussr)}
+        if learner_side == -1:
+            self.scale_of[-1] = float(scale)
+        self.num_envs = int(num_envs)
+        self.sides_of: Optional[Callable[[], np.ndarray]] = None
         self.weight, self.win_bonus = float(weight), float(win_bonus)
         self.loss_share, self.floor, self.cap = float(loss_share), float(floor), float(cap)
         self.pending_us = np.zeros(num_envs, dtype=np.float64)     # this step's region scoring VP (+ US), per env
         self.scored_vp = np.zeros(num_envs, dtype=np.float64)      # the game's region VP so far, exploiter's side
-        self.finished: List[float] = []                            # region VP of finished games, exploiter's side
+        self.finished: Dict[int, List[float]] = {1: [], -1: []}    # region VP of finished games, exploiter's side, by seat
         self.scorings = 0
         self.cards = [c for c, r in SCORING_CARDS.items() if r == region]
         self.runner: Optional["ts.VectorizedBatchRunner"] = None
@@ -82,6 +94,18 @@ class RegionTargetedReward:
         """Read `runner`'s per-step Event VP record from now on (turns its capture on)."""
         runner.set_capture_tracks(True)
         self.runner = runner
+
+    def attach_sides(self, sides_of: Callable[[], np.ndarray]) -> None:
+        """Both seats: `sides_of()` is each env's exploiter seat this game (the opponent pool's `learner_side`, redrawn
+        only after the env's reward for a finished game is computed)."""
+        self.sides_of = sides_of
+
+    def _sides(self) -> np.ndarray:
+        if self.learner_side != 0:
+            return np.full(self.num_envs, self.learner_side, dtype=np.int64)
+        if self.sides_of is None:
+            raise RuntimeError("a both-seat region exploiter reads each game's seat from the opponent pool: attach_sides first")
+        return np.asarray(self.sides_of(), dtype=np.int64)
 
     def _step_vp_us(self) -> np.ndarray:
         """This step's VP (+ US) from the region's scoring cards, per env."""
@@ -92,49 +116,55 @@ class RegionTargetedReward:
         self.scorings += int((rec[:, self.cards] != 0).sum())
         return vp
 
-    def _x(self, vp: float) -> float:
-        """The clipped region term of `vp` net VP, exploiter's side."""
-        return float(np.clip(vp / self.scale, self.floor, self.cap))
+    def _x(self, vp: float, side: int) -> float:
+        """The clipped region term of `vp` net VP, exploiter's side, in seat `side`."""
+        return float(np.clip(vp / self.scale_of[side], self.floor, self.cap))
 
-    def _add(self, e: int, vp_us: float) -> float:
+    def _add(self, e: int, vp_us: float, side: int) -> float:
         """Add `vp_us` (+ US) to env `e`'s region total; the dense (loss_share) payment it earns, exploiter's side."""
-        before = self._x(float(self.scored_vp[e]))
-        self.scored_vp[e] += vp_us * self.learner_side
-        return self.loss_share * self.weight * (self._x(float(self.scored_vp[e])) - before)
+        before = self._x(float(self.scored_vp[e]), side)
+        self.scored_vp[e] += vp_us * side
+        return self.loss_share * self.weight * (self._x(float(self.scored_vp[e]), side) - before)
 
     def compute_step_rewards(self, acting_players: np.ndarray, dones: np.ndarray, terminal_utilities: np.ndarray,
                              prev_victory_points: np.ndarray, curr_victory_points: np.ndarray,
                              states: Optional[List[Optional["ts.GameState"]]] = None) -> np.ndarray:
         u_learner = np.zeros(len(dones), dtype=np.float64)   # exploiter's side, this step
+        sides = self._sides()
         if self.runner is not None:
             self.pending_us[:] = self._step_vp_us()
         for e in np.flatnonzero(self.pending_us != 0.0):
-            u_learner[e] += self._add(int(e), float(self.pending_us[e]))
+            u_learner[e] += self._add(int(e), float(self.pending_us[e]), int(sides[e]))
         for e in np.flatnonzero(dones):
             st = states[int(e)] if states is not None else None
             if st is None:
                 raise ValueError("a region-targeted reward needs the finished game's state")
+            side = int(sides[e])
             u = float(terminal_utilities[e])
             winner = 1 if u > 0 else -1 if u < 0 else 0
             if reached_final_scoring(st):
-                u_learner[e] += self._add(int(e), final_share_us(st, self.region))
-            if winner == self.learner_side:
-                u_learner[e] += self.win_bonus + (1.0 - self.loss_share) * self.weight * self._x(float(self.scored_vp[e]))
-            elif winner == -self.learner_side:
+                u_learner[e] += self._add(int(e), final_share_us(st, self.region), side)
+            if winner == side:
+                u_learner[e] += self.win_bonus + (1.0 - self.loss_share) * self.weight * self._x(float(self.scored_vp[e]), side)
+            elif winner == -side:
                 u_learner[e] += -1.0
-            self.finished.append(float(self.scored_vp[e]))
+            self.finished[side].append(float(self.scored_vp[e]))
             self.scored_vp[e] = 0.0
         self.pending_us[:] = 0.0
-        # Zero-sum from the US's side: u_US = u_learner * learner_side, the mover's reward u_US * mover.
-        return (u_learner * self.learner_side * np.asarray(acting_players, dtype=np.float64)).astype(np.float32)
+        # Zero-sum from the US's side: u_US = u_learner * the exploiter's seat, the mover's reward u_US * mover.
+        return (u_learner * sides * np.asarray(acting_players, dtype=np.float64)).astype(np.float32)
 
     def compute_zero_sum_sign(self, curr_players: torch.Tensor, next_players: torch.Tensor) -> torch.Tensor:
         return (curr_players * next_players).float()
 
     def metrics(self) -> Dict[str, float]:
         out = {"region/scorings": float(self.scorings)}   # scoring Events with a VP effect
-        if self.finished:
-            out["region/vp_per_game"] = float(np.mean(self.finished))
-        self.finished = []
+        both = self.finished[1] + self.finished[-1]
+        if both:
+            out["region/vp_per_game"] = float(np.mean(both))
+        for side, name in ((1, "us"), (-1, "ussr")):
+            if self.finished[side] and self.learner_side == 0:
+                out[f"region/vp_per_game_{name}"] = float(np.mean(self.finished[side]))
+        self.finished = {1: [], -1: []}
         self.scorings = 0
         return out

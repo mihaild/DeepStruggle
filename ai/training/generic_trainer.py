@@ -1958,6 +1958,7 @@ def train_pipeline(
     target_region: Optional[str] = None,
     region_scale: float = 0.0,
     region_loss_share: float = 0.2,
+    region_scale_ussr: Optional[float] = None,
     region_floor: float = -1.0,
     region_cap: float = 2.0,
     region_weight: float = 0.8,
@@ -2350,6 +2351,7 @@ def train_pipeline(
         "target_region": target_region,
         "region_scale": float(region_scale),
         "region_loss_share": float(region_loss_share),
+        "region_scale_ussr": region_scale_ussr,
         "region_floor": float(region_floor),
         "region_cap": float(region_cap),
         "region_weight": float(region_weight),
@@ -2687,8 +2689,12 @@ def train_pipeline(
         reward_calc = RegionTargetedReward(target_region, {"us": 1, "ussr": -1}.get(str(opponent_lock_side), 0),
                                            float(region_scale), int(num_envs), weight=float(region_weight),
                                            win_bonus=float(region_win_bonus), loss_share=float(region_loss_share),
-                                           floor=float(region_floor), cap=float(region_cap))
-        print(f"[reward] region-targeted ({target_region}): x = the {opponent_lock_side} seat's net VP from it (in game "
+                                           floor=float(region_floor), cap=float(region_cap),
+                                           scale_ussr=None if region_scale_ussr is None else float(region_scale_ussr))
+        _seat = (f"the {opponent_lock_side} seat's" if opponent_lock_side else
+                 "the exploiter's (both seats, drawn per game; US / USSR scale "
+                 f"{region_scale:g} / {region_scale_ussr})")
+        print(f"[reward] region-targeted ({target_region}): x = {_seat} net VP from it (in game "
               f"and final scoring) / {region_scale:g}, clipped to [{region_floor:g}, {region_cap:g}]; a win pays "
               f"{region_win_bonus:g} + {region_weight:g}x, a loss -1 + {region_loss_share * region_weight:g}x, a draw "
               f"{region_loss_share * region_weight:g}x", flush=True)
@@ -3253,6 +3259,14 @@ def train_pipeline(
                   f"share of draws={'by size' if league_frac is None else league_frac}", flush=True)
             if opponent_self_pool:
                 _league_scan()
+    if isinstance(reward_calc, RegionTargetedReward) and reward_calc.learner_side == 0:
+        # One exploiter for both seats (owner, 2026-11-19): each game's seat is the pool's draw, and every env must be
+        # against the fixed opponent (a self-play env has no exploiter seat to pay).
+        _rp = trainer.opponent_pool
+        if _rp is None or float(opponent_frac) < 1.0:
+            raise ValueError("--target-region without --opponent-lock-side needs --opponent-frac 1.0 against fixed "
+                             "--opponent-checkpoints: the exploiter's seat is drawn per game by the opponent pool")
+        reward_calc.attach_sides(lambda: trainer.opponent_pool.learner_side)
     if searched_opponent_spec:
         # P40 Arm S. Its block of envs sits after the pool's mixed ones, and nothing else may move
         # those games or reassign them: forced plays, the active search, seat balancing (which

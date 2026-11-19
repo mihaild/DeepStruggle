@@ -91,10 +91,31 @@ def test_an_attached_env_pays_each_scoring_of_the_region_the_engine_records_at_i
     assert paid > 0, "no Asia scoring in 4,000 random steps of 64 games"
 
 
-def test_it_needs_a_locked_seat_a_region_and_a_scale() -> None:
+def test_it_needs_a_seat_or_both_scales_a_region_and_a_scale() -> None:
     with pytest.raises(ValueError):
         RegionTargetedReward("asia", 0, 10.0, 1)
     with pytest.raises(ValueError):
         RegionTargetedReward("antarctica", 1, 10.0, 1)
     with pytest.raises(ValueError):
         RegionTargetedReward("asia", 1, 0.0, 1)
+
+
+def test_both_seats_read_each_games_seat_and_its_scale() -> None:
+    """One exploiter playing both seats (owner, 2026-11-19): env 0 is its US game, env 1 its USSR game; each is paid from
+    its own seat with that seat's scale, and the record of who scored is the same Asia scoring (+5 for the US)."""
+    r = RegionTargetedReward("asia", learner_side=0, scale=10.0, num_envs=2, scale_ussr=5.0)
+    sides = np.array([1, -1], dtype=np.int8)
+    r.attach_sides(lambda: sides)
+    r.pending_us[:] = [5.0, 5.0]
+    rew = r.compute_step_rewards(np.array([1, -1]), np.array([False, False]), np.zeros(2), np.zeros(2), np.zeros(2))
+    # US exploiter: +0.16 * 0.5 as the US mover; USSR exploiter: -0.16 * 1.0 for it, as the USSR mover's reward.
+    assert rew[0] == pytest.approx(0.2 * 0.8 * 0.5) and rew[1] == pytest.approx(-0.2 * 0.8 * 1.0)
+    assert r.scored_vp.tolist() == [5.0, -5.0]
+
+
+def test_both_seats_need_the_pool_and_both_scales() -> None:
+    with pytest.raises(ValueError):
+        RegionTargetedReward("asia", 0, 10.0, 1)
+    r = RegionTargetedReward("asia", 0, 10.0, 1, scale_ussr=8.0)
+    with pytest.raises(RuntimeError):
+        r.compute_step_rewards(np.array([1]), np.array([False]), np.zeros(1), np.zeros(1), np.zeros(1))
