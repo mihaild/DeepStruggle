@@ -70,7 +70,16 @@ def test_labels_cover_the_hand_and_the_scoring_vp_follows_the_regional_margin() 
         assert list(lab["cards"][:len(held)]) == held and not lab["cards"][len(held):].any()
         for j, c in enumerate(lab["cards"]):
             if lab["m4"][j] and int(c) in region_of:
-                xs.append(float(obs[GLOBAL_OFFSET + 64 + region_of[int(c)]]) * 20.0)
+                margin = float(obs[GLOBAL_OFFSET + 64 + region_of[int(c)]]) * 20.0
+                # The score is capped where the game ends (20 VP), so a scoring that would pass the cap
+                # pays less than the margin: from -16 a margin of -6 pays -4. The position is then not
+                # one the margin predicts. The positions are sampled from random play, which sometimes
+                # sits near 20 VP, and the correlation fell to 0.81 on CI once the few points here
+                # included a couple of them.
+                mover_vp = float(int(st.victory_points)) * (1.0 if mover == ts.Player.US else -1.0)
+                if abs(mover_vp + margin) > 20.0:
+                    continue
+                xs.append(margin)
                 ys.append(float(lab["y4"][j, 0]))
         a = aux_label(st, mover, obs, 7)
         if a is not None:
