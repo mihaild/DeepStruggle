@@ -2884,6 +2884,176 @@
     "batch_size": 16384,
     "no_blunder_window": true
    }
+  },
+  "R143": {
+   "description": "Exploiter of R139's final state (owner, 2026-11-18/19): the US seat locked against R139's final SWA alone, greedy, R136's exploiter settings at lr 3e-4 with the zero-avoiding term on every decision; plain; 800M screen",
+   "first": "E8.1-A8-R132-S45@11600M+R139@13200M+R143_20261119_005758",
+   "flags": {
+    "reward_scheme": "terminal",
+    "opponent_frac": 1.0,
+    "opponent_checkpoints": [
+     "<parent snapshot at the branch point>"
+    ],
+    "opponent_lock_side": "us",
+    "opponent_temperature": 0.0,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
+  },
+  "R144": {
+   "description": "Exploiter of R139's final state (owner, 2026-11-18/19): the USSR seat locked against R139's final SWA alone, greedy, R136's exploiter settings at lr 3e-4 with the zero-avoiding term on every decision; plain; 800M screen",
+   "first": "E8.1-A8-R132-S45@11600M+R139@13200M+R144_20261119_005919",
+   "flags": {
+    "reward_scheme": "terminal",
+    "opponent_frac": 1.0,
+    "opponent_checkpoints": [
+     "<parent snapshot at the branch point>"
+    ],
+    "opponent_lock_side": "ussr",
+    "opponent_temperature": 0.0,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
+  },
+  "R145": {
+   "description": "Exploiter of R139's final state (owner, 2026-11-18/19): the US seat locked against R139's final SWA alone, greedy, R136's exploiter settings at lr 3e-4 with the zero-avoiding term on every decision; Europe Control only (--target-endings: +1 for a win by it, -1 for any loss, 0 otherwise); 800M screen",
+   "first": "E8.1-A8-R132-S45@11600M+R139@13200M+R145_20261119_045443",
+   "flags": {
+    "reward_scheme": "terminal",
+    "target_endings": [
+     "europe_control"
+    ],
+    "opponent_frac": 1.0,
+    "opponent_checkpoints": [
+     "<parent snapshot at the branch point>"
+    ],
+    "opponent_lock_side": "us",
+    "opponent_temperature": 0.0,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
+  },
+  "R146": {
+   "description": "Exploiter of R139's final state (owner, 2026-11-18/19): the USSR seat locked against R139's final SWA alone, greedy, R136's exploiter settings at lr 3e-4 with the zero-avoiding term on every decision; Europe Control only (--target-endings: +1 for a win by it, -1 for any loss, 0 otherwise); 800M screen",
+   "first": "E8.1-A8-R132-S45@11600M+R139@13200M+R146_20261119_045611",
+   "flags": {
+    "reward_scheme": "terminal",
+    "target_endings": [
+     "europe_control"
+    ],
+    "opponent_frac": 1.0,
+    "opponent_checkpoints": [
+     "<parent snapshot at the branch point>"
+    ],
+    "opponent_lock_side": "ussr",
+    "opponent_temperature": 0.0,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
+  },
+  "R147": {
+   "description": "Exploiter of R139's final state (owner, 2026-11-18/19): the US seat locked against R139's final SWA alone, greedy, R136's exploiter settings at lr 3e-4 with the zero-avoiding term on every decision; 20 VP only (--target-endings: +1 for a win by it, -1 for any loss, 0 otherwise); 800M screen",
+   "first": "E8.1-A8-R132-S45@11600M+R139@13200M+R147_20261119_084733",
+   "flags": {
+    "reward_scheme": "terminal",
+    "target_endings": [
+     "20vp"
+    ],
+    "opponent_frac": 1.0,
+    "opponent_checkpoints": [
+     "<parent snapshot at the branch point>"
+    ],
+    "opponent_lock_side": "us",
+    "opponent_temperature": 0.0,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
+  },
+  "R148": {
+   "description": "Exploiter of R139's final state (owner, 2026-11-18/19): the USSR seat locked against R139's final SWA alone, greedy, R136's exploiter settings at lr 3e-4 with the zero-avoiding term on every decision; 20 VP only (--target-endings: +1 for a win by it, -1 for any loss, 0 otherwise); 800M screen",
+   "first": "E8.1-A8-R132-S45@11600M+R139@13200M+R148_20261119_084858",
+   "flags": {
+    "reward_scheme": "terminal",
+    "target_endings": [
+     "20vp"
+    ],
+    "opponent_frac": 1.0,
+    "opponent_checkpoints": [
+     "<parent snapshot at the branch point>"
+    ],
+    "opponent_lock_side": "ussr",
+    "opponent_temperature": 0.0,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
+  },
+  "R149": {
+   "description": "Exploiter of R139's final state (owner, 2026-11-18/19): the US seat locked against R139's final SWA alone, greedy, R136's exploiter settings at lr 3e-4 with the zero-avoiding term on every decision; DEFCON only (--target-endings: +1 for a win by it, -1 for any loss, 0 otherwise); 800M screen",
+   "first": "E8.1-A8-R132-S45@11600M+R139@13200M+R149_20261119_124223",
+   "flags": {
+    "reward_scheme": "terminal",
+    "target_endings": [
+     "defcon"
+    ],
+    "opponent_frac": 1.0,
+    "opponent_checkpoints": [
+     "<parent snapshot at the branch point>"
+    ],
+    "opponent_lock_side": "us",
+    "opponent_temperature": 0.0,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
+  },
+  "R150": {
+   "description": "Exploiter of R139's final state (owner, 2026-11-18/19): the USSR seat locked against R139's final SWA alone, greedy, R136's exploiter settings at lr 3e-4 with the zero-avoiding term on every decision; DEFCON only (--target-endings: +1 for a win by it, -1 for any loss, 0 otherwise); 800M screen",
+   "first": "E8.1-A8-R132-S45@11600M+R139@13200M+R150_20261119_124350",
+   "flags": {
+    "reward_scheme": "terminal",
+    "target_endings": [
+     "defcon"
+    ],
+    "opponent_frac": 1.0,
+    "opponent_checkpoints": [
+     "<parent snapshot at the branch point>"
+    ],
+    "opponent_lock_side": "ussr",
+    "opponent_temperature": 0.0,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
   }
  },
  "views": {
@@ -3220,7 +3390,15 @@
   "E8.1-A8-R132-S45@11600M+R139_20261118_105456": "E8.1-A8-R132-S45@11600M+R139",
   "E8.1-A8-R132-S45@11600M+R140_20261118_105539": "E8.1-A8-R132-S45@11600M+R140",
   "E8.1-A8-R132-S45@11600M+R139@13200M+R141_20261118_182027": "E8.1-A8-R132-S45@11600M+R139@13200M+R141",
-  "E8.1-A8-R132-S45@11600M+R139@13200M+R142_20261118_182157": "E8.1-A8-R132-S45@11600M+R139@13200M+R142"
+  "E8.1-A8-R132-S45@11600M+R139@13200M+R142_20261118_182157": "E8.1-A8-R132-S45@11600M+R139@13200M+R142",
+  "E8.1-A8-R132-S45@11600M+R139@13200M+R143_20261119_005758": "E8.1-A8-R132-S45@11600M+R139@13200M+R143",
+  "E8.1-A8-R132-S45@11600M+R139@13200M+R144_20261119_005919": "E8.1-A8-R132-S45@11600M+R139@13200M+R144",
+  "E8.1-A8-R132-S45@11600M+R139@13200M+R145_20261119_045443": "E8.1-A8-R132-S45@11600M+R139@13200M+R145",
+  "E8.1-A8-R132-S45@11600M+R139@13200M+R146_20261119_045611": "E8.1-A8-R132-S45@11600M+R139@13200M+R146",
+  "E8.1-A8-R132-S45@11600M+R139@13200M+R147_20261119_084733": "E8.1-A8-R132-S45@11600M+R139@13200M+R147",
+  "E8.1-A8-R132-S45@11600M+R139@13200M+R148_20261119_084858": "E8.1-A8-R132-S45@11600M+R139@13200M+R148",
+  "E8.1-A8-R132-S45@11600M+R139@13200M+R149_20261119_124223": "E8.1-A8-R132-S45@11600M+R139@13200M+R149",
+  "E8.1-A8-R132-S45@11600M+R139@13200M+R150_20261119_124350": "E8.1-A8-R132-S45@11600M+R139@13200M+R150"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
