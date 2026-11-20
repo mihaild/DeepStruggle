@@ -1,5 +1,9 @@
 # P50 — each side's own value chain for the main, and the lambda clock (owner, 2026-11-20)
 
+> **Result (2026-11-20): a fail on the bar below, with no cost found.** The arm (R164) scores 51.5% ± 0.8 against
+> the control at +800M, the bar 52.5%; +0.7 and +2.1 on the references; health level. The default stays. Numbers in
+> the log.
+
 **Proposed: one branch of the base, per-player GAE at matched reach, against the base continued.** No build.
 Not proposed: lambda per card play as an experiment, the own-view chain with nodes at the opponent's decisions,
 a true-state critic. Measurements: [`../log/P50_lambda_clock_and_own_view.md`](../log/P50_lambda_clock_and_own_view.md).

@@ -102,3 +102,34 @@ turn (the cards a side kept are not a random draw). One rollout of one network.
 0.99 ([`../archive/E3_ladder/findings/value_bootstrap_perspective.md`](../archive/E3_ladder/findings/value_bootstrap_perspective.md));
 the default itself at 0.99 from scratch lost 242 and 286 Elo at 80M
 ([`E4_dynamics_ref_lambda.md`](E4_dynamics_ref_lambda.md)). Per-player GAE at matched reach has not been run.
+
+## The run: per-player GAE at matched reach against the base continued (2026-11-20)
+
+**Verdict: a fail on the plan's bar, with no cost found.** The arm scores 51.5% ± 0.8 against the control at
++800M (the bar was 52.5%), and leads by 0.7 and 2.1 points on the references, inside the 4-5 points two runs
+differ by. The default stays.
+
+Arm `E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R164` (`--per-player-gae --gae-lambda 0.96`, the two lines
+`launch_flags.py --diff` shows) and control `E8.1-A8-R132-S45@11600M+R139@12400M+R155` continued in place, both
+from 13,200M to 14,000M in the two slots. SWAs of the last 80M, greedy, `tools/tournament.py`; a draw counts
+half; per seat from the JSON (`data/reports/p50_*`, untracked). Runs and matches by the running session.
+
+| | +400M (13,520-13,600M) | +800M (13,920-14,000M) |
+|:---|:---|:---|
+| arm against control, 2,000 deals a side | 50.7% ± 0.8 (as US 49.4, as USSR 52.0) | **51.5% ± 0.8** (as US 50.3, as USSR 52.7) |
+| J1's best, 1,000 deals a side: arm / control | 61.7 / 58.8 | 61.0 / 60.3 |
+| the old reference, 1,000 deals a side: arm / control | 72.5 / 69.0 | 71.5 / 69.4 |
+| SD of a side's value over its own redealt hands: arm / control (base 0.075) | 0.080 / 0.073 | 0.078 / 0.073 |
+| the same in action rounds 1 / 2 / 3: arm | 0.096 / 0.096 / 0.084 | 0.094 / 0.085 / 0.085 |
+| the same in action rounds 1 / 2 / 3: control | 0.085 / 0.078 / 0.075 | 0.085 / 0.080 / 0.072 |
+
+* Health level throughout (arm / control): entropy 1.05 / 1.04, explained variance 0.869 / 0.866, value loss
+  0.0441 / 0.0448, self-play US win rate 0.485 / 0.476 at +700M. E3's failure of per-player GAE does not occur
+  at matched reach.
+* The arm ran 14% slower while sharing the GPU (40.5k against 46.9k steps a second).
+* The arm's critic leans on the side's own hand a little more (0.078-0.080 against 0.073), most where the hand
+  is full. That is the direction the plan expected and is not a measure of play.
+
+**What would overturn it.** One seed, one branch point, a network already on its plateau: a difference of 1.5
+points is 1.9 standard errors and could be either real and small or nothing. The site-game positions about the
+hand (the plan's read 5) were not run.
