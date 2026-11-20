@@ -3330,6 +3330,23 @@
     "batch_size": 16384,
     "no_blunder_window": true
    }
+  },
+  "R164": {
+   "description": "P50 (owner, 2026-11-20): R155's flags with each side's own value chain -- --per-player-gae at --gae-lambda 0.96 (0.98 squared, the default's reach at 0.98); the value loss on every row",
+   "first": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R164_20261120_113842",
+   "flags": {
+    "reward_scheme": "terminal",
+    "per_player_gae": true,
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "lr": 0.0001,
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true,
+    "gae_lambda": 0.96
+   }
   }
  },
  "views": {
@@ -3700,7 +3717,8 @@
   "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R160_20261120_052427": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R160",
   "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R161_20261120_052527": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R161",
   "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R162_20261120_090213": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R162",
-  "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R163_20261120_094634": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R163"
+  "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R163_20261120_094634": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R163",
+  "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R164_20261120_113842": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R164"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
