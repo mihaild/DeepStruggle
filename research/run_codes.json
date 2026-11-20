@@ -3286,7 +3286,7 @@
    }
   },
   "R162": {
-   "description": "Europe Control exploiter of the new base R155 on both seats (owner, 2026-11-20): seat drawn per game, every game the base's final SWA against it; +1 a win by Europe Control, -1 any loss, 0 otherwise; lr 3e-4, zero-avoiding term on every decision, --adv-norm-learner-only; 800M from the base's 13,200M state",
+   "description": "Europe Control exploiter of the new base R155 on both seats (owner, 2026-11-20): seat drawn per game, every game the base's final SWA against it; +1 a win by Europe Control, -1 any loss, 0 otherwise; lr 3e-4, zero-avoiding term on every decision, --adv-norm-learner-only; 800M from the base's 13,200M state. Stopped at ~160M: collapsed at ~150M (recent win rate 4.3% -> 0.4%), the both-seat collapse without the critic fix",
    "first": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R162_20261120_090213",
    "flags": {
     "reward_scheme": "terminal",
@@ -3301,6 +3301,30 @@
     "opponent_temperature": 0.0,
     "clip_eps": 0.1,
     "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
+  },
+  "R163": {
+   "description": "Europe Control exploiter of the new base R155 on both seats with the both-seat fix (owner, 2026-11-20): seat drawn per game, every game the base's final SWA against it; +1 a win by Europe Control, -1 any loss, 0 otherwise; lr 3e-4, zero-avoiding term on every decision, --adv-norm-learner-only --per-player-gae --value-learner-only (the critic on the exploiter's own decisions); 800M from the base's 13,200M state",
+   "first": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R163_20261120_094634",
+   "flags": {
+    "reward_scheme": "terminal",
+    "per_player_gae": true,
+    "target_endings": [
+     "europe_control"
+    ],
+    "opponent_frac": 1.0,
+    "opponent_checkpoints": [
+     "<parent snapshot at the branch point>"
+    ],
+    "adv_norm_learner_only": true,
+    "opponent_temperature": 0.0,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "value_learner_only": true,
     "block_lambda": "off",
     "mup": true,
     "batch_size": 16384,
@@ -3675,7 +3699,8 @@
   "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R159_20261120_012811": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R159",
   "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R160_20261120_052427": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R160",
   "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R161_20261120_052527": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R161",
-  "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R162_20261120_090213": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R162"
+  "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R162_20261120_090213": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R162",
+  "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R163_20261120_094634": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R163"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
