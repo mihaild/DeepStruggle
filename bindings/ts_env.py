@@ -475,8 +475,8 @@ class TsVectorizedEnv:
         self.ep_lengths[env_idx] = 0
         self.ep_rewards[env_idx] = 0.0
 
-    def step(self, actions: np.ndarray | List[int],
-             hold: Optional[np.ndarray] = None) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict[str, Any]]:
+    def step(self, actions: np.ndarray | List[int], hold: Optional[np.ndarray] = None,
+             only: Optional[np.ndarray] = None) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, Dict[str, Any]]:
         """Steps all N environments in parallel with exact acting player attribution.
 
         `hold` (bool per env) leaves those games exactly where they are for this step -- P40 Arm S's
@@ -487,7 +487,13 @@ class TsVectorizedEnv:
         play-mode node, is still decided by the mask). The observation, the RNG and the mask are
         unchanged; only the display-only last-roll record is cleared, as every step clears it. A held
         env that is NOT refused, or a refusal anywhere else, raises. Its reward is 0, it is never
-        done, and the step does not count toward its episode length."""
+        done, and the step does not count toward its episode length.
+
+        `only` (bool per env; P51, the rollout in two halves) steps those envs alone, through the runner's
+        step_flat_some: the others are left as a hold leaves them -- reward 0, not done, no episode step -- without
+        being sent a refused action or refreshed. Not together with `hold`."""
+        if only is not None and hold is not None:
+            raise ValueError("step: `only` and `hold` together")
         # 1. Capture exact acting players & privileged opponent hands BEFORE stepping simulation
         # The masks the caller sampled from, captured before the step overwrites the buffer --
         # needed to tell a mask/engine disagreement from a sampler that ignored the mask.
@@ -503,12 +509,16 @@ class TsVectorizedEnv:
 
         # 2. Step C++ simulation in parallel
         action_list = np.asarray(actions).astype(np.int64).tolist()
-        held_idx = np.flatnonzero(hold) if hold is not None else np.zeros(0, dtype=np.int64)
-        for raw in held_idx:
-            action_list[int(raw)] = self._refused_card_slot(int(raw), prev_masks[int(raw)])
-
-        step_results = self.runner.step_flat_all(action_list, self._auto_advance)
-        if len(held_idx):
+        if only is not None:
+            only_u8 = np.ascontiguousarray(only, dtype=np.uint8)
+            held_idx = np.flatnonzero(only_u8 == 0)
+            step_results = self.runner.step_flat_some(action_list, only_u8, self._auto_advance)
+        else:
+            held_idx = np.flatnonzero(hold) if hold is not None else np.zeros(0, dtype=np.int64)
+            for raw in held_idx:
+                action_list[int(raw)] = self._refused_card_slot(int(raw), prev_masks[int(raw)])
+            step_results = self.runner.step_flat_all(action_list, self._auto_advance)
+        if len(held_idx) and only is None:
             not_refused = [int(i) for i in held_idx if step_results[int(i)] != 0]
             if not_refused:
                 raise IllegalActionError(
