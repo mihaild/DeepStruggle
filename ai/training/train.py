@@ -1273,12 +1273,6 @@ def build_parser() -> argparse.ArgumentParser:
                         help="P49b arm S (owner, 2026-11-18): the share of games, drawn per game, whose LEARNER-seat setup placements are a uniform legal choice made by the environment (learner 0 on those rows: no policy gradient, the critic trained on the rest of the game). The opponent sets up itself. Unlike --setup-explore-frac, which forces both sides and trains on the forced placements. 0 = off.")
     parser.add_argument("--afterstate-frac", type=float, default=0.25,
                         help="The share of the learner's decisions whose moments --afterstate-value-coef captures (about 7 us each on the CPU).")
-    parser.add_argument("--rollout-halves", action="store_true", default=False,
-                        help="P51: run the rollout in two halves of the envs, the GPU's network pass and sampling for one "
-                             "beside the engine's step of the other. The same envs, buffer, minibatch and update; a half's "
-                             "forward has half the rows and the sampler draws in another order, so the games are the same "
-                             "distribution, not the same games. Carries the base recipe's features (and the afterstate "
-                             "and pre-deal critics) and refuses the rest.")
     parser.add_argument("--predeal-value-coef", type=float, default=0.0,
                         help="P33, the pre-deal critic: weight (times --vf-coef) of a value loss on each env's turn-end park -- after a turn's last action, before the deal, nobody's decision -- read from both sides, each with its own next decision's lambda-return as the target (the result where the game ends first). The rollout root's stop=predeal reads the critic there. 0 = off.")
     parser.add_argument("--search-rollout-leaf-side", choices=["mover", "decider", "own"], default="mover",
@@ -1548,7 +1542,6 @@ def main():
             predeal_value_coef=args.predeal_value_coef,
             afterstate_value_coef=args.afterstate_value_coef,
             afterstate_frac=args.afterstate_frac,
-            rollout_halves=args.rollout_halves,
             setup_random_frac=args.setup_random_frac,
             target_endings=args.target_endings,
             target_region=args.target_region,

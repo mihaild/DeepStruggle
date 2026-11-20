@@ -1395,11 +1395,6 @@ class VectorizedBatchRunner:
 
     def get_action_masks(self) -> Annotated[NDArray[numpy.uint8], dict(shape=(None, None))]: ...
 
-    def step_flat_some(self, actions: Sequence[int], only: Annotated[NDArray[numpy.uint8], dict(shape=(None,), order='C', device='cpu', writable=False)], auto_advance: bool = False) -> list[int]:
-        """
-        step_flat_all on the envs `only` (uint8 per env) marks; the others are left exactly as they are (no step, no refresh) and report 1. Releases the GIL, so Python can queue the other half's network work meanwhile.
-        """
-
     def get_decision_players(self) -> list[int]: ...
 
     def get_env_scalars(self) -> tuple:

@@ -35,10 +35,9 @@ from ai.training.afterstate_critic import build_targets as build_afterstate_targ
 from ai.training.afterstate_critic import next_decision_targets
 from ai.training.restart_pool import critic_judge
 from ai.rewards.region_reward import RegionTargetedReward
-from ai.rewards.reward_calculator import EndingTargetedReward
 from tools.lib.openings import FORCED_OPENINGS_US, FORCED_OPENINGS_USSR, NODE_OFFSET as _NODE, OPENINGS
 
-from bindings.ts_env import CANONICAL_LEARNED, TsVectorizedEnv, model_obs_features
+from bindings.ts_env import TsVectorizedEnv, model_obs_features
 from bindings.action_encoder import ActionEncoder
 from .rollout_buffer import RolloutBuffer, setup_phase_slot
 
@@ -418,7 +417,6 @@ class BaseNashPGTrainer:
         predeal_value_coef: float = 0.0,  # P33: the critic on both sides at the turn-end park (0 = off)
         afterstate_value_coef: float = 0.0,  # the critic right after a side's decision and around its rolls (0 = off)
         afterstate_frac: float = 0.25,    # the share of the learner's decisions whose moments are captured
-        rollout_halves: bool = False,     # P51: the rollout in two halves, one's network pass beside the other's step
         searched_games_workers: int = 0,  # P33: worker processes playing whole games with the rollout root
         searched_games_envs: int = 32,    # games each of them plays at once
         searched_value_coef: float = 0.0,  # weight of the value loss on those games' decisions
@@ -717,11 +715,6 @@ class BaseNashPGTrainer:
         #: target. Built at the first rollout (it needs the buffer's width and the env's settle mode).
         self.afterstate_value_coef = float(afterstate_value_coef)
         self.afterstate_frac = float(afterstate_frac)
-        #: P51 (owner, 2026-11-20): the rollout in two halves of the envs. The GPU runs one half's network pass and
-        #: sampling while the engine steps the other, so neither waits on the other. The same envs, buffer, minibatch
-        #: and update; each half's forward has half the rows (other GPU kernels) and the sampler draws in another
-        #: order, so the games are the same distribution, not the same games. The base recipe's features only.
-        self.rollout_halves = bool(rollout_halves)
         self.afterstate: Optional[AfterstateCapture] = None
         self._as_rows: List[AfterstateRows] = []
         self._as_obs: Optional[torch.Tensor] = None
@@ -1922,11 +1915,7 @@ class BaseNashPGTrainer:
         sp_us_wins = 0.0
         completed_episodes: List[Dict[str, Any]] = []
 
-        if self.rollout_halves:
-            sp_games, sp_us_wins = self._rollout_loop_halves(
-                seat_entropy_sum, seat_entropy_n, setup_entropy_sum, setup_entropy_n, pm_n, pm_event, _setup_slot,
-                completed_episodes)
-        for _ in range(0 if self.rollout_halves else self.buffer_size):
+        for _ in range(self.buffer_size):
             # copy=True is load-bearing. The env's observation and mask arrays are views into
             # buffers the runner reuses, so `env.step()` below overwrites them in place -- and
             # `buffer.add` is called *after* that step. On CUDA `.to(device)` already copies, so
@@ -2516,196 +2505,6 @@ class BaseNashPGTrainer:
                           "mode_cf_taken_beaten_frac": worse / max(n, 1),
                           "mode_cf_plies": float(self.mode_cf.plies_played - plies0),
                           "mode_cf_seconds": time.perf_counter() - t0}
-
-    def _halves_unsupported(self) -> List[str]:
-        """The features --rollout-halves does not carry (each reads or writes the whole batch mid-step)."""
-        checks = [
-            ("an opponent pool", self.opponent_pool is not None), ("a searched opponent", self.searched_opp is not None),
-            ("active search", self.active_search is not None), ("a restart pool", self.restart_pool is not None),
-            ("a scenario seeder", self.seeder is not None), ("an opening seeder", self.opening_seeder is not None),
-            ("an event forcer", self.event_forcer is not None), ("search targets", self._searcher is not None),
-            ("mode counterfactuals", self.mode_cf is not None), ("turn credit", self.turn_credit is not None),
-            ("setup MC credit", self.setup_mc_credit), ("aux targets", self.aux_targets),
-            ("card aux", self.aux_card_coef > 0.0), ("opponent-legality aux", self.aux_opp_legality > 0.0),
-            ("--block-lambda same-side", self._record_rngs), ("the critic prior", self.critic_prior),
-            ("the play-mode floor", self.play_mode_floor > 0.0), ("setup exploration", self.setup_explore_frac > 0.0),
-            ("setup scripts", self.setup_script_frac > 0.0), ("random setups", self.setup_random_frac > 0.0),
-            ("same-perspective bootstrap", bool(self.same_perspective_bootstrap)),
-            ("value rows by kind", self.value_selfplay_only or self.value_learner_only),
-            ("the learned canonical order", bool(self.obs_features & CANONICAL_LEARNED)),
-            ("a reward that reads every state", bool(getattr(self.env.reward_calc, "needs_all_states", False))),
-            ("a targeted reward", isinstance(self.env.reward_calc, (RegionTargetedReward, EndingTargetedReward))),
-            ("an odd number of envs", self.num_envs % 2 == 1),
-        ]
-        return [name for name, on in checks if on]
-
-    def _half_forward(self, rows: slice) -> Dict[str, Any]:
-        """One half's network pass and sampling, queued on the GPU; nothing here waits for it."""
-        n = rows.stop - rows.start
-        obs_t = torch.from_numpy(self._obs_np[rows]).to(self.device, torch.float32, copy=True)
-        masks_t = torch.from_numpy(self._masks_np[rows]).to(self.device, copy=True)
-        dp = np.asarray(self.env.runner.get_decision_players(), dtype=np.int8)[rows]
-        learner_t = torch.ones(n, dtype=torch.bool, device=self.device)
-        with torch.no_grad():
-            if self._graphs is not None:
-                g = self._graphs.get(self.active_net, n)
-                g.load(obs_t, masks_t)
-                g.replay()
-                logits, v_win_t, v_vp_t = g.outputs()
-            else:
-                logits, v_win_t, v_vp_t = self.active_net(obs_t, masks_t)
-            pm_learner = play_mode_rows(masks_t) & learner_t
-            scaled = self.temperature_schedule and self.num_envs > 1
-            row_temps = (self.env_temps[rows] if scaled
-                         else torch.ones((n, 1), dtype=torch.float32, device=self.device))
-            if self.play_mode_temp != 1.0:
-                row_temps = torch.where(pm_learner.unsqueeze(1), row_temps * self.play_mode_temp, row_temps)
-            if scaled or self.play_mode_temp != 1.0:
-                actions_t = torch.multinomial(F.softmax(logits / row_temps, dim=-1), 1).squeeze(1)
-            else:
-                actions_t = torch.multinomial(F.softmax(logits, dim=-1), 1).squeeze(1)
-            unscaled = F.log_softmax(logits, dim=-1)
-            log_probs_t = unscaled.gather(1, actions_t.unsqueeze(1)).squeeze(1)
-            ent = -(unscaled.exp() * unscaled).sum(dim=-1)
-        return {"rows": rows, "obs": obs_t, "masks": masks_t, "dp": dp, "learner_t": learner_t,
-                "v_win": v_win_t.squeeze(-1), "v_vp": v_vp_t.squeeze(-1), "actions_t": actions_t,
-                "log_probs": log_probs_t, "pm_learner": pm_learner, "ent": ent}
-
-    def _half_step(self, f: Dict[str, Any], t: int) -> Dict[str, Any]:
-        """Step one half's envs with its sampled actions (the engine releases the GIL; the GPU meanwhile runs the
-        network pass queued last), and file that half's afterstate and pre-deal rows under buffer step t."""
-        rows = f["rows"]
-        only = np.zeros(self.num_envs, dtype=bool)
-        only[rows] = True
-        actions_np = np.zeros(self.num_envs, dtype=np.int64)
-        actions_np[rows] = f["actions_np"]
-        if self.predeal_value_coef > 0.0 and not self._predeal_on:
-            self.env.runner.set_capture_predeal(True)
-            self._predeal_on = True
-            print(f"[pre-deal] the critic on both sides at the turn-end park, coef {self.predeal_value_coef}",
-                  flush=True)
-        if self.afterstate_value_coef > 0.0:
-            if self.afterstate is None:
-                self.afterstate = AfterstateCapture(self.afterstate_frac, self.obs_features, self.buffer.obs_dim,
-                                                    forced=bool(self.env._auto_advance),
-                                                    seed=int(np.random.randint(1 << 30)))
-            dp_full = np.zeros(self.num_envs, dtype=np.int8)
-            dp_full[rows] = f["dp"]
-            self.afterstate.before(self.env.runner, only, dp_full)
-        next_obs_np, next_masks_np, rewards_np, dones_np, info = self.env.step(actions_np, only=only)
-        self._obs_np, self._masks_np = next_obs_np, next_masks_np
-        if self.afterstate is not None:
-            _asr = self.afterstate.after(self.env.runner, t, np.asarray(dones_np) > 0.5, self.device)
-            if _asr is not None:
-                self._as_rows.append(_asr)
-        if self._predeal_on:
-            _pf, _pus, _pussr = self.env.runner.get_predeal()
-            _pe = np.flatnonzero(np.asarray(_pf) & only)
-            if _pe.size:
-                _w = self.buffer.obs_dim
-                self._predeal_rows.append(PredealRows(
-                    t, _pe, torch.from_numpy(np.array(np.asarray(_pus)[_pe, :_w])).to(self.device),
-                    torch.from_numpy(np.array(np.asarray(_pussr)[_pe, :_w])).to(self.device)))
-        return {"only": only, "rewards": np.asarray(rewards_np, dtype=np.float32), "dones": np.asarray(dones_np),
-                "info": info}
-
-    def _rollout_loop_halves(self, seat_entropy_sum: Dict[int, torch.Tensor], seat_entropy_n: Dict[int, torch.Tensor],
-                             setup_entropy_sum: torch.Tensor, setup_entropy_n: torch.Tensor, pm_n: torch.Tensor,
-                             pm_event: torch.Tensor, setup_slot: int,
-                             completed_episodes: List[Dict[str, Any]]) -> Tuple[float, float]:
-        """The rollout loop in two halves (P51). Per buffer step t: B's pass is queued, the engine steps A; A's pass
-        for t+1 is queued, the engine steps B; then step t is filed whole, as the one-batch loop files it. Returns
-        (self-play games, US wins in them); the entropy and play-mode accumulators are updated in place."""
-        unsupported = self._halves_unsupported()
-        if unsupported:
-            raise ValueError("--rollout-halves does not carry: " + ", ".join(unsupported))
-        half = self.num_envs // 2
-        a_rows, b_rows = slice(0, half), slice(half, self.num_envs)
-        sp_games = sp_us_wins = 0.0
-        fa = self._half_forward(a_rows)
-        fa["actions_np"] = fa["actions_t"].cpu().numpy()
-        for t in range(self.buffer_size):
-            fb = self._half_forward(b_rows)
-            sa = self._half_step(fa, t)
-            fa_next = self._half_forward(a_rows) if t + 1 < self.buffer_size else None
-            fb["actions_np"] = fb["actions_t"].cpu().numpy()
-            sb = self._half_step(fb, t)
-            games, wins = self._file_halves(fa, sa, fb, sb, seat_entropy_sum, seat_entropy_n, setup_entropy_sum,
-                                            setup_entropy_n, pm_n, pm_event, setup_slot, completed_episodes)
-            sp_games += games
-            sp_us_wins += wins
-            if fa_next is not None:
-                fa_next["actions_np"] = fa_next["actions_t"].cpu().numpy()
-                fa = fa_next
-        return sp_games, sp_us_wins
-
-    def _file_halves(self, fa: Dict[str, Any], sa: Dict[str, Any], fb: Dict[str, Any], sb: Dict[str, Any],
-                     seat_entropy_sum: Dict[int, torch.Tensor], seat_entropy_n: Dict[int, torch.Tensor],
-                     setup_entropy_sum: torch.Tensor, setup_entropy_n: torch.Tensor, pm_n: torch.Tensor,
-                     pm_event: torch.Tensor, setup_slot: int,
-                     completed_episodes: List[Dict[str, Any]]) -> Tuple[float, float]:
-        """File one buffer step from its two halves (A's rows first, as the envs are numbered) and do the step's
-        bookkeeping, as the one-batch loop does after its env step."""
-        in_a = sa["only"]
-
-        def merged(key: str) -> np.ndarray:
-            return np.where(in_a, np.asarray(sa["info"][key]), np.asarray(sb["info"][key]))
-
-        cat = torch.cat
-        obs_t, masks_t = cat([fa["obs"], fb["obs"]]), cat([fa["masks"], fb["masks"]])
-        actions_t = cat([fa["actions_t"], fb["actions_t"]])
-        learner_t = cat([fa["learner_t"], fb["learner_t"]])
-        v_win_t = cat([fa["v_win"], fb["v_win"]])
-        dp = np.concatenate([fa["dp"], fb["dp"]])
-        dones_np = np.where(in_a, sa["dones"], sb["dones"])
-        acting = merged("acting_players")
-        turns = merged("turns")
-        with torch.no_grad():
-            ent = cat([fa["ent"], fb["ent"]])
-            pm_learner = cat([fa["pm_learner"], fb["pm_learner"]])
-            dp_t = torch.from_numpy(dp).to(self.device)
-            for code in (1, -1):
-                sel = learner_t & (dp_t == code)
-                seat_entropy_sum[code] += (ent * sel).sum()
-                seat_entropy_n[code] += sel.sum()
-            pm_n += pm_learner.sum()
-            pm_event += (pm_learner & (actions_t == EVENT_SLOT)).sum()
-            setup_sel = learner_t & (obs_t[:, setup_slot] < (0.5 / 6.0))
-            setup_entropy_sum += (ent * setup_sel).sum()
-            setup_entropy_n += setup_sel.sum()
-        info = {"acting_players": acting, "turns": turns, "victory_points": merged("victory_points")}
-        self._dones_np = dones_np
-        self.buffer.add(
-            obs=obs_t, masks=masks_t, actions=actions_t, log_probs=cat([fa["log_probs"], fb["log_probs"]]),
-            rewards=np.where(in_a, sa["rewards"], sb["rewards"]),
-            dones=torch.from_numpy(dones_np).float().to(self.device),
-            values_win=v_win_t, values_vp=cat([fa["v_vp"], fb["v_vp"]]),
-            players=torch.from_numpy(acting).to(self.device), learner=learner_t.float(),
-            turns=torch.from_numpy(turns).to(self.device),
-            vps=torch.from_numpy(info["victory_points"]).float().to(self.device),
-            held_scoring_us=(torch.from_numpy(merged("held_scoring_us")).to(self.device)
-                             if self.held_scoring_blunder else None),
-            held_scoring_ussr=(torch.from_numpy(merged("held_scoring_ussr")).to(self.device)
-                               if self.held_scoring_blunder else None),
-            defcon_blunder=torch.from_numpy(merged("defcon_blunder")).to(self.device),
-            next_values_own=None, rngs=None, held=None)
-        self.critic_tracker.observe(v_win_t.detach().cpu().numpy() * acting, turns, self._selfplay_mask)
-        sp_games = sp_us_wins = 0.0
-        for s_half in (sa, sb):
-            for _i, _reason in enumerate(s_half["info"].get("ending_reasons", [])):
-                if not _reason:
-                    continue
-                if self._selfplay_mask[_i]:
-                    _vp = float(s_half["info"]["victory_points"][_i])
-                    self.critic_tracker.resolve(_i, None if _vp == 0 else _vp > 0)
-                    sp_games += 1.0
-                    sp_us_wins += 1.0 if _vp > 0 else (0.5 if _vp == 0 else 0.0)
-                else:
-                    self.critic_tracker.reset_env(_i)
-            completed_episodes.extend(e for e in s_half["info"].get("completed_episodes", [])
-                                      if self._selfplay_mask[int(e.get("env_idx", 0))])
-        self._info = {**sb["info"], **info, "dones": dones_np}
-        return sp_games, sp_us_wins
 
     def _current_floor_eps(self) -> float:
         """P31 1a: the floor's eps at the current step count."""

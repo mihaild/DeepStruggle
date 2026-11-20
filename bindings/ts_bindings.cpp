@@ -1891,17 +1891,6 @@ NB_MODULE(ts_engine, m) {
         }
 
         std::vector<int> step_flat_all(const std::vector<uint16_t>& actions, bool auto_advance = false) {
-            return step_impl(actions, auto_advance, nullptr);
-        }
-
-        // Steps only the envs `only` marks (P51, the rollout in two halves): the others are not touched -- no
-        // step, no refresh, their observation and mask stay -- and report 1. Every env's capture records are
-        // reset, as by any step, so each half's are read right after its own step.
-        std::vector<int> step_flat_some(const std::vector<uint16_t>& actions, const uint8_t* only, bool auto_advance) {
-            return step_impl(actions, auto_advance, only);
-        }
-
-        std::vector<int> step_impl(const std::vector<uint16_t>& actions, bool auto_advance, const uint8_t* only) {
             std::vector<int> results(num_envs, 0);
             const size_t act_count = actions.size();
             gomp_parallel_for(static_cast<int64_t>(num_envs), [&](int64_t i) {
@@ -1912,7 +1901,6 @@ NB_MODULE(ts_engine, m) {
                     as_obs[i].clear(); as_kind[i].clear(); as_cut[i] = 0; as_side[i] = 0; as_pick[i] = 0;
                 }
                 if (static_cast<size_t>(i) >= act_count) return;
-                if (only != nullptr && !only[i]) { results[i] = 1; return; }
                 if (ts::Engine::is_terminal(st(i))) {
                     results[i] = 2; // Terminal
                     return;
@@ -2273,17 +2261,6 @@ NB_MODULE(ts_engine, m) {
              "that position's observation from each side. Views into the runner: copy before the next step.")
         .def("get_observations", &VectorizedBatchRunner::get_observations, nb::rv_policy::reference_internal)
         .def("get_action_masks", &VectorizedBatchRunner::get_action_masks, nb::rv_policy::reference_internal)
-        .def("step_flat_some", [](VectorizedBatchRunner& self, const std::vector<uint16_t>& actions,
-                                  nb::ndarray<const uint8_t, nb::ndim<1>, nb::c_contig, nb::device::cpu> only,
-                                  bool auto_advance) {
-                 if (only.shape(0) != self.num_envs) throw std::invalid_argument("step_flat_some: one flag per env");
-                 const uint8_t* o = only.data();
-                 nb::gil_scoped_release release;
-                 return self.step_flat_some(actions, o, auto_advance);
-             }, nb::arg("actions"), nb::arg("only"), nb::arg("auto_advance") = false,
-             "step_flat_all on the envs `only` (uint8 per env) marks; the others are left exactly as they are "
-             "(no step, no refresh) and report 1. Releases the GIL, so Python can queue the other half's network "
-             "work meanwhile.")
         .def("get_decision_players", &VectorizedBatchRunner::get_decision_players)
         .def("get_env_scalars", [](const VectorizedBatchRunner& self) {
                  const size_t n = self.num_envs;
