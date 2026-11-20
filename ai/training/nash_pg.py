@@ -526,6 +526,7 @@ class BaseNashPGTrainer:
         zero_avoid_scope: str = "all",  # 'setup': only the learner's setup placements (P41 exploiters)
         head_l2_init_coef: float = 0.0,  # P44: coef * sum ||theta - theta_0||^2 over the policy and value heads
         value_selfplay_only: bool = False,  # P44 diagnostic: the value loss on self-play games' rows only
+        value_learner_only: bool = False,   # 2026-11-20: the value loss on the learner's own decisions only
         critic_prior: bool = False,  # P46b: the win head shifted by the pool's prior for the game's opponent
         critic_prior_gain: str = "fixed",  # P46: 'fixed' (the turn line) or 'learned' (a critic-only gain g(s))
         critic_prior_gain_init: str = "line",  # P46: a learned gain starts at the turn line or at zero
@@ -1162,6 +1163,13 @@ class BaseNashPGTrainer:
         # the current self (an older snapshot) tends to lose. `_value_rows` marks, per buffer row, whether its
         # game was self-play when the row was written.
         self.value_selfplay_only = bool(value_selfplay_only)
+        # 2026-11-20, the both-seat exploiter collapse: against a frozen opponent in either seat, the board does not say
+        # which seat is the learner's, so a critic fitted on every row blends the learner's and the opponent's
+        # prospects in the same seat. Fitted on the learner's own decisions only (with --per-player-gae, so its targets
+        # bootstrap from the learner's own next decision), it is only ever asked about the learner's positions.
+        self.value_learner_only = bool(value_learner_only)
+        if self.value_selfplay_only and self.value_learner_only:
+            raise ValueError("value_selfplay_only and value_learner_only pick different rows; use one")
         self._value_rows: Optional[torch.Tensor] = None
         # P46b (2026-11-14): in a pool game the critic's win probability is shifted in log-odds by the pool's prior
         # for that opponent and seat (OpponentPool.prior_shift: w(turn) * beta, signed by whose decision it is), in
@@ -2227,12 +2235,12 @@ class BaseNashPGTrainer:
                         torch.from_numpy(own_obs).to(self.device, torch.float32), None)
                 next_own_t = own_v.squeeze(-1)
 
-            if self.value_selfplay_only:
+            if self.value_selfplay_only or self.value_learner_only:
                 if self._value_rows is None or tuple(self._value_rows.shape) != (self.buffer.buffer_size, self.num_envs):
                     self._value_rows = torch.ones((self.buffer.buffer_size, self.num_envs), dtype=torch.float32,
                                                   device=self.device)
                 self._value_rows[self.buffer.step] = torch.from_numpy(
-                    self._selfplay_mask.astype(np.float32)).to(self.device)
+                    (learner_np if self.value_learner_only else self._selfplay_mask).astype(np.float32)).to(self.device)
             self.buffer.add(
                 obs=obs_t,
                 masks=masks_t,
@@ -3361,7 +3369,7 @@ class NashPGTrainer(BaseNashPGTrainer):
                 with torch.no_grad():
                     lse_sum_t += lse.mean().double()
                     lse_absmax_t = torch.maximum(lse_absmax_t, lse.abs().max().double())
-                if self.value_selfplay_only and self._value_rows is not None:
+                if (self.value_selfplay_only or self.value_learner_only) and self._value_rows is not None:
                     val_loss = self._value_loss_rows(cur_v_win, cur_v_vp, b_ret_win, b_ret_vp, cur_value_logits,
                                                      self._value_rows.view(-1).index_select(0, b_idx))
                 else:

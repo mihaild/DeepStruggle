@@ -1127,6 +1127,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="P46c: the prior-gain head's rate as a multiple of the main rate.")
     parser.add_argument("--value-selfplay-only", action="store_true", default=False,
                         help="P44 diagnostic (2026-11-14): train the value heads on self-play games' rows only; pool games still enter GAE and the policy loss. Tests whether the critic's misjudgement of unfamiliar play (the side playing unlike the current self rated as losing) is learned from pool games.")
+    parser.add_argument("--value-learner-only", action="store_true", default=False,
+                        help="The value loss on the learner's own decisions only (2026-11-20, the both-seat exploiter "
+                             "collapse): against a frozen opponent in either seat the board does not say whose seat is "
+                             "whose, so a critic fitted on every row blends the two players. Use with --per-player-gae.")
     parser.add_argument("--head-l2-init-coef", type=float, default=0.0,
                         help="P44 step 1's arm: add coef * sum ||theta - theta_0||^2 over the policy heads (base, "
                              "per-entity and their trunk context, branch, play-mode, --ladder-head-norm's norms) and the "
@@ -1709,6 +1713,7 @@ def main():
             zero_avoid_coef=args.zero_avoid_coef,
             head_l2_init_coef=args.head_l2_init_coef,
             value_selfplay_only=args.value_selfplay_only,
+            value_learner_only=args.value_learner_only,
             opponent_per_game=args.opponent_per_game,
             critic_prior_window=args.critic_prior_window,
             critic_prior_turn_weight=tuple(args.critic_prior_turn_weight),
