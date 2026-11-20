@@ -417,6 +417,7 @@ class BaseNashPGTrainer:
         predeal_value_coef: float = 0.0,  # P33: the critic on both sides at the turn-end park (0 = off)
         afterstate_value_coef: float = 0.0,  # the critic right after a side's decision and around its rolls (0 = off)
         afterstate_frac: float = 0.25,    # the share of the learner's decisions whose moments are captured
+        update_bf16: bool = False,        # P52: the update's network forwards under bf16 autocast
         searched_games_workers: int = 0,  # P33: worker processes playing whole games with the rollout root
         searched_games_envs: int = 32,    # games each of them plays at once
         searched_value_coef: float = 0.0,  # weight of the value loss on those games' decisions
@@ -715,6 +716,9 @@ class BaseNashPGTrainer:
         #: target. Built at the first rollout (it needs the buffer's width and the env's settle mode).
         self.afterstate_value_coef = float(afterstate_value_coef)
         self.afterstate_frac = float(afterstate_frac)
+        #: P52 (owner, 2026-11-20): the update's network forwards under bf16 autocast, their outputs cast back to fp32
+        #: before any loss. The rollout keeps fp32 (its CUDA graphs and the stored log-probs). A numerics change.
+        self.update_bf16 = bool(update_bf16)
         self.afterstate: Optional[AfterstateCapture] = None
         self._as_rows: List[AfterstateRows] = []
         self._as_obs: Optional[torch.Tensor] = None
@@ -1301,6 +1305,10 @@ class BaseNashPGTrainer:
 
     def set_slice_turn_boundaries(self, slice_boundaries: bool) -> None:
         self.slice_turn_boundaries = slice_boundaries
+
+    def _amp(self) -> Any:
+        """--update-bf16: bf16 autocast for an update forward on CUDA; otherwise a context that does nothing."""
+        return torch.autocast("cuda", dtype=torch.bfloat16, enabled=self.update_bf16 and self.device.type == "cuda")
 
     def _update_net(self, net: nn.Module) -> nn.Module:
         """`net` as the update calls it: compiled under --compile-update, else itself. Compiled
@@ -3049,10 +3057,10 @@ class NashPGTrainer(BaseNashPGTrainer):
         _all_masks = self.buffer.masks.view(_n_all, self.buffer.action_dim)
         _ref_fwd = self._update_net(self.reference_net)
         _act_fwd = self._update_net(self.active_net)
-        with torch.no_grad():
+        with torch.no_grad(), self._amp():
             ref_log_p_all = torch.cat([
                 F.log_softmax(_ref_fwd(_all_obs[i:i + self.batch_size],
-                                                 _all_masks[i:i + self.batch_size])[0], dim=-1)
+                                                 _all_masks[i:i + self.batch_size])[0].float(), dim=-1)
                 for i in range(0, _n_all, self.batch_size)])
 
         teacher_log_p_all: Optional[torch.Tensor] = None
@@ -3096,22 +3104,27 @@ class NashPGTrainer(BaseNashPGTrainer):
                      self.batch_size, self.priority_alpha):
                 use_risk = self.defcon_coef > 0.0
                 cur_value_logits = None
-                if use_risk:
-                    forward_with_risk = self._update_method(self.active_net, "forward_with_risk")
-                    cur_logits, cur_v_win, cur_v_vp, cur_risk = forward_with_risk(b_obs, b_mask)
-                    cur_risk = cur_risk.squeeze(-1)
-                elif getattr(self.active_net, "categorical_value", False):
-                    # One backbone pass for the policy, both scalars and the value logits the
-                    # cross-entropy needs; re-running the trunk for the logits would double the
-                    # cost of every update.
-                    forward_with_value_logits = self._update_method(
-                        self.active_net, "forward_with_value_logits")
-                    cur_logits, cur_v_win, cur_v_vp, cur_value_logits = (
-                        forward_with_value_logits(b_obs, b_mask))
-                    cur_risk = None
-                else:
-                    cur_logits, cur_v_win, cur_v_vp = _act_fwd(b_obs, b_mask)
-                    cur_risk = None
+                with self._amp():
+                    if use_risk:
+                        forward_with_risk = self._update_method(self.active_net, "forward_with_risk")
+                        cur_logits, cur_v_win, cur_v_vp, cur_risk = forward_with_risk(b_obs, b_mask)
+                        cur_risk = cur_risk.squeeze(-1)
+                    elif getattr(self.active_net, "categorical_value", False):
+                        # One backbone pass for the policy, both scalars and the value logits the
+                        # cross-entropy needs; re-running the trunk for the logits would double the
+                        # cost of every update.
+                        forward_with_value_logits = self._update_method(
+                            self.active_net, "forward_with_value_logits")
+                        cur_logits, cur_v_win, cur_v_vp, cur_value_logits = (
+                            forward_with_value_logits(b_obs, b_mask))
+                        cur_risk = None
+                    else:
+                        cur_logits, cur_v_win, cur_v_vp = _act_fwd(b_obs, b_mask)
+                        cur_risk = None
+                if self.update_bf16:
+                    cur_logits, cur_v_win, cur_v_vp = cur_logits.float(), cur_v_win.float(), cur_v_vp.float()
+                    cur_risk = None if cur_risk is None else cur_risk.float()
+                    cur_value_logits = None if cur_value_logits is None else cur_value_logits.float()
                 cur_v_win = cur_v_win.squeeze(-1)
                 if self.gain_learned and self._prior_beta_rows is not None:
                     _b = self._prior_beta_rows.view(-1).index_select(0, b_idx)
@@ -3392,7 +3405,8 @@ class NashPGTrainer(BaseNashPGTrainer):
                 if _mb < len(_pd_chunks) and _pd_chunks[_mb].numel() and self._pd_obs is not None \
                         and self._pd_tgt is not None:
                     _sel = _pd_chunks[_mb]
-                    _pd_v = _value_only(self.active_net, self._pd_obs.index_select(0, _sel)).squeeze(-1)
+                    with self._amp():
+                        _pd_v = _value_only(self.active_net, self._pd_obs.index_select(0, _sel)).squeeze(-1).float()
                     _pd_loss = F.mse_loss(_pd_v.float(), self._pd_tgt.index_select(0, _sel))
                     loss = loss + self.vf_coef * self.predeal_value_coef * _pd_loss
                     pd_loss_t += _pd_loss.detach()
@@ -3400,7 +3414,8 @@ class NashPGTrainer(BaseNashPGTrainer):
                 if _mb < len(_as_chunks) and _as_chunks[_mb].numel() and self._as_obs is not None \
                         and self._as_tgt is not None and self._as_kind is not None:
                     _sel = _as_chunks[_mb]
-                    _as_v = _value_only(self.active_net, self._as_obs.index_select(0, _sel)).squeeze(-1).float()
+                    with self._amp():
+                        _as_v = _value_only(self.active_net, self._as_obs.index_select(0, _sel)).squeeze(-1).float()
                     _as_se = (_as_v - self._as_tgt.index_select(0, _sel)) ** 2
                     loss = loss + self.vf_coef * self.afterstate_value_coef * _as_se.mean()
                     _k = self._as_kind.index_select(0, _sel)
