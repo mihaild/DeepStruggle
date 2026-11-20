@@ -3347,6 +3347,41 @@
     "no_blunder_window": true,
     "gae_lambda": 0.96
    }
+  },
+  "R165": {
+   "description": "P53 control (owner, 2026-11-20): R132 (B6's recipe, pure self-play) with the update compiled (--compile-update max-autotune) and its forwards in bf16 (--update-bf16); from scratch, 8 h beside R166",
+   "first": "E8.1-A8-R165-S45_20261120_230117",
+   "flags": {
+    "reward_scheme": "terminal",
+    "update_bf16": true,
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "compile_update": "max-autotune",
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
+  },
+  "R166": {
+   "description": "P53 arm (owner, 2026-11-20): R165 plus both extra critics at weight 1.0 -- the afterstate critic at every learner decision (--afterstate-value-coef 1.0 --afterstate-frac 1.0) and the pre-deal critic (--predeal-value-coef 1.0); from scratch, 8 h beside R165",
+   "first": "E8.1-A8-R166-S45_20261120_230137",
+   "flags": {
+    "reward_scheme": "terminal",
+    "predeal_value_coef": 1.0,
+    "afterstate_value_coef": 1.0,
+    "afterstate_frac": 1.0,
+    "update_bf16": true,
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "compile_update": "max-autotune",
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
   }
  },
  "views": {
@@ -3718,7 +3753,9 @@
   "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R161_20261120_052527": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R161",
   "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R162_20261120_090213": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R162",
   "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R163_20261120_094634": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R163",
-  "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R164_20261120_113842": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R164"
+  "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R164_20261120_113842": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R164",
+  "E8.1-A8-R165-S45_20261120_230117": "E8.1-A8-R165-S45",
+  "E8.1-A8-R166-S45_20261120_230137": "E8.1-A8-R166-S45"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
