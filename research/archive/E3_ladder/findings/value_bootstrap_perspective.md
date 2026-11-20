@@ -140,6 +140,14 @@ run puts a number on what it costs. That has not been run.
 
 ## The per-player option was built, run, and is decisively worse (E3-22-28, 2026-09-16)
 
+> **Status (2026-11-20, E8):** the 1.28x below compares the two estimators at one lambda, where per-player reaches about
+> twice as far (half the nodes per stretch of game). Swept over lambda on one R155 self-play rollout (500 games, 212,203
+> decisions), interleaved, per-player and each side's own-view chain lie on one frontier of advantage SD against return
+> RMSE to 0.001: per-player at lambda 0.98 is the interleaved form at 0.99 (0.316 / 0.636 against 0.316 / 0.635), and
+> at the default's return error its spread equals the default's (0.206 / 0.205, per-player near lambda 0.95). The cost
+> measured here is per-player's longer reach at the same lambda, not a noisier estimator; a per-player run should use
+> lambda ~0.955 to match the default at 0.98 (data/reports/critic0b_lambda_sweep.json).
+
 The second row of that table — per-player trajectories — was implemented behind
 `--per-player-gae` and run against `E3-20-28` as a matched baseline. **It loses by 520 Elo at
 80M steps.** The idea is refuted, not the implementation.

@@ -770,8 +770,10 @@ def build_parser() -> argparse.ArgumentParser:
                              "interleaved sequence with a sign flip. Removes the cross-perspective "
                              "bootstrap rather than patching it: the interleaved form assumes "
                              "V(s,me) = -V(s,opponent), which is a perfect-information identity "
-                             "and false here (0.144 mean absolute). Measured offline: return RMSE "
-                             "0.551 -> 0.481 at lambda 0.98, and exact telescoping at lambda 1. "
+                             "and false here (0.144 mean absolute). At one lambda it reaches about twice as far as "
+                             "the interleaved form (half the nodes per stretch of game): its lower return RMSE and "
+                             "its higher advantage spread are both that reach -- swept over lambda the two lie on one "
+                             "frontier (2026-11-20). Use --gae-lambda ~0.955 to match the default at 0.98. "
                              "No extra forward passes.")
     parser.add_argument("--same-perspective-bootstrap", action="store_true", default=False,
                         help="Bootstrap the value target from V(s_{t+1}, p_t) -- the resulting "
