@@ -185,7 +185,14 @@ are cited from elsewhere; keep them.
   after it; auto-advance then runs one micro-step at a time, so the stream is unchanged): `get_step_track_vp()`,
   a `(num_envs, 111)` int16 view, overwritten by the next step. The per-region exploiters' reward reads it
   (`ai/rewards/region_reward.py`; owner, 2026-11-19); `tests/bindings/test_step_track_vp.py` holds it to a
-  hand-stepped game. `Config::leaf` chooses whose side a leaf's
+  hand-stepped game. With `set_capture_afterstates(True)` the runner also records the afterstate critic's rows
+  (`ai/training/afterstate_critic.py`; in the runner since 2026-11-20, 2x the trainer's speed at every decision):
+  for the envs `set_afterstate_envs(pick)` names before a `step_flat_all`, it walks its own game one node at a time
+  after the decider's action and keeps each moment -- right after the action, before and after each die roll, not
+  the decider's own next real decision or a finished game -- observed from the decider's side in its feature set;
+  `get_afterstates()` returns `(envs, sides, kinds, observations, walks cut)`. The stream is unchanged (the bulk
+  advance is the same single steps), and `tests/training/test_afterstate_critic.py` holds the rows to the Python
+  reference walk (`walk_afterstates`) bit for bit. `Config::leaf` chooses whose side a leaf's
   critic is read from: `kMover` (the default and the measured root: the root mover's at every leaf) or
   `kDecider` (the leaf's decider's, the side the critic is trained on, its value negated into the
   mover's frame where that is the opponent) or `kOwn` (past the stop, play on to the root mover's next

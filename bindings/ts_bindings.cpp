@@ -225,6 +225,8 @@ std::string game_state_to_display_json(const ts::GameState& state) {
 
 // Columns of VectorizedBatchRunner's per-step Event VP record: card ids 0..110.
 constexpr size_t kTrackCards = 111;
+// The afterstate capture's longest walk (VectorizedBatchRunner::walk_afterstates; afterstate_critic.MAX_WALK).
+constexpr size_t kMaxAfterstateWalk = 64;
 
 NB_MODULE(ts_engine, m) {
     m.doc() = "Twilight Struggle C++ Simulation Engine Python Bindings (nanobind)";
@@ -1664,6 +1666,78 @@ NB_MODULE(ts_engine, m) {
                 if (e.card_id < kTrackCards) row[e.card_id] = static_cast<int16_t>(row[e.card_id] + e.vp_delta);
             }
         }
+        // The afterstate critic (ai/training/afterstate_critic.py; owner, 2026-11-18; in the runner 2026-11-20):
+        // for the envs set_afterstate_envs picks, the moments of the decider's turn after its action this step --
+        // right after it, before each die roll and after it -- each observed from the decider's side in its
+        // feature set, zero-padded to obs_width. The runner walks its own game one node at a time (the same
+        // Engine::auto_advance_step its bulk advance repeats), so the decision stream is unchanged and no copy
+        // is replayed. Skipped: finished games and the decider's own next real decision (the ordinary value
+        // rows). A walk longer than kMaxAfterstateWalk nodes is dropped and counted. The rows are the Python
+        // reference walk's (walk_afterstates), which tests/training/test_afterstate_critic.py holds them to.
+        enum : uint8_t { kAfterDecision = 0, kBeforeRoll = 1, kAfterRoll = 2 };
+        bool capture_afterstates = false;
+        std::vector<uint8_t> as_pick;
+        std::vector<std::vector<float>> as_obs;
+        std::vector<std::vector<uint8_t>> as_kind;
+        std::vector<int8_t> as_side;
+        std::vector<uint8_t> as_cut;
+        void set_capture_afterstates(bool on) {
+            capture_afterstates = on;
+            as_pick.assign(num_envs, 0);
+            as_obs.assign(on ? num_envs : 0, {});
+            as_kind.assign(on ? num_envs : 0, {});
+            as_side.assign(num_envs, 0);
+            as_cut.assign(num_envs, 0);
+        }
+        static bool at_chance(const ts::GameState& g) {
+            return g.ctx().decision_player == ts::Player::NONE && g.ctx().decision_type == ts::DecisionType::ROLL_DIE;
+        }
+        void keep_afterstate(size_t idx, ts::Player side, uint8_t kind, bool forced) {
+            const ts::GameState& g = st(idx);
+            if (ts::Engine::is_terminal(g)) return;
+            if (g.ctx().decision_player == side && !at_chance(g)) {
+                if (!forced) return;
+                ts::GameState probe = g;                  // a real decision: the runner would stop here
+                if (ts::Engine::auto_advance_step(probe, 1) == 0) return;
+            }
+            std::vector<float>& rows = as_obs[idx];
+            const size_t off = rows.size();
+            rows.resize(off + obs_width, 0.0f);
+            ts::extract_observation_features(g, side, features_for(idx, side), rows.data() + off);
+            as_kind[idx].push_back(kind);
+        }
+        // Walks env idx from right after its decider's action to where the runner stops (forced: the next decision
+        // with a choice; otherwise through chance nodes only), keeping the moments; the caller's own advance then
+        // finds nothing left to do (or finishes a walk cut at kMaxAfterstateWalk).
+        void walk_afterstates(size_t idx, ts::Player side, bool forced) {
+            as_side[idx] = static_cast<int8_t>(side == ts::Player::US ? 1 : -1);
+            std::vector<uint8_t>& kinds = as_kind[idx];
+            keep_afterstate(idx, side, kAfterDecision, forced);
+            bool fresh = true;                            // nothing has happened since the last state kept
+            bool ended = false;
+            for (size_t k = 0; k < kMaxAfterstateWalk; ++k) {
+                if (ts::Engine::is_terminal(st(idx))) { ended = true; break; }
+                if (at_chance(st(idx))) {
+                    if (!fresh) keep_afterstate(idx, side, kBeforeRoll, forced);
+                    else if (!kinds.empty() && kinds.back() == kAfterDecision) kinds.back() = kBeforeRoll;
+                    if (forced) {
+                        if (capture_predeal && ts::rollout::at_turn_cleanup(st(idx))) record_predeal(idx);
+                        if (slots[idx].auto_advance(1) == 0) { ended = true; break; }
+                    } else {
+                        const ts::MicroAction chance_ma{ts::DecisionType::ROLL_DIE, 0, 0, 0};
+                        if (!slots[idx].step(chance_ma)) { ended = true; break; }
+                    }
+                    add_tracks(idx);
+                    keep_afterstate(idx, side, kAfterRoll, forced);
+                    fresh = true;
+                    continue;
+                }
+                if (!forced || slots[idx].auto_advance(1) == 0) { ended = true; break; }
+                add_tracks(idx);
+                fresh = false;
+            }
+            if (!ended) { as_cut[idx] = 1; as_obs[idx].clear(); kinds.clear(); }
+        }
         void record_predeal(size_t idx) {
             for (int side = 0; side < 2; ++side) {
                 const ts::Player p = side == 0 ? ts::Player::US : ts::Player::USSR;
@@ -1822,6 +1896,10 @@ NB_MODULE(ts_engine, m) {
             gomp_parallel_for(static_cast<int64_t>(num_envs), [&](int64_t i) {
                 if (capture_predeal) predeal_flag[i] = 0;
                 if (capture_tracks) std::fill_n(&track_vp[static_cast<size_t>(i) * kTrackCards], kTrackCards, int16_t{0});
+                const bool walk = capture_afterstates && as_pick[i];
+                if (capture_afterstates) {
+                    as_obs[i].clear(); as_kind[i].clear(); as_cut[i] = 0; as_side[i] = 0; as_pick[i] = 0;
+                }
                 if (static_cast<size_t>(i) >= act_count) return;
                 if (ts::Engine::is_terminal(st(i))) {
                     results[i] = 2; // Terminal
@@ -1830,10 +1908,11 @@ NB_MODULE(ts_engine, m) {
                 // A composed E4.1 action (the decider in the merged view) is both E4 steps,
                 // atomically; anything else is the E4 step, validated against the cached mask.
                 // Chance nodes are drained below exactly as for any other action.
-                const bool ok = slots[i].step_flat(
-                    actions[i], view_for(static_cast<size_t>(i), decider(static_cast<size_t>(i))));
+                const ts::Player who = decider(static_cast<size_t>(i));
+                const bool ok = slots[i].step_flat(actions[i], view_for(static_cast<size_t>(i), who));
                 if (ok) {
                     add_tracks(static_cast<size_t>(i));
+                    if (walk) walk_afterstates(static_cast<size_t>(i), who, auto_advance);
                     if (auto_advance) {
                         if (capture_predeal) {
                             for (size_t k = 0; k < 256; ++k) {
@@ -2069,6 +2148,50 @@ NB_MODULE(ts_engine, m) {
              nb::arg("env_index"), nb::arg("us"), nb::arg("ussr"),
              "P23 / E4.1: the same for one env; rebuilds only that env's cached mask.")
         .def("step_flat_all", &VectorizedBatchRunner::step_flat_all, nb::arg("actions"), nb::arg("auto_advance") = false)
+        .def("set_capture_afterstates", &VectorizedBatchRunner::set_capture_afterstates, nb::arg("on"),
+             "The afterstate critic's moments, captured by the runner as it steps (set_afterstate_envs picks the "
+             "envs before each step_flat_all, get_afterstates() reads them after it).")
+        .def("set_afterstate_envs", [](VectorizedBatchRunner& self, nb::ndarray<const uint8_t, nb::ndim<1>, nb::c_contig, nb::device::cpu> pick) {
+                 if (!self.capture_afterstates) throw std::runtime_error("set_afterstate_envs: capture is off (set_capture_afterstates)");
+                 if (pick.shape(0) != self.num_envs) throw std::invalid_argument("set_afterstate_envs: one flag per env");
+                 std::memcpy(self.as_pick.data(), pick.data(), self.num_envs);
+             }, nb::arg("pick"),
+             "Which envs' decisions the next step_flat_all walks (uint8 per env); cleared by that step.")
+        .def("get_afterstates", [](VectorizedBatchRunner& self) {
+                 if (!self.capture_afterstates) throw std::runtime_error("get_afterstates: capture is off (set_capture_afterstates)");
+                 size_t n = 0, cut = 0;
+                 for (size_t i = 0; i < self.num_envs; ++i) { n += self.as_kind[i].size(); cut += self.as_cut[i]; }
+                 const size_t w = self.obs_width;
+                 int64_t* envs = new int64_t[std::max<size_t>(1, n)];
+                 int8_t* sides = new int8_t[std::max<size_t>(1, n)];
+                 int8_t* kinds = new int8_t[std::max<size_t>(1, n)];
+                 float* obs = new float[std::max<size_t>(1, n * w)];
+                 size_t r = 0;
+                 for (size_t i = 0; i < self.num_envs; ++i) {
+                     const size_t k = self.as_kind[i].size();
+                     if (k == 0) continue;
+                     std::memcpy(obs + r * w, self.as_obs[i].data(), k * w * sizeof(float));
+                     for (size_t j = 0; j < k; ++j) {
+                         envs[r + j] = static_cast<int64_t>(i);
+                         sides[r + j] = self.as_side[i];
+                         kinds[r + j] = static_cast<int8_t>(self.as_kind[i][j]);
+                     }
+                     r += k;
+                 }
+                 size_t s1[1] = { n }, s2[2] = { n, w };
+                 nb::capsule oe(envs, [](void* p) noexcept { delete[] static_cast<int64_t*>(p); });
+                 nb::capsule os(sides, [](void* p) noexcept { delete[] static_cast<int8_t*>(p); });
+                 nb::capsule ok(kinds, [](void* p) noexcept { delete[] static_cast<int8_t*>(p); });
+                 nb::capsule oo(obs, [](void* p) noexcept { delete[] static_cast<float*>(p); });
+                 return nb::make_tuple(nb::ndarray<nb::numpy, int64_t, nb::ndim<1>>(envs, 1, s1, oe),
+                                       nb::ndarray<nb::numpy, int8_t, nb::ndim<1>>(sides, 1, s1, os),
+                                       nb::ndarray<nb::numpy, int8_t, nb::ndim<1>>(kinds, 1, s1, ok),
+                                       nb::ndarray<nb::numpy, float, nb::ndim<2>>(obs, 2, s2, oo),
+                                       cut);
+             },
+             "(envs, sides +1 US / -1 USSR, kinds 0 after the decision / 1 before a roll / 2 after it, observations "
+             "rows x obs_width, walks dropped for length) of the last step_flat_all's picked envs, env by env, each "
+             "walk in order.")
         .def("set_capture_predeal", &VectorizedBatchRunner::set_capture_predeal, nb::arg("on"),
              "P33: record each env's turn-end park (after a turn's last action, before the deal) from both "
              "sides during step_flat_all's auto-advance; read it with get_predeal after the step.")

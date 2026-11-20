@@ -24,7 +24,7 @@ def _play(steps: int, frac: float = 1.0) -> Any:
     rows = []
     for t in range(steps):
         acts = np.array([rng.choice(np.flatnonzero(m)) for m in np.asarray(masks)])
-        cap.before(env.runner, np.ones(16, bool), np.asarray(env.runner.get_decision_players()), acts)
+        cap.before(env.runner, np.ones(16, bool), np.asarray(env.runner.get_decision_players()))
         obs, masks, _, dones, _ = env.step(acts)
         r = cap.after(env.runner, t, np.asarray(dones) > 0.5, "cpu")
         if r is not None:
@@ -32,13 +32,50 @@ def _play(steps: int, frac: float = 1.0) -> Any:
     return cap, rows, obs.shape[1]
 
 
-def test_every_walk_ends_where_the_runner_does_and_all_three_kinds_occur() -> None:
+def test_all_three_kinds_occur_and_no_walk_is_cut() -> None:
     cap, rows, width = _play(1500)
     m = cap.metrics()
-    assert m["afterstate/mismatched"] == 0.0, "a replayed walk took a different path from the runner"
+    assert m["afterstate/mismatched"] == 0.0, "a walk ran past MAX_WALK nodes"
     for name in ("after_decision", "before_roll", "after_roll"):
         assert m[f"afterstate/rows_{name}"] > 0, name
     assert all(r.obs.shape[1] == width for r in rows), "rows are the buffer's width"
+
+
+def test_the_runner_records_the_reference_walks_rows() -> None:
+    """The batch runner's capture (set_capture_afterstates) against walk_afterstates on a copy of each pre-step state:
+    the same envs, sides, kinds and observations, bit for bit, in both settle modes."""
+    for auto in (True, False):
+        env = TsVectorizedEnv(num_envs=16, base_seed=11)
+        obs, masks, _ = env.reset_all()
+        env._auto_advance = auto
+        width = obs.shape[1]
+        env.runner.set_capture_afterstates(True)
+        rng = np.random.default_rng(4)
+        compared = 0
+        for _ in range(600):
+            acts = np.array([rng.choice(np.flatnonzero(m)) for m in np.asarray(masks)])
+            dp = np.asarray(env.runner.get_decision_players())
+            pick = (rng.random(16) < 0.6) & (dp != 0)
+            want_e, want_side, want_kind, want_obs = [], [], [], []
+            for e in np.flatnonzero(pick):
+                side = ts.Player.US if dp[e] == 1 else ts.Player.USSR
+                moments, _ = walk_afterstates(env.runner.get_state(int(e)), int(acts[e]), side, forced=auto)
+                for kind, st in moments:
+                    o = np.asarray(ts.extract_observation_features(st, side, 0), dtype=np.float32)
+                    want_e.append(int(e))
+                    want_side.append(int(dp[e]))
+                    want_kind.append(kind)
+                    want_obs.append(np.pad(o, (0, width - o.shape[0])))
+            env.runner.set_afterstate_envs(pick.astype(np.uint8))
+            obs, masks, _, _, _ = env.step(acts)
+            envs, sides, kinds, got_obs, cut = env.runner.get_afterstates()
+            assert cut == 0
+            assert list(np.asarray(envs)) == want_e and list(np.asarray(sides)) == want_side
+            assert list(np.asarray(kinds)) == want_kind
+            if want_obs:
+                assert np.array_equal(np.asarray(got_obs), np.stack(want_obs))
+            compared += len(want_e)
+        assert compared > 500, compared
 
 
 def test_a_coup_records_the_roll_and_its_result_from_the_couper() -> None:
@@ -82,6 +119,38 @@ def test_the_target_is_the_sides_next_decision_or_the_result() -> None:
                            torch.zeros(1, 3))]
     obs, tgt, kinds = build_targets(rows, players, dones, rewards, rets, np.ones((4, 1), bool), "cpu")
     assert obs is not None and tgt is not None and kinds is not None and float(tgt[0]) == np.float32(0.3)
+
+
+def test_the_targets_of_every_row_follow_the_scalar_rule() -> None:
+    """build_targets (numpy, all rows at once) against next_decision_target row by row, on random buffers."""
+    rng = np.random.default_rng(7)
+    for _ in range(20):
+        horizon, n = int(rng.integers(2, 30)), int(rng.integers(1, 6))
+        players = rng.choice([-1.0, 1.0], size=(horizon, n)).astype(np.float32)
+        dones = rng.random((horizon, n)) < 0.1
+        rewards = rng.normal(size=(horizon, n)).astype(np.float32)
+        rets = rng.normal(size=(horizon, n)).astype(np.float32)
+        learner = rng.random((horizon, n)) < 0.8
+        rows, want = [], []
+        for t in range(horizon):
+            k = int(rng.integers(0, 4))
+            envs = rng.integers(0, n, size=k)
+            sides = rng.choice([-1, 1], size=k).astype(np.int8)
+            kinds = rng.integers(0, 3, size=k).astype(np.int8)
+            obs = torch.from_numpy(rng.normal(size=(k, 3)).astype(np.float32))
+            rows.append(AfterstateRows(t, envs, sides, kinds, obs))
+            for j in range(k):
+                tg = next_decision_target(t, int(envs[j]), int(sides[j]), players, dones, rewards, rets, learner)
+                if tg is not None:
+                    want.append((obs[j], tg, int(kinds[j])))
+        got_obs, got_tgt, got_kind = build_targets(rows, players, dones, rewards, rets, learner, "cpu")
+        if not want:
+            assert got_obs is None
+            continue
+        assert got_obs is not None and got_tgt is not None and got_kind is not None
+        assert torch.equal(got_obs, torch.stack([w[0] for w in want]))
+        assert np.allclose(got_tgt.numpy(), np.array([w[1] for w in want], dtype=np.float32))
+        assert got_kind.tolist() == [w[2] for w in want]
 
 
 class _Critic(nn.Module):

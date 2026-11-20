@@ -2162,9 +2162,7 @@ class BaseNashPGTrainer:
                     self.afterstate = AfterstateCapture(self.afterstate_frac, self.obs_features, self.buffer.obs_dim,
                                                         forced=bool(self.env._auto_advance),
                                                         seed=int(np.random.randint(1 << 30)))
-                _view = np.where(np.asarray(_dp) == 1, self.env.view_us, self.env.view_ussr)
-                self.afterstate.before(self.env.runner, np.asarray(learner_np, dtype=bool), np.asarray(_dp),
-                                       actions_np, merged=_view == 1, macro=_view == 2)
+                self.afterstate.before(self.env.runner, np.asarray(learner_np, dtype=bool), np.asarray(_dp))
             if self.restart_pool is not None:
                 self.restart_pool.steps = int(self.total_env_steps + self.buffer.step * self.num_envs)
                 self.restart_pool.before_step(self.env.runner, _whole)

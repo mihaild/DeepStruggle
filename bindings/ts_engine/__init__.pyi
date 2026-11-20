@@ -1351,6 +1351,21 @@ class VectorizedBatchRunner:
 
     def step_flat_all(self, actions: Sequence[int], auto_advance: bool = False) -> list[int]: ...
 
+    def set_capture_afterstates(self, on: bool) -> None:
+        """
+        The afterstate critic's moments, captured by the runner as it steps (set_afterstate_envs picks the envs before each step_flat_all, get_afterstates() reads them after it).
+        """
+
+    def set_afterstate_envs(self, pick: Annotated[NDArray[numpy.uint8], dict(shape=(None,), order='C', device='cpu', writable=False)]) -> None:
+        """
+        Which envs' decisions the next step_flat_all walks (uint8 per env); cleared by that step.
+        """
+
+    def get_afterstates(self) -> tuple:
+        """
+        (envs, sides +1 US / -1 USSR, kinds 0 after the decision / 1 before a roll / 2 after it, observations rows x obs_width, walks dropped for length) of the last step_flat_all's picked envs, env by env, each walk in order.
+        """
+
     def set_capture_predeal(self, on: bool) -> None:
         """
         P33: record each env's turn-end park (after a turn's last action, before the deal) from both sides during step_flat_all's auto-advance; read it with get_predeal after the step.

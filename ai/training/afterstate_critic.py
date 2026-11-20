@@ -17,11 +17,12 @@ target is the pre-deal critic's (P33): the lambda-return of the same side's next
 same env, or the game's result if it ends first; a row whose next decision falls outside the
 rollout, or is an opponent-pool member's, is dropped.
 
-The states are reconstructed by replaying the side's action on a copy of the pre-step state and
-walking the engine one node at a time (`Engine.auto_advance_step(state, 1)`), the way the runner
-does with forced settling. The walk ends at the next real decision, which must be the runner's own
-next state; a row whose replay disagrees with the runner is dropped and counted (it would mean the
-copy and the runner took different chance draws).
+The batch runner records the moments itself as it steps (`set_capture_afterstates`,
+`bindings/ts_bindings.cpp`, 2026-11-20): it walks its own game one node at a time
+(`Engine.auto_advance_step(state, 1)`, what its bulk advance repeats), in its parallel loop, so the
+decision stream is unchanged and nothing is replayed. `walk_afterstates` below is the reference walk
+on a copy, which `tests/training/test_afterstate_critic.py` holds the runner's rows to; a walk longer
+than MAX_WALK nodes is dropped and counted.
 """
 
 from __future__ import annotations
@@ -54,13 +55,6 @@ class AfterstateRows:
 def _is_chance(state: Any) -> bool:
     ctx = state.ctx()
     return ctx.decision_player == ts.Player.NONE and ctx.decision_type == ts.DecisionType.ROLL_DIE
-
-
-def _signature(state: Any) -> Tuple[int, ...]:
-    """Enough of a state to tell two walks apart: the RNG and where the game is."""
-    ctx = state.ctx()
-    return (int(state.rng_state), int(state.turn), int(state.action_round), int(state.victory_points),
-            int(state.defcon), int(ctx.decision_type), int(ctx.decision_player), int(state.current_phase))
 
 
 def walk_afterstates(state: Any, action: int, side: Any, merged: bool = False, macro: bool = False,
@@ -111,10 +105,9 @@ def _settled(state: Any) -> bool:
 
 
 class AfterstateCapture:
-    """Samples a fraction of the learner's decisions each step and files their moments.
+    """Samples a fraction of the learner's decisions each step; the runner files their moments.
 
-    `before()` runs before the env step (it needs the pre-step states and the chosen actions),
-    `after()` right after it (it checks each walk against the runner's next state)."""
+    `before()` runs before the env step (it picks the envs), `after()` right after it (it reads the rows)."""
 
     def __init__(self, frac: float, features: int, width: int, forced: bool = True, seed: int = 0) -> None:
         if not 0.0 < frac <= 1.0:
@@ -124,7 +117,7 @@ class AfterstateCapture:
         self.width = int(width)
         self.forced = bool(forced)
         self.rng = np.random.default_rng(seed)
-        self._pending: List[Tuple[int, int, List[Tuple[int, Any]], Tuple[int, ...]]] = []
+        self._on: Optional[Any] = None
         self.reset_counters()
 
     def reset_counters(self) -> None:
@@ -132,50 +125,32 @@ class AfterstateCapture:
         self.rows_by_kind = [0, 0, 0]
         self.mismatched = 0
 
-    def before(self, runner: Any, learner: np.ndarray, deciders: np.ndarray, actions: np.ndarray,
-               merged: Optional[np.ndarray] = None, macro: Optional[np.ndarray] = None) -> None:
-        """Walk the sampled learner decisions of this step. `deciders` is +1 / -1 / 0 per env."""
-        self._pending = []
-        pick = np.flatnonzero(np.asarray(learner, dtype=bool) & (np.asarray(deciders) != 0)
-                              & (self.rng.random(len(deciders)) < self.frac))
-        for e in pick:
-            e = int(e)
-            side = ts.Player.US if int(deciders[e]) == 1 else ts.Player.USSR
-            st = runner.get_state(e)
-            moments, end = walk_afterstates(st, int(actions[e]), side,
-                                            bool(merged[e]) if merged is not None else False,
-                                            bool(macro[e]) if macro is not None else False, self.forced)
-            self.decisions += 1
-            if moments:
-                self._pending.append((e, int(deciders[e]), moments, _signature(end)))
+    def before(self, runner: Any, learner: np.ndarray, deciders: np.ndarray) -> None:
+        """Pick the learner decisions of this step whose moments the runner records as it applies them. `deciders`
+        is +1 / -1 / 0 per env."""
+        if self._on is not runner:
+            runner.set_capture_afterstates(True)
+            self._on = runner
+        pick = (np.asarray(learner, dtype=bool) & (np.asarray(deciders) != 0)
+                & (self.rng.random(len(deciders)) < self.frac))
+        runner.set_afterstate_envs(np.ascontiguousarray(pick, dtype=np.uint8))
+        self.decisions += int(pick.sum())
 
     def after(self, runner: Any, step: int, dones: np.ndarray, device: Any) -> Optional[AfterstateRows]:
-        """The walks of this step that the runner agrees with, observed and filed under `step`."""
-        envs: List[int] = []
-        sides: List[int] = []
-        kinds: List[int] = []
-        obs: List[np.ndarray] = []
-        for e, side_code, moments, sig in self._pending:
-            # A finished game has auto-reset: nothing to compare with, and the moments are kept
-            # (the walk ended in the result, which is what the target will be).
-            if not bool(dones[e]) and _signature(runner.get_state(e)) != sig:
-                self.mismatched += 1
-                continue
-            side = ts.Player.US if side_code == 1 else ts.Player.USSR
-            for kind, s in moments:
-                envs.append(e)
-                sides.append(side_code)
-                kinds.append(kind)
-                o = np.asarray(ts.extract_observation_features(s, side, self.features), dtype=np.float32)
-                # The buffer's width: rows are zero-padded to the widest set in a mixed batch.
-                obs.append(o[:self.width] if o.shape[0] >= self.width else np.pad(o, (0, self.width - o.shape[0])))
-                self.rows_by_kind[kind] += 1
-        self._pending = []
-        if not obs:
+        """The moments the runner recorded this step, filed under `step`, on `device`. `dones` is unused: a finished
+        game's walk ended in its result, which is the target, and the runner kept it before the reset. (Copying each
+        step's rows here is faster than one rollout-sized copy in build_targets: 81k against 69k steps/s.)"""
+        envs, sides, kinds, obs, cut = runner.get_afterstates()
+        self.mismatched += int(cut)
+        kinds = np.asarray(kinds, dtype=np.int8)
+        if kinds.size == 0:
             return None
-        return AfterstateRows(step, np.asarray(envs, dtype=np.int64), np.asarray(sides, dtype=np.int8),
-                              np.asarray(kinds, dtype=np.int8),
-                              torch.from_numpy(np.stack(obs)).to(device))
+        self.rows_by_kind = [n + int(c) for n, c in zip(self.rows_by_kind, np.bincount(kinds, minlength=3))]
+        o = np.asarray(obs)
+        # The buffer's width: rows are zero-padded to the widest set in a mixed batch.
+        o = o[:, :self.width] if o.shape[1] >= self.width else np.pad(o, ((0, 0), (0, self.width - o.shape[1])))
+        return AfterstateRows(step, np.asarray(envs, dtype=np.int64), np.asarray(sides, dtype=np.int8), kinds,
+                              torch.from_numpy(np.ascontiguousarray(o, dtype=np.float32)).to(device))
 
     def metrics(self) -> dict:
         out = {"afterstate/decisions": float(self.decisions), "afterstate/mismatched": float(self.mismatched)}
@@ -200,22 +175,45 @@ def next_decision_target(t: int, e: int, side: int, players: np.ndarray, dones: 
     return None
 
 
+def _next_index(flags: np.ndarray, strict: bool) -> np.ndarray:
+    """Per (t, e): the first d (> t if strict, else >= t) with flags[d, e], or the horizon."""
+    horizon, n = flags.shape
+    out = np.empty((horizon, n), dtype=np.int64)
+    cur = np.full(n, horizon, dtype=np.int64)
+    for t in range(horizon - 1, -1, -1):
+        if strict:
+            out[t] = cur
+            cur = np.where(flags[t], t, cur)
+        else:
+            cur = np.where(flags[t], t, cur)
+            out[t] = cur
+    return out
+
+
 def build_targets(rows: Sequence[AfterstateRows], players: np.ndarray, dones: np.ndarray, rewards: np.ndarray,
                   rets: np.ndarray, learner: np.ndarray, device: Any
                   ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
-    """(observations, targets, kinds) of the rows that have a target, or Nones."""
-    obs: List[torch.Tensor] = []
-    tgt: List[float] = []
-    kinds: List[int] = []
-    for r in rows:
-        for j in range(len(r.envs)):
-            target = next_decision_target(r.step, int(r.envs[j]), int(r.sides[j]), players, dones, rewards, rets,
-                                          learner)
-            if target is not None:
-                obs.append(r.obs[j])
-                tgt.append(target)
-                kinds.append(int(r.kinds[j]))
-    if not obs:
+    """(observations, targets, kinds) of the rows that have a target, or Nones: `next_decision_target` for every
+    row at once."""
+    rows = [r for r in rows if len(r.envs)]
+    if not rows:
         return None, None, None
-    return (torch.stack(obs), torch.tensor(tgt, dtype=torch.float32, device=device),
-            torch.tensor(kinds, dtype=torch.int64, device=device))
+    horizon = players.shape[0]
+    t = np.concatenate([np.full(len(r.envs), r.step, dtype=np.int64) for r in rows])
+    e = np.concatenate([r.envs for r in rows]).astype(np.int64)
+    side = np.concatenate([r.sides for r in rows]).astype(np.int64)
+    kinds = np.concatenate([r.kinds for r in rows]).astype(np.int64)
+    done_at = _next_index(np.asarray(dones) > 0.5, strict=False)[t, e]
+    dec_at = np.where(side == 1, _next_index(np.asarray(players) == 1, strict=True)[t, e],
+                      _next_index(np.asarray(players) == -1, strict=True)[t, e])
+    ends = (done_at < dec_at) & (done_at < horizon)
+    decides = ~ends & (dec_at < horizon)
+    dn, dd = np.minimum(done_at, horizon - 1), np.minimum(dec_at, horizon - 1)
+    result = np.clip(np.asarray(rewards)[dn, e] * np.asarray(players)[dn, e] * side, -1.0, 1.0)
+    keep = ends | (decides & np.asarray(learner, dtype=bool)[dd, e])
+    target = np.where(ends, result, np.asarray(rets)[dd, e]).astype(np.float32)
+    if not keep.any():
+        return None, None, None
+    idx = torch.from_numpy(np.flatnonzero(keep)).to(rows[0].obs.device)
+    obs = torch.cat([r.obs for r in rows]).index_select(0, idx)
+    return (obs, torch.from_numpy(target[keep]).to(device), torch.from_numpy(kinds[keep]).to(device))
