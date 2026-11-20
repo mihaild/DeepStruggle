@@ -190,19 +190,11 @@ def _next_index(flags: np.ndarray, strict: bool) -> np.ndarray:
     return out
 
 
-def build_targets(rows: Sequence[AfterstateRows], players: np.ndarray, dones: np.ndarray, rewards: np.ndarray,
-                  rets: np.ndarray, learner: np.ndarray, device: Any
-                  ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
-    """(observations, targets, kinds) of the rows that have a target, or Nones: `next_decision_target` for every
-    row at once."""
-    rows = [r for r in rows if len(r.envs)]
-    if not rows:
-        return None, None, None
+def next_decision_targets(t: np.ndarray, e: np.ndarray, side: np.ndarray, players: np.ndarray, dones: np.ndarray,
+                          rewards: np.ndarray, rets: np.ndarray, learner: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """`next_decision_target` for many rows at once: per row (buffer step t, env e, side +1 / -1) the target and
+    whether it has one. Shared by the afterstate rows and the pre-deal critic's (nash_pg._build_predeal_targets)."""
     horizon = players.shape[0]
-    t = np.concatenate([np.full(len(r.envs), r.step, dtype=np.int64) for r in rows])
-    e = np.concatenate([r.envs for r in rows]).astype(np.int64)
-    side = np.concatenate([r.sides for r in rows]).astype(np.int64)
-    kinds = np.concatenate([r.kinds for r in rows]).astype(np.int64)
     done_at = _next_index(np.asarray(dones) > 0.5, strict=False)[t, e]
     dec_at = np.where(side == 1, _next_index(np.asarray(players) == 1, strict=True)[t, e],
                       _next_index(np.asarray(players) == -1, strict=True)[t, e])
@@ -211,7 +203,21 @@ def build_targets(rows: Sequence[AfterstateRows], players: np.ndarray, dones: np
     dn, dd = np.minimum(done_at, horizon - 1), np.minimum(dec_at, horizon - 1)
     result = np.clip(np.asarray(rewards)[dn, e] * np.asarray(players)[dn, e] * side, -1.0, 1.0)
     keep = ends | (decides & np.asarray(learner, dtype=bool)[dd, e])
-    target = np.where(ends, result, np.asarray(rets)[dd, e]).astype(np.float32)
+    return np.where(ends, result, np.asarray(rets)[dd, e]).astype(np.float32), keep
+
+
+def build_targets(rows: Sequence[AfterstateRows], players: np.ndarray, dones: np.ndarray, rewards: np.ndarray,
+                  rets: np.ndarray, learner: np.ndarray, device: Any
+                  ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
+    """(observations, targets, kinds) of the rows that have a target, or Nones."""
+    rows = [r for r in rows if len(r.envs)]
+    if not rows:
+        return None, None, None
+    t = np.concatenate([np.full(len(r.envs), r.step, dtype=np.int64) for r in rows])
+    e = np.concatenate([r.envs for r in rows]).astype(np.int64)
+    side = np.concatenate([r.sides for r in rows]).astype(np.int64)
+    kinds = np.concatenate([r.kinds for r in rows]).astype(np.int64)
+    target, keep = next_decision_targets(t, e, side, players, dones, rewards, rets, learner)
     if not keep.any():
         return None, None, None
     idx = torch.from_numpy(np.flatnonzero(keep)).to(rows[0].obs.device)

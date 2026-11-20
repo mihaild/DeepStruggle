@@ -32,6 +32,7 @@ from ai.training.card_event_targets import aux_label
 from ai.training.afterstate_critic import KIND_NAMES as AFTERSTATE_KINDS
 from ai.training.afterstate_critic import AfterstateCapture, AfterstateRows
 from ai.training.afterstate_critic import build_targets as build_afterstate_targets
+from ai.training.afterstate_critic import next_decision_targets
 from ai.training.restart_pool import critic_judge
 from ai.rewards.region_reward import RegionTargetedReward
 from tools.lib.openings import FORCED_OPENINGS_US, FORCED_OPENINGS_USSR, NODE_OFFSET as _NODE, OPENINGS
@@ -2889,28 +2890,16 @@ class NashPGTrainer(BaseNashPGTrainer):
         rewards = self.buffer.rewards.float().cpu().numpy()
         rets = self.buffer.returns_win.float().cpu().numpy()
         learner = self.buffer.learner.float().cpu().numpy() > 0.5
-        horizon = self.buffer.buffer_size
-        obs: List[torch.Tensor] = []
-        tgt: List[float] = []
-        for pd in rows:
-            t, envs, rows_us, rows_ussr = pd.step, pd.envs, pd.us, pd.ussr
-            for j, e in enumerate(envs):
-                for side, row in ((1, rows_us[j]), (-1, rows_ussr[j])):
-                    target: Optional[float] = None
-                    for d in range(t, horizon):
-                        if dones[d, e]:
-                            target = float(np.clip(rewards[d, e] * players[d, e] * side, -1.0, 1.0))
-                            break
-                        if d + 1 < horizon and players[d + 1, e] == side:
-                            if learner[d + 1, e]:
-                                target = float(rets[d + 1, e])
-                            break
-                    if target is not None:
-                        obs.append(row)
-                        tgt.append(target)
-        if obs:
-            self._pd_obs = torch.stack(obs)
-            self._pd_tgt = torch.tensor(tgt, dtype=torch.float32, device=self.device)
+        # Each row twice, US then USSR, in the order the rows were filed (the afterstate rows' rule, vectorized).
+        t = np.concatenate([np.full(2 * len(pd.envs), pd.step, dtype=np.int64) for pd in rows])
+        e = np.concatenate([np.repeat(np.asarray(pd.envs, dtype=np.int64), 2) for pd in rows])
+        side = np.tile(np.array([1, -1], dtype=np.int64), len(e) // 2)
+        target, keep = next_decision_targets(t, e, side, players, dones, rewards, rets, learner)
+        if keep.any():
+            obs = torch.cat([torch.stack((pd.us, pd.ussr), dim=1).reshape(-1, pd.us.shape[1]) for pd in rows])
+            idx = torch.from_numpy(np.flatnonzero(keep)).to(obs.device)
+            self._pd_obs = obs.index_select(0, idx)
+            self._pd_tgt = torch.from_numpy(target[keep]).to(self.device)
 
     def _value_loss(self, cur_v_win, cur_v_vp, b_ret_win, b_ret_vp, value_logits):
         """MSE on the two scalars, or cross-entropy on the distribution.
