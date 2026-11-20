@@ -146,7 +146,7 @@ run puts a number on what it costs. That has not been run.
 > RMSE to 0.001: per-player at lambda 0.98 is the interleaved form at 0.99 (0.316 / 0.636 against 0.316 / 0.635), and
 > at the default's return error its spread equals the default's (0.206 / 0.205, per-player near lambda 0.95). The cost
 > measured here is per-player's longer reach at the same lambda, not a noisier estimator; a per-player run should use
-> lambda ~0.955 to match the default at 0.98 (data/reports/critic0b_lambda_sweep.json).
+> lambda 0.96 (0.98 squared: a side moves at half the decisions; P50) to match the default at 0.98 (data/reports/critic0b_lambda_sweep.json).
 
 The second row of that table — per-player trajectories — was implemented behind
 `--per-player-gae` and run against `E3-20-28` as a matched baseline. **It loses by 520 Elo at

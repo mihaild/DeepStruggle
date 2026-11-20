@@ -773,7 +773,7 @@ def build_parser() -> argparse.ArgumentParser:
                              "and false here (0.144 mean absolute). At one lambda it reaches about twice as far as "
                              "the interleaved form (half the nodes per stretch of game): its lower return RMSE and "
                              "its higher advantage spread are both that reach -- swept over lambda the two lie on one "
-                             "frontier (2026-11-20). Use --gae-lambda ~0.955 to match the default at 0.98. "
+                             "frontier (2026-11-20). Use --gae-lambda 0.96 (0.98 squared) to match the default at 0.98. "
                              "No extra forward passes.")
     parser.add_argument("--same-perspective-bootstrap", action="store_true", default=False,
                         help="Bootstrap the value target from V(s_{t+1}, p_t) -- the resulting "
