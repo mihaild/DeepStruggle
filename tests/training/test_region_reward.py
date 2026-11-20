@@ -119,3 +119,17 @@ def test_both_seats_need_the_pool_and_both_scales() -> None:
     r = RegionTargetedReward("asia", 0, 10.0, 1, scale_ussr=8.0)
     with pytest.raises(RuntimeError):
         r.compute_step_rewards(np.array([1]), np.array([False]), np.zeros(1), np.zeros(1), np.zeros(1))
+
+
+def test_a_europe_control_win_pays_at_least_the_full_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Owner, 2026-11-20: the Europe exploiter is paid at least 1 for winning by Europe Control, whatever its VP. Random
+    games almost never end that way, so a finished game is read as one (the ending reason is the only input)."""
+    st = _finished(11)
+    monkeypatch.setattr(ts, "game_ending_reason", lambda state: "Europe Control")
+    for side in (1, -1):
+        r = RegionTargetedReward("europe", learner_side=side, scale=10.0, num_envs=1)
+        assert _game(r, [-30.0 * side], float(side), st) == pytest.approx(1.0, abs=1e-6)   # x at the floor, then the win
+        r = RegionTargetedReward("europe", learner_side=side, scale=10.0, num_envs=1)
+        assert _game(r, [30.0 * side], float(side), st) == pytest.approx(0.2 + 0.8 * 2.0, abs=1e-6)  # above 1 stays
+        r2 = RegionTargetedReward("asia", learner_side=side, scale=10.0, num_envs=1)
+        assert _game(r2, [-30.0 * side], float(side), st) == pytest.approx(0.2 - 0.8, abs=1e-6)    # only Europe's own

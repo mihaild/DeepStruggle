@@ -1959,6 +1959,7 @@ def train_pipeline(
     region_scale: float = 0.0,
     region_loss_share: float = 0.2,
     region_scale_ussr: Optional[float] = None,
+    region_control_win: float = 1.0,
     region_floor: float = -1.0,
     region_cap: float = 2.0,
     region_weight: float = 0.8,
@@ -2352,6 +2353,7 @@ def train_pipeline(
         "region_scale": float(region_scale),
         "region_loss_share": float(region_loss_share),
         "region_scale_ussr": region_scale_ussr,
+        "region_control_win": float(region_control_win),
         "region_floor": float(region_floor),
         "region_cap": float(region_cap),
         "region_weight": float(region_weight),
@@ -2690,7 +2692,8 @@ def train_pipeline(
                                            float(region_scale), int(num_envs), weight=float(region_weight),
                                            win_bonus=float(region_win_bonus), loss_share=float(region_loss_share),
                                            floor=float(region_floor), cap=float(region_cap),
-                                           scale_ussr=None if region_scale_ussr is None else float(region_scale_ussr))
+                                           scale_ussr=None if region_scale_ussr is None else float(region_scale_ussr),
+                                           control_win=float(region_control_win))
         _seat = (f"the {opponent_lock_side} seat's" if opponent_lock_side else
                  "the exploiter's (both seats, drawn per game; US / USSR scale "
                  f"{region_scale:g} / {region_scale_ussr})")
@@ -3266,6 +3269,13 @@ def train_pipeline(
         if _rp is None or float(opponent_frac) < 1.0:
             raise ValueError("--target-region without --opponent-lock-side needs --opponent-frac 1.0 against fixed "
                              "--opponent-checkpoints: the exploiter's seat is drawn per game by the opponent pool")
+        if not adv_norm_learner_only:
+            # 2026-11-20: both seats against a frozen copy of itself, the advantages normalised over the opponent's
+            # stored transitions too (roughly the negative of the learner's) collapse the learner -- recent win rate
+            # 7.7% -> 0.4% in 40M steps, entropy 1.34 -> 1.37, with or without the region term; with the statistics over
+            # its own transitions it holds 13-14% (the P24 loop, rollout_buffer.py).
+            raise ValueError("--target-region without --opponent-lock-side needs --adv-norm-learner-only: both seats "
+                             "against a frozen opponent collapse without it")
         reward_calc.attach_sides(lambda: trainer.opponent_pool.learner_side)
     if searched_opponent_spec:
         # P40 Arm S. Its block of envs sits after the pool's mixed ones, and nothing else may move

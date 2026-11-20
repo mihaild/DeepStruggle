@@ -6,7 +6,7 @@ scoring of the region, whoever plays the card, plus the region's share of final 
 is the region's 90th-percentile net in the main's own self-play in that seat, so an ordinary game has x near 0 and a
 top-decile one x = 1:
 
-* a win pays ``win_bonus + weight * x``;
+* a win pays ``win_bonus + weight * x`` -- for Europe, a win by Europe Control at least 1 (owner, 2026-11-20);
 * a loss pays ``-1 + loss_share * weight * x``; a draw ``loss_share * weight * x``.
 
 Owner, 2026-11-19: "pay it a bit for this region when it loses, but mostly only when it wins. It should still prioritize
@@ -55,10 +55,11 @@ class RegionTargetedReward:
 
     def __init__(self, region: str, learner_side: int, scale: float, num_envs: int, weight: float = 0.8,
                  win_bonus: float = 0.2, loss_share: float = 0.2, floor: float = -1.0, cap: float = 2.0,
-                 scale_ussr: Optional[float] = None) -> None:
+                 scale_ussr: Optional[float] = None, control_win: float = 1.0) -> None:
         """`learner_side` 1 / -1 locks the exploiter's seat; 0 plays both, each game's seat read from the opponent pool
         (`attach_sides`). `scale` is the US seat's scale (or the locked seat's), `scale_ussr` the USSR seat's when both
-        are played (owner, 2026-11-19: one exploiter per region, both sides)."""
+        are played (owner, 2026-11-19: one exploiter per region, both sides). `control_win`: a win by the region's own
+        control ending (Europe Control, the only one) pays at least this (owner, 2026-11-20: "the full 1")."""
         if region not in REGIONS:
             raise ValueError(f"--target-region must be one of {sorted(REGIONS)}, got {region!r}")
         if learner_side not in (1, -1, 0):
@@ -83,6 +84,8 @@ class RegionTargetedReward:
         self.sides_of: Optional[Callable[[], np.ndarray]] = None
         self.weight, self.win_bonus = float(weight), float(win_bonus)
         self.loss_share, self.floor, self.cap = float(loss_share), float(floor), float(cap)
+        self.control_win = float(control_win)
+        self.control_wins = 0
         self.pending_us = np.zeros(num_envs, dtype=np.float64)     # this step's region scoring VP (+ US), per env
         self.scored_vp = np.zeros(num_envs, dtype=np.float64)      # the game's region VP so far, exploiter's side
         self.finished: Dict[int, List[float]] = {1: [], -1: []}    # region VP of finished games, exploiter's side, by seat
@@ -145,7 +148,14 @@ class RegionTargetedReward:
             if reached_final_scoring(st):
                 u_learner[e] += self._add(int(e), final_share_us(st, self.region), side)
             if winner == side:
-                u_learner[e] += self.win_bonus + (1.0 - self.loss_share) * self.weight * self._x(float(self.scored_vp[e]), side)
+                x = self._x(float(self.scored_vp[e]), side)
+                pay = self.win_bonus + self.weight * x
+                if self.region == "europe" and str(ts.game_ending_reason(st)) == "Europe Control":
+                    # Owner, 2026-11-20: a win by controlling Europe pays at least the full 1 (the dense loss share of
+                    # x already paid counts towards it).
+                    pay = max(pay, self.control_win)
+                    self.control_wins += 1
+                u_learner[e] += pay - self.loss_share * self.weight * x
             elif winner == -side:
                 u_learner[e] += -1.0
             self.finished[side].append(float(self.scored_vp[e]))
@@ -159,6 +169,9 @@ class RegionTargetedReward:
 
     def metrics(self) -> Dict[str, float]:
         out = {"region/scorings": float(self.scorings)}   # scoring Events with a VP effect
+        if self.region == "europe":
+            out["region/control_wins"] = float(self.control_wins)
+            self.control_wins = 0
         both = self.finished[1] + self.finished[-1]
         if both:
             out["region/vp_per_game"] = float(np.mean(both))

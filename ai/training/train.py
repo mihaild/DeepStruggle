@@ -1248,6 +1248,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="The region's 90th-percentile net VP in the main's own self-play in that seat (required with --target-region).")
     parser.add_argument("--region-scale-ussr", type=float, default=None,
                         help="With --target-region and no --opponent-lock-side (one exploiter playing both seats, its seat drawn per game against --opponent-frac 1.0's fixed opponent): the USSR seat's scale; --region-scale is then the US seat's.")
+    parser.add_argument("--region-control-win", type=float, default=1.0,
+                        help="--target-region europe: a win by Europe Control pays at least this (owner, 2026-11-20: the full 1).")
     parser.add_argument("--region-weight", type=float, default=0.8,
                         help="A won game pays --region-win-bonus + this x clip(region VP / --region-scale, --region-floor, --region-cap).")
     parser.add_argument("--region-win-bonus", type=float, default=0.2)
@@ -1537,6 +1539,7 @@ def main():
             region_scale=args.region_scale,
             region_loss_share=args.region_loss_share,
             region_scale_ussr=args.region_scale_ussr,
+            region_control_win=args.region_control_win,
             region_floor=args.region_floor,
             region_cap=args.region_cap,
             region_weight=args.region_weight,
