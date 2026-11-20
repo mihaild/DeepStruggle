@@ -1,6 +1,6 @@
 """Abstract Reward Calculator Interface & Concrete Strategies for Zero-Sum Games."""
 
-from typing import Protocol, Optional, List, Dict, Any, Sequence
+from typing import Callable, Protocol, Optional, List, Dict, Any, Sequence
 import numpy as np
 import torch
 import ts_engine as ts
@@ -82,17 +82,23 @@ class EndingTargetedReward:
         bad = [t for t in targets if t not in TARGET_ENDINGS]
         if bad or not targets:
             raise ValueError(f"--target-endings must name some of {TARGET_ENDINGS}, got {list(targets)}")
-        if learner_side not in (1, -1):
-            raise ValueError("--target-endings needs the learner's seat locked (--opponent-lock-side us|ussr)")
+        if learner_side not in (1, -1, 0):
+            raise ValueError(f"learner_side must be 1, -1 or 0 (both seats, drawn per game), got {learner_side}")
         self.targets = frozenset(targets)
         self.learner_side = int(learner_side)
+        self.sides_of: Optional[Callable[[], np.ndarray]] = None
 
-    def payoff(self, terminal_utility: float, state: Optional[ts.GameState]) -> float:
-        """The learner's payoff for one finished game."""
+    def attach_sides(self, sides_of: Callable[[], np.ndarray]) -> None:
+        """Both seats (learner_side 0, owner 2026-11-20): `sides_of()` is each env's exploiter seat this game."""
+        self.sides_of = sides_of
+
+    def payoff(self, terminal_utility: float, state: Optional[ts.GameState], side: Optional[int] = None) -> float:
+        """The learner's payoff for one finished game, the learner in seat `side` (default: the locked one)."""
+        side = self.learner_side if side is None else int(side)
         winner = 1 if terminal_utility > 0 else -1 if terminal_utility < 0 else 0
         if winner == 0:
             return 0.0
-        if winner != self.learner_side:
+        if winner != side:
             return -1.0
         if state is None:
             raise ValueError("an ending-targeted reward needs the finished game's state")
@@ -108,9 +114,15 @@ class EndingTargetedReward:
         states: Optional[List[Optional[ts.GameState]]] = None,
     ) -> np.ndarray:
         rewards = np.zeros(len(dones), dtype=np.float32)
+        if self.learner_side == 0:
+            if self.sides_of is None:
+                raise RuntimeError("a both-seat ending-targeted reward reads each game's seat from the pool: attach_sides first")
+            sides = np.asarray(self.sides_of(), dtype=np.int64)
+        else:
+            sides = np.full(len(dones), self.learner_side, dtype=np.int64)
         for i in np.flatnonzero(dones):
             st = states[int(i)] if states is not None else None
-            u_us = self.payoff(float(terminal_utilities[i]), st) * self.learner_side
+            u_us = self.payoff(float(terminal_utilities[i]), st, int(sides[i])) * int(sides[i])
             rewards[i] = u_us * float(acting_players[i])
         return rewards
 

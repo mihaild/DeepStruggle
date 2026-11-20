@@ -57,11 +57,28 @@ def test_rewards_are_the_learners_payoff_in_each_movers_frame() -> None:
     assert rew[1] == pytest.approx(pay) and rew[0] == pytest.approx(-pay), "zero-sum from the US's side"
 
 
-def test_it_needs_a_locked_seat_and_known_endings() -> None:
+def test_it_needs_a_seat_and_known_endings() -> None:
     with pytest.raises(ValueError):
-        EndingTargetedReward(["20vp"], 0)
+        EndingTargetedReward(["20vp"], 2)
+    with pytest.raises(RuntimeError):          # both seats (0) without the pool's seats attached
+        EndingTargetedReward(["20vp"], 0).compute_step_rewards(np.array([1]), np.array([True]), np.array([1.0]),
+                                                               np.zeros(1), np.zeros(1), [None])
     with pytest.raises(ValueError):
         EndingTargetedReward(["checkmate"], 1)
     no_state: Optional[Any] = None
     with pytest.raises(ValueError):
         EndingTargetedReward(["20vp"], 1).payoff(1.0, no_state)
+
+
+def test_both_seats_read_each_games_seat_from_the_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Owner, 2026-11-20: a both-seat Europe Control exploiter -- env 0 its US game, env 1 its USSR game, both won by
+    the US by Europe Control: +1 for the US exploiter, -1 for the USSR one (as the US mover's rewards: +1 and +1)."""
+    r = EndingTargetedReward(["europe_control"], 0)
+    sides = np.array([1, -1], dtype=np.int8)
+    r.attach_sides(lambda: sides)
+    st = ts.GameState()
+    monkeypatch.setattr(ts, "game_ending_reason", lambda state: "Europe Control")
+    rew = r.compute_step_rewards(np.array([1, 1]), np.array([True, True]), np.array([1.0, 1.0]),
+                                 np.zeros(2), np.zeros(2), [st, st])
+    assert rew[0] == 1.0          # US exploiter won by Europe Control
+    assert rew[1] == 1.0          # the USSR exploiter lost: -1 for it, +1 for the US mover

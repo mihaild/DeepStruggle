@@ -797,6 +797,9 @@ def build_parser() -> argparse.ArgumentParser:
                              "Unprovoked DEFCON 1 keeps its blunder treatment either way.")
     parser.add_argument("--ref-update-freq", type=int, default=200_000,
                         help="Env steps between NashPG reference-policy refreshes. At 512 envs x 128 buffer one iteration is 65,536 steps, so the default refreshes pi_ref every 4 iterations; raise it for a genuinely frozen anchor.")
+    parser.add_argument("--opponent-fixed-env-sides", action="store_true", default=False,
+                        help="Diagnostic (2026-11-20): an unlocked learner against the pool keeps one seat per env for the "
+                             "whole run (even envs US, odd USSR) instead of a seat drawn per game.")
     parser.add_argument("--seat-balance", action="store_true", default=False,
                         help="Keep both seats' games winnable. The further self-play drifts from an "
                              "even split, the more envs play the learner against the pool, the "
@@ -1613,6 +1616,7 @@ def main():
             merged_influence=args.merged_influence,
             macro_influence=args.macro_influence,
             seat_balance=args.seat_balance,
+            opponent_fixed_env_sides=args.opponent_fixed_env_sides,
             seat_balance_max_frac=args.seat_balance_max_frac,
             league_dirs=args.league_dirs,
             league_pool_size=args.league_pool_size,

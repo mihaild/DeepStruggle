@@ -2002,6 +2002,7 @@ def train_pipeline(
     opponent_pool_eviction: str = "spread",
     seat_balance: bool = False,
     seat_balance_max_frac: float = 0.8,
+    opponent_fixed_env_sides: bool = False,
     league_dirs: Optional[List[str]] = None,
     league_pool_size: int = 4,
     league_frac: Optional[float] = None,
@@ -2439,6 +2440,7 @@ def train_pipeline(
         "ref_update_freq": ref_update_freq,
         "seat_balance": bool(seat_balance),
         "seat_balance_max_frac": float(seat_balance_max_frac),
+        "opponent_fixed_env_sides": bool(opponent_fixed_env_sides),
         "league_dirs": [os.path.abspath(d) for d in league_dirs] if league_dirs else None,
         "league_pool_size": int(league_pool_size),
         "league_frac": None if league_frac is None else float(league_frac),
@@ -2703,7 +2705,7 @@ def train_pipeline(
               f"{region_loss_share * region_weight:g}x", flush=True)
     elif target_endings:
         reward_calc = EndingTargetedReward(list(target_endings), {"us": 1, "ussr": -1}.get(str(opponent_lock_side), 0))
-        print(f"[reward] ending-targeted: +1 for the {opponent_lock_side} seat's wins by {sorted(target_endings)}, "
+        print(f"[reward] ending-targeted: +1 for the {opponent_lock_side or 'exploiter (both seats, drawn per game)'} seat's wins by {sorted(target_endings)}, "
               f"-1 for any loss, 0 for any other win or a draw", flush=True)
     else:
         reward_calc = ZeroSumTerminalReward()
@@ -3217,6 +3219,7 @@ def train_pipeline(
             macro=_seed_macro,
             seat_balance=seat_balance,
             seat_balance_max_frac=seat_balance_max_frac,
+            fixed_env_sides=opponent_fixed_env_sides,
             groups=_seed_groups,
             league_capacity=int(league_pool_size) if league_dirs else 0,
             league_frac=league_frac,
@@ -3262,19 +3265,19 @@ def train_pipeline(
                   f"share of draws={'by size' if league_frac is None else league_frac}", flush=True)
             if opponent_self_pool:
                 _league_scan()
-    if isinstance(reward_calc, RegionTargetedReward) and reward_calc.learner_side == 0:
+    if isinstance(reward_calc, (RegionTargetedReward, EndingTargetedReward)) and reward_calc.learner_side == 0:
         # One exploiter for both seats (owner, 2026-11-19): each game's seat is the pool's draw, and every env must be
         # against the fixed opponent (a self-play env has no exploiter seat to pay).
         _rp = trainer.opponent_pool
         if _rp is None or float(opponent_frac) < 1.0:
-            raise ValueError("--target-region without --opponent-lock-side needs --opponent-frac 1.0 against fixed "
-                             "--opponent-checkpoints: the exploiter's seat is drawn per game by the opponent pool")
+            raise ValueError("--target-region / --target-endings without --opponent-lock-side need --opponent-frac 1.0 "
+                             "against fixed --opponent-checkpoints: the exploiter's seat is drawn per game by the pool")
         if not adv_norm_learner_only:
             # 2026-11-20: both seats against a frozen copy of itself, the advantages normalised over the opponent's
             # stored transitions too (roughly the negative of the learner's) collapse the learner -- recent win rate
             # 7.7% -> 0.4% in 40M steps, entropy 1.34 -> 1.37, with or without the region term; with the statistics over
             # its own transitions it holds 13-14% (the P24 loop, rollout_buffer.py).
-            raise ValueError("--target-region without --opponent-lock-side needs --adv-norm-learner-only: both seats "
+            raise ValueError("a both-seat exploiter (no --opponent-lock-side) needs --adv-norm-learner-only: both seats "
                              "against a frozen opponent collapse without it")
         reward_calc.attach_sides(lambda: trainer.opponent_pool.learner_side)
     if searched_opponent_spec:

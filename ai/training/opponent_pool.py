@@ -109,7 +109,7 @@ class OpponentPool:
                  pfsp_uniform_mix: float = 0.25, pfsp_prior: float = 4.0,
                  merged: Optional[Sequence[bool]] = None,
                  macro: Optional[Sequence[bool]] = None,
-                 seat_balance: bool = False, seat_balance_max_frac: float = 0.8,
+                 seat_balance: bool = False, seat_balance_max_frac: float = 0.8, fixed_env_sides: bool = False,
                  groups: Optional[Sequence[str]] = None, league_capacity: int = 0,
                  league_frac: Optional[float] = None, obs_features: Optional[int] = None,
                  seats: Optional[Sequence[Optional[int]]] = None, per_game_own: bool = False,
@@ -256,6 +256,9 @@ class OpponentPool:
         #: in mixed envs, against pool members it beats about half the time -- so it keeps getting
         #: winnable games and therefore a gradient. Off by default: everything below is inert.
         self.seat_balance = bool(seat_balance)
+        #: Diagnostic (2026-11-20, the both-seat exploiter collapse): an unlocked learner keeps one seat per env for the
+        #: whole run -- even envs US, odd USSR -- instead of a seat drawn per game.
+        self.fixed_env_sides = bool(fixed_env_sides)
         self.seat_balance_max_frac = max(float(frac), float(seat_balance_max_frac))
         #: Moving average of the learner's self-play US win rate; 0.5 is even.
         self.sp_us = 0.5
@@ -270,7 +273,7 @@ class OpponentPool:
         #: Which side the learner plays in a mixed env (+1 US, -1 USSR); unused elsewhere.
         self.learner_side = np.ones(num_envs, dtype=np.int8)
         for i in range(num_envs):
-            self.learner_side[i] = self._draw_side()
+            self.learner_side[i] = (1 if i % 2 == 0 else -1) if self.fixed_env_sides else self._draw_side()
         for i in range(num_envs):
             self._assign_league(i)
         self.current: Any = self.nets[0]
@@ -747,7 +750,8 @@ class OpponentPool:
             self.is_mixed[env_index] = self._draw_mixed()
             if self.is_mixed[env_index]:
                 self._exposure[env_index][self.current_id] = 1.0
-        self.learner_side[env_index] = self._draw_side()
+        if not self.fixed_env_sides:
+            self.learner_side[env_index] = self._draw_side()
         self._assign_league(env_index)
         if self.seat_balance and self.env_member[env_index] >= 0:
             # A newly mixed env that went to a league member starts its exposure to that member.
