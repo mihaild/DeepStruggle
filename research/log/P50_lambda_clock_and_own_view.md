@@ -130,6 +130,16 @@ half; per seat from the JSON (`data/reports/p50_*`, untracked). Runs and matches
 * The arm's critic leans on the side's own hand a little more (0.078-0.080 against 0.073), most where the hand
   is full. That is the direction the plan expected and is not a measure of play.
 
+> **Correction (2026-11-20, on the owner's question where the bar came from).** The 52.5% was the planner's own
+> choice: three standard errors of a 4,000-game match, so that a pass could not be noise. That is a bar for
+> *proving a gain*, and it was the wrong rule for this change, which is justified by what it is (a side's value
+> never bootstrapped from a view that cannot see its hand) and needed only to show that it costs nothing. Read
+> as that question the run passes: the head-to-head's two-standard-error floor is 49.9%, both references are at
+> or above the control's, both seats are at or above the control's own rates, health is level, and E3's failure
+> does not occur. "A fail" and "the default stays" above stand as written and are withdrawn as the verdict;
+> whether the form becomes the recipe's is the owner's decision. The one cost seen, 14% fewer steps a second
+> while sharing the GPU, has not been separated from the sharing itself.
+
 **What would overturn it.** One seed, one branch point, a network already on its plateau: a difference of 1.5
 points is 1.9 standard errors and could be either real and small or nothing. The site-game positions about the
 hand (the plan's read 5) were not run.

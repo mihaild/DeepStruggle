@@ -3,6 +3,11 @@
 > **Result (2026-11-20): a fail on the bar below, with no cost found.** The arm (R164) scores 51.5% ± 0.8 against
 > the control at +800M, the bar 52.5%; +0.7 and +2.1 on the references; health level. The default stays. Numbers in
 > the log.
+>
+> **Correction (2026-11-20):** the 52.5% bar was a bar for proving a gain (three standard errors), set by the
+> planner; for a change justified by what it is, the question was whether it costs anything, and it does not
+> (floor of the head-to-head 49.9%, references at or above the control's, health level). Adoption is the owner's
+> decision.
 
 **Proposed: one branch of the base, per-player GAE at matched reach, against the base continued.** No build.
 Not proposed: lambda per card play as an experiment, the own-view chain with nodes at the opponent's decisions,
