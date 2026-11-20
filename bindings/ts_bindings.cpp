@@ -2192,6 +2192,45 @@ NB_MODULE(ts_engine, m) {
              "(envs, sides +1 US / -1 USSR, kinds 0 after the decision / 1 before a roll / 2 after it, observations "
              "rows x obs_width, walks dropped for length) of the last step_flat_all's picked envs, env by env, each "
              "walk in order.")
+        .def("get_afterstates_into", [](VectorizedBatchRunner& self, nb::ndarray<float, nb::ndim<2>, nb::c_contig, nb::device::cpu> out) {
+                 if (!self.capture_afterstates) throw std::runtime_error("get_afterstates_into: capture is off (set_capture_afterstates)");
+                 const size_t w = self.obs_width;
+                 if (out.shape(1) != w) throw std::invalid_argument("get_afterstates_into: out must be (rows, obs_width)");
+                 std::vector<size_t> off(self.num_envs + 1, 0);
+                 size_t cut = 0;
+                 for (size_t i = 0; i < self.num_envs; ++i) { off[i + 1] = off[i] + self.as_kind[i].size(); cut += self.as_cut[i]; }
+                 const size_t n = off[self.num_envs];
+                 int64_t* envs = new int64_t[std::max<size_t>(1, n)];
+                 int8_t* sides = new int8_t[std::max<size_t>(1, n)];
+                 int8_t* kinds = new int8_t[std::max<size_t>(1, n)];
+                 for (size_t i = 0; i < self.num_envs; ++i) {
+                     for (size_t j = 0; j < self.as_kind[i].size(); ++j) {
+                         envs[off[i] + j] = static_cast<int64_t>(i);
+                         sides[off[i] + j] = self.as_side[i];
+                         kinds[off[i] + j] = static_cast<int8_t>(self.as_kind[i][j]);
+                     }
+                 }
+                 if (n <= out.shape(0)) {
+                     float* dst = out.data();
+                     nb::gil_scoped_release release;
+                     gomp_parallel_for(static_cast<int64_t>(self.num_envs), [&](int64_t i) {
+                         const size_t k = self.as_kind[i].size();
+                         if (k) std::memcpy(dst + off[i] * w, self.as_obs[i].data(), k * w * sizeof(float));
+                     });
+                 }
+                 size_t s1[1] = { n };
+                 nb::capsule oe(envs, [](void* p) noexcept { delete[] static_cast<int64_t*>(p); });
+                 nb::capsule os(sides, [](void* p) noexcept { delete[] static_cast<int8_t*>(p); });
+                 nb::capsule ok(kinds, [](void* p) noexcept { delete[] static_cast<int8_t*>(p); });
+                 return nb::make_tuple(nb::ndarray<nb::numpy, int64_t, nb::ndim<1>>(envs, 1, s1, oe),
+                                       nb::ndarray<nb::numpy, int8_t, nb::ndim<1>>(sides, 1, s1, os),
+                                       nb::ndarray<nb::numpy, int8_t, nb::ndim<1>>(kinds, 1, s1, ok),
+                                       n, cut);
+             }, nb::arg("out"),
+             "get_afterstates with the observations written into `out` (float32, rows x obs_width; the caller's, "
+             "e.g. pinned host memory) in parallel instead of a new array: (envs, sides, kinds, rows, walks cut). "
+             "When `out` has fewer than `rows` rows nothing is written; call again with a larger one (the rows stay "
+             "until the next step_flat_all).")
         .def("set_capture_predeal", &VectorizedBatchRunner::set_capture_predeal, nb::arg("on"),
              "P33: record each env's turn-end park (after a turn's last action, before the deal) from both "
              "sides during step_flat_all's auto-advance; read it with get_predeal after the step.")
@@ -2223,6 +2262,37 @@ NB_MODULE(ts_engine, m) {
         .def("get_observations", &VectorizedBatchRunner::get_observations, nb::rv_policy::reference_internal)
         .def("get_action_masks", &VectorizedBatchRunner::get_action_masks, nb::rv_policy::reference_internal)
         .def("get_decision_players", &VectorizedBatchRunner::get_decision_players)
+        .def("get_env_scalars", [](const VectorizedBatchRunner& self) {
+                 const size_t n = self.num_envs;
+                 int8_t* players = new int8_t[std::max<size_t>(1, n)];
+                 int8_t* turns = new int8_t[std::max<size_t>(1, n)];
+                 int8_t* vp = new int8_t[std::max<size_t>(1, n)];
+                 bool* terminal = new bool[std::max<size_t>(1, n)];
+                 float* utility = new float[std::max<size_t>(1, n)];
+                 for (size_t i = 0; i < n; ++i) {
+                     const ts::GameState& g = self.st(i);
+                     const ts::Player p = g.ctx().decision_player != ts::Player::NONE ? g.ctx().decision_player : g.phasing_player;
+                     players[i] = static_cast<int8_t>(p);
+                     turns[i] = static_cast<int8_t>(g.turn);
+                     vp[i] = g.victory_points;
+                     terminal[i] = ts::Engine::is_terminal(g);
+                     utility[i] = ts::Engine::get_terminal_utility(g);
+                 }
+                 size_t shape[1] = { n };
+                 nb::capsule o1(players, [](void* q) noexcept { delete[] static_cast<int8_t*>(q); });
+                 nb::capsule o2(turns, [](void* q) noexcept { delete[] static_cast<int8_t*>(q); });
+                 nb::capsule o3(vp, [](void* q) noexcept { delete[] static_cast<int8_t*>(q); });
+                 nb::capsule o4(terminal, [](void* q) noexcept { delete[] static_cast<bool*>(q); });
+                 nb::capsule o5(utility, [](void* q) noexcept { delete[] static_cast<float*>(q); });
+                 return nb::make_tuple(nb::ndarray<nb::numpy, int8_t, nb::ndim<1>>(players, 1, shape, o1),
+                                       nb::ndarray<nb::numpy, int8_t, nb::ndim<1>>(turns, 1, shape, o2),
+                                       nb::ndarray<nb::numpy, int8_t, nb::ndim<1>>(vp, 1, shape, o3),
+                                       nb::ndarray<nb::numpy, bool, nb::ndim<1>>(terminal, 1, shape, o4),
+                                       nb::ndarray<nb::numpy, float, nb::ndim<1>>(utility, 1, shape, o5));
+             },
+             "(decision players, turns, victory points, terminals, terminal utilities) per env as numpy arrays in "
+             "one call: get_decision_players / get_turns / get_victory_points / get_terminals / "
+             "get_terminal_utilities without five Python lists.")
         .def("priority_wanted", &VectorizedBatchRunner::priority_wanted,
              "P43 V3: per env, whether its decision opens a CANONICAL_LEARNED run whose order has not been given.")
         .def("set_run_priority", &VectorizedBatchRunner::set_run_priority, nb::arg("env_index"), nb::arg("ranks"),

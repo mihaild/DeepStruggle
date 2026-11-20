@@ -71,6 +71,15 @@ def test_the_runner_records_the_reference_walks_rows() -> None:
             obs, masks, _, _, _ = env.step(acts)
             envs, sides, kinds, got_obs, cut = env.runner.get_afterstates()
             assert cut == 0
+            # The gather into a caller's buffer (the trainer's pinned one): the same rows; too small, nothing written.
+            small = np.full((max(0, len(kinds) - 1), width), 7.0, dtype=np.float32)
+            assert env.runner.get_afterstates_into(small)[3] == len(kinds)
+            assert (small == 7.0).all()
+            out = np.zeros((len(kinds) + 3, width), dtype=np.float32)
+            e2, s2, k2, n2, c2 = env.runner.get_afterstates_into(out)
+            assert (n2, c2) == (len(kinds), cut) and np.array_equal(np.asarray(e2), np.asarray(envs))
+            assert np.array_equal(np.asarray(s2), np.asarray(sides)) and np.array_equal(np.asarray(k2), np.asarray(kinds))
+            assert np.array_equal(out[:n2], np.asarray(got_obs)) and not out[n2:].any()
             assert list(np.asarray(envs)) == want_e and list(np.asarray(sides)) == want_side
             assert list(np.asarray(kinds)) == want_kind
             if want_obs:

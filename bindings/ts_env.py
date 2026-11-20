@@ -499,9 +499,7 @@ class TsVectorizedEnv:
         # longer describes the position -- which cost real time once. The failure path re-derives
         # a fresh mask and reports both.
         prev_masks = np.array(self.runner.get_action_masks(), copy=True)
-        acting_players = np.array(self.runner.get_decision_players(), dtype=np.int8)
-        acting_turns = np.array(self.runner.get_turns(), dtype=np.int8)
-        prev_vp = np.array(self.runner.get_victory_points(), dtype=np.int8)
+        acting_players, acting_turns, prev_vp, _, _ = self.runner.get_env_scalars()
 
         # 2. Step C++ simulation in parallel
         action_list = np.asarray(actions).astype(np.int64).tolist()
@@ -557,11 +555,8 @@ class TsVectorizedEnv:
                 f"terminal={ts.Engine.is_terminal(st)}")
 
         # 3. Read post-step metrics BEFORE auto-resetting
-        dones = np.array(self.runner.get_terminals(), dtype=bool)
-        term_utils = np.array(self.runner.get_terminal_utilities(), dtype=np.float32)
-        curr_vp = np.array(self.runner.get_victory_points(), dtype=np.int8)
         # Post-step turn, read before any auto-reset rewinds the game to turn 1.
-        curr_turns = np.array(self.runner.get_turns(), dtype=np.int8)
+        _, curr_turns, curr_vp, dones, term_utils = self.runner.get_env_scalars()
 
         # Rule 4.4 Held scoring card detection for terminal states
         held_scoring_us = np.zeros(self.num_envs, dtype=bool)
@@ -734,10 +729,11 @@ class TsVectorizedEnv:
         return out
 
     def _get_batch_info(self) -> Dict[str, Any]:
+        players, turns, vp, terminals, utilities = self.runner.get_env_scalars()
         return {
-            "decision_players": np.array(self.runner.get_decision_players(), dtype=np.int8),
-            "turns": np.array(self.runner.get_turns(), dtype=np.int8),
-            "victory_points": np.array(self.runner.get_victory_points(), dtype=np.int8),
-            "terminals": np.array(self.runner.get_terminals(), dtype=bool),
-            "terminal_utilities": np.array(self.runner.get_terminal_utilities(), dtype=np.float32),
+            "decision_players": players,
+            "turns": turns,
+            "victory_points": vp,
+            "terminals": terminals,
+            "terminal_utilities": utilities,
         }

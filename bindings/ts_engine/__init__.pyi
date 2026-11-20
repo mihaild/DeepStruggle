@@ -1366,6 +1366,11 @@ class VectorizedBatchRunner:
         (envs, sides +1 US / -1 USSR, kinds 0 after the decision / 1 before a roll / 2 after it, observations rows x obs_width, walks dropped for length) of the last step_flat_all's picked envs, env by env, each walk in order.
         """
 
+    def get_afterstates_into(self, out: Annotated[NDArray[numpy.float32], dict(shape=(None, None), order='C', device='cpu')]) -> tuple:
+        """
+        get_afterstates with the observations written into `out` (float32, rows x obs_width; the caller's, e.g. pinned host memory) in parallel instead of a new array: (envs, sides, kinds, rows, walks cut). When `out` has fewer than `rows` rows nothing is written; call again with a larger one (the rows stay until the next step_flat_all).
+        """
+
     def set_capture_predeal(self, on: bool) -> None:
         """
         P33: record each env's turn-end park (after a turn's last action, before the deal) from both sides during step_flat_all's auto-advance; read it with get_predeal after the step.
@@ -1391,6 +1396,11 @@ class VectorizedBatchRunner:
     def get_action_masks(self) -> Annotated[NDArray[numpy.uint8], dict(shape=(None, None))]: ...
 
     def get_decision_players(self) -> list[int]: ...
+
+    def get_env_scalars(self) -> tuple:
+        """
+        (decision players, turns, victory points, terminals, terminal utilities) per env as numpy arrays in one call: get_decision_players / get_turns / get_victory_points / get_terminals / get_terminal_utilities without five Python lists.
+        """
 
     def priority_wanted(self) -> list[bool]:
         """

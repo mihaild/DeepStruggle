@@ -118,6 +118,11 @@ class AfterstateCapture:
         self.forced = bool(forced)
         self.rng = np.random.default_rng(seed)
         self._on: Optional[Any] = None
+        # On CUDA, two pinned host buffers the runner gathers into in turn, each copied to the device without
+        # blocking; a buffer is reused only once its copy (recorded by the event) has finished.
+        self._pinned: List[Optional[torch.Tensor]] = [None, None]
+        self._copied: List[Optional[Any]] = [None, None]
+        self._slot = 0
         self.reset_counters()
 
     def reset_counters(self) -> None:
@@ -140,6 +145,8 @@ class AfterstateCapture:
         """The moments the runner recorded this step, filed under `step`, on `device`. `dones` is unused: a finished
         game's walk ended in its result, which is the target, and the runner kept it before the reset. (Copying each
         step's rows here is faster than one rollout-sized copy in build_targets: 81k against 69k steps/s.)"""
+        if torch.device(device).type == "cuda":
+            return self._after_pinned(runner, step, torch.device(device))
         envs, sides, kinds, obs, cut = runner.get_afterstates()
         self.mismatched += int(cut)
         kinds = np.asarray(kinds, dtype=np.int8)
@@ -151,6 +158,39 @@ class AfterstateCapture:
         o = o[:, :self.width] if o.shape[1] >= self.width else np.pad(o, ((0, 0), (0, self.width - o.shape[1])))
         return AfterstateRows(step, np.asarray(envs, dtype=np.int64), np.asarray(sides, dtype=np.int8), kinds,
                               torch.from_numpy(np.ascontiguousarray(o, dtype=np.float32)).to(device))
+
+    def _after_pinned(self, runner: Any, step: int, device: torch.device) -> Optional[AfterstateRows]:
+        """after() on CUDA: the runner gathers the rows in parallel into a pinned buffer, copied to the device without
+        blocking (0.6 ms a step at every decision with a fresh array and a pageable copy). The same rows."""
+        k = self._slot
+        self._slot ^= 1
+        done = self._copied[k]
+        if done is not None:
+            done.synchronize()
+        width = int(np.asarray(runner.get_observations()).shape[1])
+        buf = self._pinned[k]
+        if buf is None or buf.shape[1] != width:
+            buf = torch.empty((1024, width), dtype=torch.float32).pin_memory()
+        envs, sides, kinds, n, cut = runner.get_afterstates_into(buf.numpy())
+        if n > buf.shape[0]:
+            buf = torch.empty((2 * n, width), dtype=torch.float32).pin_memory()
+            envs, sides, kinds, n, cut = runner.get_afterstates_into(buf.numpy())
+        self._pinned[k] = buf
+        self.mismatched += int(cut)
+        kinds = np.asarray(kinds, dtype=np.int8)
+        if n == 0:
+            return None
+        self.rows_by_kind = [m + int(c) for m, c in zip(self.rows_by_kind, np.bincount(kinds, minlength=3))]
+        obs = buf[:n].to(device, non_blocking=True)
+        event = torch.cuda.Event()
+        event.record()
+        self._copied[k] = event
+        # The buffer's width: rows are zero-padded to the widest set in a mixed batch.
+        if width > self.width:
+            obs = obs[:, :self.width].contiguous()
+        elif width < self.width:
+            obs = torch.nn.functional.pad(obs, (0, self.width - width))
+        return AfterstateRows(step, np.asarray(envs, dtype=np.int64), np.asarray(sides, dtype=np.int8), kinds, obs)
 
     def metrics(self) -> dict:
         out = {"afterstate/decisions": float(self.decisions), "afterstate/mismatched": float(self.mismatched)}
