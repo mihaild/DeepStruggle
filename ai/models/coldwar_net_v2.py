@@ -474,6 +474,13 @@ class ColdWarNetV2(nn.Module):
         # distribution -- see the note where the heads are built.
         return self.val_win_head(h), v_vp
 
+    def forward_value(self, obs: torch.Tensor) -> torch.Tensor:
+        """forward()'s v_win alone: the trunk and the value heads, without the policy heads, whose output a
+        value-only caller would throw away (the afterstate and pre-deal critics' rows in the update). The same
+        tensor as forward(obs)[1]."""
+        h, _attn, _tokens = self._encode(obs)
+        return self._value_scalars(h)[0]
+
     def forward_with_value_logits(
         self, obs: torch.Tensor, mask: torch.Tensor | None = None
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:

@@ -215,6 +215,14 @@ def bonus_entropy(entropy: torch.Tensor, mask: torch.Tensor, normalize: bool) ->
     return torch.where(n > 1.5, entropy / torch.log(n.clamp(min=2.0)), torch.zeros_like(entropy))
 
 
+def _value_only(net: nn.Module, obs: torch.Tensor) -> torch.Tensor:
+    """`net`'s v_win for value-only rows: its forward_value (no policy heads) where it has one, else forward()'s."""
+    fv = getattr(net, "forward_value", None)
+    out = fv(obs) if callable(fv) else net(obs, None)[1]
+    assert isinstance(out, torch.Tensor)
+    return out
+
+
 def wolf_sample_weights(players: torch.Tensor, w_us: float, w_ussr: float) -> torch.Tensor:
     """Each sample's surrogate weight from its acting seat: +1 US, -1 USSR, anything else 1."""
     ones = torch.ones(players.shape, dtype=torch.float32, device=players.device)
@@ -3384,7 +3392,7 @@ class NashPGTrainer(BaseNashPGTrainer):
                 if _mb < len(_pd_chunks) and _pd_chunks[_mb].numel() and self._pd_obs is not None \
                         and self._pd_tgt is not None:
                     _sel = _pd_chunks[_mb]
-                    _pd_v = self.active_net(self._pd_obs.index_select(0, _sel), None)[1].squeeze(-1)
+                    _pd_v = _value_only(self.active_net, self._pd_obs.index_select(0, _sel)).squeeze(-1)
                     _pd_loss = F.mse_loss(_pd_v.float(), self._pd_tgt.index_select(0, _sel))
                     loss = loss + self.vf_coef * self.predeal_value_coef * _pd_loss
                     pd_loss_t += _pd_loss.detach()
@@ -3392,7 +3400,7 @@ class NashPGTrainer(BaseNashPGTrainer):
                 if _mb < len(_as_chunks) and _as_chunks[_mb].numel() and self._as_obs is not None \
                         and self._as_tgt is not None and self._as_kind is not None:
                     _sel = _as_chunks[_mb]
-                    _as_v = self.active_net(self._as_obs.index_select(0, _sel), None)[1].squeeze(-1).float()
+                    _as_v = _value_only(self.active_net, self._as_obs.index_select(0, _sel)).squeeze(-1).float()
                     _as_se = (_as_v - self._as_tgt.index_select(0, _sel)) ** 2
                     loss = loss + self.vf_coef * self.afterstate_value_coef * _as_se.mean()
                     _k = self._as_kind.index_select(0, _sel)

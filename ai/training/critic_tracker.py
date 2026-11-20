@@ -105,12 +105,9 @@ class CriticTracker:
         `values_us` must be the value from a *fixed* perspective (US), not the acting player's,
         or the sign would flip with whoever happens to be moving and the labels would not line up.
         """
-        for i in range(self.num_envs):
-            if not alive[i]:
-                continue
-            t = int(turns[i])
-            if t == self._last_turn[i]:
-                continue
+        t_all = np.asarray(turns).astype(np.int32)
+        for i in np.flatnonzero(np.asarray(alive, dtype=bool) & (t_all != self._last_turn)).tolist():
+            t = int(t_all[i])
             self._last_turn[i] = t
             self._pending[i].append((float(values_us[i]), t))
 

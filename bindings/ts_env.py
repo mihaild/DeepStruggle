@@ -504,7 +504,7 @@ class TsVectorizedEnv:
         prev_vp = np.array(self.runner.get_victory_points(), dtype=np.int8)
 
         # 2. Step C++ simulation in parallel
-        action_list = [int(a) for a in actions]
+        action_list = np.asarray(actions).astype(np.int64).tolist()
         held_idx = np.flatnonzero(hold) if hold is not None else np.zeros(0, dtype=np.int64)
         for raw in held_idx:
             action_list[int(raw)] = self._refused_card_slot(int(raw), prev_masks[int(raw)])
@@ -646,31 +646,30 @@ class TsVectorizedEnv:
         completed_episodes: List[Dict[str, Any]] = []
         injected = False
         if self.auto_reset:
-            for i in range(self.num_envs):
-                if dones[i]:
-                    completed_episodes.append({
-                        "env_idx": i,
-                        "length": int(self.ep_lengths[i]),
-                        "reward": float(self.ep_rewards[i]),
-                        "terminal_utility": float(term_utils[i]),
-                        "winner": "US" if term_utils[i] > 0 else ("USSR" if term_utils[i] < 0 else "DRAW"),
-                        "victory_points": int(curr_vp[i]),
-                        "turn": int(curr_turns[i]),
-                        "ply": int(terminal_plies[i]),
-                        "ending_reason": ending_reasons[i],
-                        "start_turn": int(self.env_start_turn[i]),
-                    })
-                    if i in final_control:
-                        completed_episodes[-1]["final_control"] = final_control[i]
-                    new_seed = self.next_game_seed()
-                    self.runner.reset_game(i, new_seed)
-                    # Inject before on_env_reset so the reward calculator sees the position
-                    # the episode actually begins from, not the discarded fresh deal.
-                    injected |= self._apply_start_position(i)
-                    if hasattr(self.reward_calc, "on_env_reset"):
-                        self.reward_calc.on_env_reset(i, self.runner.get_state(i))
-                    self.ep_lengths[i] = 0
-                    self.ep_rewards[i] = 0.0
+            for i in np.flatnonzero(dones).tolist():
+                completed_episodes.append({
+                    "env_idx": i,
+                    "length": int(self.ep_lengths[i]),
+                    "reward": float(self.ep_rewards[i]),
+                    "terminal_utility": float(term_utils[i]),
+                    "winner": "US" if term_utils[i] > 0 else ("USSR" if term_utils[i] < 0 else "DRAW"),
+                    "victory_points": int(curr_vp[i]),
+                    "turn": int(curr_turns[i]),
+                    "ply": int(terminal_plies[i]),
+                    "ending_reason": ending_reasons[i],
+                    "start_turn": int(self.env_start_turn[i]),
+                })
+                if i in final_control:
+                    completed_episodes[-1]["final_control"] = final_control[i]
+                new_seed = self.next_game_seed()
+                self.runner.reset_game(i, new_seed)
+                # Inject before on_env_reset so the reward calculator sees the position
+                # the episode actually begins from, not the discarded fresh deal.
+                injected |= self._apply_start_position(i)
+                if hasattr(self.reward_calc, "on_env_reset"):
+                    self.reward_calc.on_env_reset(i, self.runner.get_state(i))
+                self.ep_lengths[i] = 0
+                self.ep_rewards[i] = 0.0
 
             # `reset_game` and `step_flat_all` already rebuild every env they touch, so a refresh is
             # needed only where `set_state` injected a start position. Refreshing all 512 envs

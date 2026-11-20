@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import ts_engine as ts
 
+from ai.models.ladder_net import create_ladder_net
 from ai.search.critic_argmax import CriticArgmaxAgent
 from ai.training.nash_pg import NashPGTrainer
 from ai.training.afterstate_critic import (AFTER_DECISION, AFTER_ROLL, BEFORE_ROLL, AfterstateCapture,
@@ -151,6 +152,22 @@ def test_the_targets_of_every_row_follow_the_scalar_rule() -> None:
         assert torch.equal(got_obs, torch.stack([w[0] for w in want]))
         assert np.allclose(got_tgt.numpy(), np.array([w[1] for w in want], dtype=np.float32))
         assert got_kind.tolist() == [w[2] for w in want]
+
+
+def test_the_value_only_pass_is_the_forwards_value() -> None:
+    """forward_value (the extra critic rows' pass: no policy heads) gives forward()'s v_win bit for bit, on the
+    A8 configuration with a mixed batch of real observations."""
+    torch.manual_seed(0)
+    net = create_ladder_net("cpu", input_mode="grouped", aggregation="flatten", entity_dim=16, entity_proj_dim=256,
+                            card_self_attention=False, cross_attention=False, per_entity_heads=64, head_context=True,
+                            head_static=True, head_entities="country", head_center=True, identity_dim=0,
+                            drop_static=True, hidden_dim=480, num_res_blocks=0, num_attn_heads=4, card_lookup=False,
+                            card_lookup_heads=0, card_lookup_dim=0, card_lookup_identity_dim=0,
+                            categorical_value=False, branch_head=True, play_mode_head=True).eval()
+    cap, rows, _ = _play(200)
+    obs = torch.cat([r.obs for r in rows])[:256]
+    with torch.no_grad():
+        assert torch.equal(net.forward_value(obs), net(obs, None)[1])
 
 
 class _Critic(nn.Module):
