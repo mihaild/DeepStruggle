@@ -1314,7 +1314,12 @@ NB_MODULE(ts_engine, m) {
                      }
                      if (hands && (hands->shape(0) != worlds || hands->shape(1) != 110))
                          throw std::invalid_argument("hands must be worlds x 110");
-                     const size_t n = self.add(base, c.data(), c.size(), worlds, hands ? hands->data() : nullptr);
+                     const uint8_t* h = hands ? hands->data() : nullptr;
+                     size_t n;
+                     {
+                         nb::gil_scoped_release release;   // one searcher's engine work beside another's network
+                         n = self.add(base, c.data(), c.size(), worlds, h);
+                     }
                      if (n == 0 && self.last_error()[0]) throw std::invalid_argument(self.last_error());
                      return n;
                  }, nb::arg("base"), nb::arg("candidates"), nb::arg("worlds"), nb::arg("hands") = nb::none(),
@@ -1325,7 +1330,12 @@ NB_MODULE(ts_engine, m) {
             .def("race", [](RB& self, size_t position, size_t worlds, std::optional<Hands> hands) {
                      if (hands && (hands->shape(0) != worlds || hands->shape(1) != 110))
                          throw std::invalid_argument("hands must be worlds x 110");
-                     const size_t n = self.race(position, worlds, hands ? hands->data() : nullptr);
+                     const uint8_t* h = hands ? hands->data() : nullptr;
+                     size_t n;
+                     {
+                         nb::gil_scoped_release release;
+                         n = self.race(position, worlds, h);
+                     }
                      if (n == 0 && self.last_error()[0]) throw std::invalid_argument(self.last_error());
                      return n;
                  }, nb::arg("position"), nb::arg("worlds"), nb::arg("hands") = nb::none(),
@@ -1354,7 +1364,10 @@ NB_MODULE(ts_engine, m) {
             .def("refused", &RB::refused)
             .def("fill_live", [arrays](RB& self) {
                      auto [obs, masks, o, mk] = arrays(self.live(), self.obs_width());
-                     self.fill_live(obs, masks);
+                     {
+                         nb::gil_scoped_release release;
+                         self.fill_live(obs, masks);
+                     }
                      return nb::make_tuple(o, mk);
                  }, "(observations, masks) of the live rows, each row from its acting side, in the "
                     "order step() expects.")
@@ -1362,12 +1375,17 @@ NB_MODULE(ts_engine, m) {
                      if (logits.shape(0) != self.listed() || logits.shape(1) != ts::FLAT_ACTION_SPACE_SIZE)
                          throw std::invalid_argument("step: logits must be (rows of the last fill_live, action space)");
                      require_no_nan(logits.data(), logits.size(), "step: logits");
-                     self.step(logits.data());
+                     const float* lg = logits.data();
+                     nb::gil_scoped_release release;
+                     self.step(lg);
                  }, nb::arg("logits"),
                  "Advance the rows the last fill_live listed by the masked argmax of each logits row.")
             .def("fill_leaves", [arrays](RB& self) {
                      auto [obs, masks, o, mk] = arrays(self.leaves_pending(), self.obs_width());
-                     self.fill_leaves(obs, masks);
+                     {
+                         nb::gil_scoped_release release;
+                         self.fill_leaves(obs, masks);
+                     }
                      return nb::make_tuple(o, mk);
                  }, "(observations, masks) of the rows at their horizon and not yet valued, each from "
                     "the MOVER's side, in the order set_leaf_values() expects.")

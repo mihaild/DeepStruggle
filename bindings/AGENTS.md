@@ -190,6 +190,12 @@ are cited from elsewhere; keep them.
   `kDecider` (the leaf's decider's, the side the critic is trained on, its value negated into the
   mover's frame where that is the opponent) or `kOwn` (past the stop, play on to the root mover's next
   decision and read it from the mover's side: on-distribution and with the mover's own hand; P33).
+  `add`, `race`, `fill_live`, `step` and `fill_leaves` release the GIL around their engine work, so two
+  rollout searchers in one tournament decide side by side, one thread each (`RolloutRootAgent.
+  concurrent_decisions`, `tools/lib/batch_tournament._choose_all`): one's engine work runs while the other's
+  network is on the GPU. Each builds the batches it builds alone, so the picks are bit for bit those of
+  deciding in turn (`tests/training/test_rollout_root.py`); splitting one searcher's batch instead would
+  not be, since a different batch size picks different GPU kernels (logits differ by ~3e-5).
   Python `leaf="mover"|"decider"|"own"`, the page's eighth argument (0 / 1 / 2). `Config::aligned`
   (Python `aligned=True`, the page's tenth argument, the spec's `:aligned`, the player id's
   `aligned=true`; off by default, so every measured player keeps its count) counts every candidate's

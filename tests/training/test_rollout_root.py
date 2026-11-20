@@ -1,7 +1,8 @@
 """ai/search/rollout_root.py: legal and reproducible picks, the network's own move with one
 candidate, rollouts that spend rows only with a horizon, the measured player as the defaults, a
 model read in its own observation feature set, a stuck rollout refused, the spec, a leaf network
-(P33a) that reads the leaves in place of the root's own critic, and racing."""
+(P33a) that reads the leaves in place of the root's own critic, racing, and two searchers deciding side
+by side in a tournament with the games they play in turn."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -18,6 +19,7 @@ from ai.models.ladder_net import create_ladder_net
 from ai.search.rollout_root import (RolloutConfig, RolloutRoot, RolloutRootAgent, RolloutTeacher, parse_rule,
                                    rollout_spec_config, rollout_spec_leaf)
 from bindings.action_encoder import ActionEncoder
+from tools.lib.batch_tournament import BatchMatchRunner
 from tools.lib.player_agent import load_agent
 
 
@@ -235,3 +237,34 @@ def test_racing_in_the_spec() -> None:
     assert rollout_spec_config("rollout:m.pt:4:32")[1].race == 0
     with pytest.raises(ValueError, match="race"):
         rollout_spec_config("rollout:m.pt:4:16:4:z2:race16")
+
+
+def test_two_searchers_side_by_side_play_the_games_they_play_in_turn(tmp_path: Path,
+                                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    """batch_tournament._choose_all runs two rollout searchers' decisions in two threads; each builds the
+    batches it builds alone and draws only from its own generators, so every game is the same."""
+    torch.manual_seed(1)
+    other = create_coldwar_net_v2("cpu").eval()
+    logs: Dict[bool, str] = {}
+    picks: Dict[bool, List[List[int]]] = {}
+    for together in (False, True):
+        monkeypatch.setattr(RolloutRootAgent, "concurrent_decisions", together)
+        a = RolloutRootAgent(_model(), "a", RolloutConfig(k=2, worlds=4, horizon=1, seed=3, race=2))
+        b = RolloutRootAgent(other, "b", RolloutConfig(k=3, worlds=2, horizon=2, seed=4, stop="earlier"))
+        picks[together] = []
+        for agent in (a, b):            # every batch of picks, in each agent's own order
+            mine: List[int] = []
+            picks[together].append(mine)
+            plain = agent.root.choose
+
+            def recorded(states: Any, hands: Any = None, plain: Any = plain, mine: List[int] = mine) -> List[int]:
+                out = plain(states, hands)
+                mine.extend(out)
+                return out
+            monkeypatch.setattr(agent.root, "choose", recorded)
+        log = tmp_path / f"{together}.jsonl"
+        BatchMatchRunner.play_parallel_matchup(a, b, games_per_side=1, device="cpu", temperature=0.0,
+                                               log_games_file=str(log))
+        logs[together] = log.read_text()
+    assert logs[False] and logs[True] == logs[False]
+    assert all(picks[False]) and picks[True] == picks[False]

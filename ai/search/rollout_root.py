@@ -482,6 +482,10 @@ class RolloutTeacher:
 class RolloutRootAgent:
     """A tournament entrant (`select_actions_batch`, the state-based batch hook)."""
 
+    #: Safe to decide beside another searcher in its own thread (tools/lib/batch_tournament._choose_all):
+    #: RolloutBatch's engine calls release the GIL, and every draw comes from this agent's own generators.
+    concurrent_decisions = True
+
     def __init__(self, model: Any, name: str, config: RolloutConfig, device: Any = "cpu", leaf_model: Any = None) -> None:
         self.model = model
         self.name = name

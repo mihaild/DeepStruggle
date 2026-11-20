@@ -3,6 +3,7 @@
 import os
 import time
 import json
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import (Any, Callable, Dict, List, NotRequired, Optional, Sequence, Tuple,
                     TypedDict, Union)
@@ -243,6 +244,39 @@ def _choose_actions(
         apply_script(str(script), indices, masks, runner, actions)
     if getattr(agent, "pricing", None) is not None:
         apply_pricing(agent, indices, runner, actions, dev)
+
+
+#: Threads that run searchers' decisions side by side (_choose_all). Created on first use.
+_DECIDERS = ThreadPoolExecutor(max_workers=4, thread_name_prefix="searcher")
+
+
+def _choose_all(
+    jobs: Sequence[Tuple[PlayerAgent, npt.NDArray[np.int64], float, bool]],
+    obs: npt.NDArray[np.float32],
+    masks: npt.NDArray[Any],
+    d_players: npt.NDArray[Any],
+    runner: "ts.VectorizedBatchRunner",
+    dev: torch.device,
+    actions: npt.NDArray[np.int32],
+) -> None:
+    """`_choose_actions` for every (agent, rows, temperature, greedy) job of one step. Two or more distinct
+    agents that declare `concurrent_decisions` (the rollout root: its engine work releases the GIL, it
+    draws only from its own generators) decide at the same time, one thread each, so one's engine work
+    runs while another's network is on the GPU; the rest decide one after another. Each job writes only
+    its own rows and each agent's batches are the ones it would build alone, so the picks are the same
+    as deciding in turn, bit for bit."""
+    together = [j for j in jobs if getattr(j[0], "concurrent_decisions", False)]
+    if len(together) < 2 or len({id(j[0]) for j in together}) < len(together):
+        together = []
+    alone = [j for j in jobs if all(j is not t for t in together)]
+    futures = [_DECIDERS.submit(_choose_actions, a, rows, obs, masks, d_players, runner, t, g, dev, actions)
+               for a, rows, t, g in together[1:]]
+    try:
+        for a, rows, t, g in together[:1] + alone:
+            _choose_actions(a, rows, obs, masks, d_players, runner, t, g, dev, actions)
+    finally:
+        for f in futures:
+            f.result()
 
 
 class ChoiceStats(TypedDict):
@@ -783,12 +817,12 @@ class BatchMatchRunner:
                     ((np.arange(cur_games) >= cur_half) & (d_players == -1))
                 )
 
+                step_jobs: List[Tuple[PlayerAgent, npt.NDArray[np.int64], float, bool]] = []
                 if np.any(is_a_turn):
-                    _choose_actions(agent_a, np.where(is_a_turn)[0], obs, masks, d_players,
-                                    runner, temp_a, greedy_a, dev, actions)
+                    step_jobs.append((agent_a, np.where(is_a_turn)[0], temp_a, greedy_a))
                 if np.any(is_b_turn):
-                    _choose_actions(agent_b, np.where(is_b_turn)[0], obs, masks, d_players,
-                                    runner, temp_b, greedy_b, dev, actions)
+                    step_jobs.append((agent_b, np.where(is_b_turn)[0], temp_b, greedy_b))
+                _choose_all(step_jobs, obs, masks, d_players, runner, dev, actions)
 
                 if setup_override is not None:
                     if open_a:
@@ -1001,6 +1035,7 @@ class BatchMatchRunner:
                 obs_dev = torch.from_numpy(np.asarray(obs)).to(dev).float()
                 mask_dev = torch.from_numpy(np.asarray(masks)).to(dev)
                 act_dev = torch.zeros(n, dtype=torch.long, device=dev)
+            search_jobs: List[Tuple[PlayerAgent, npt.NDArray[np.int64], float, bool]] = []
             for ai, agent in enumerate(agents):
                 rows = np.where(active & (actor == ai))[0]
                 if len(rows) == 0:
@@ -1025,8 +1060,8 @@ class BatchMatchRunner:
                             give_run_priorities(runner, full, rows=rows)
                     act_dev.index_copy_(0, rows_t, act_t.long())
                 else:
-                    _choose_actions(agent, rows, obs, masks, d_players, runner, t_ag, g_ag, dev,
-                                    actions)
+                    search_jobs.append((agent, rows, t_ag, g_ag))
+            _choose_all(search_jobs, obs, masks, d_players, runner, dev, actions)
             if act_dev is not None:
                 nn_act = act_dev.cpu().numpy().astype(np.int32)
                 actions = np.where(nn_rows, nn_act, actions)
