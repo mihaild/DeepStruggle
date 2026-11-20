@@ -192,7 +192,9 @@ are cited from elsewhere; keep them.
   the decider's own next real decision or a finished game -- observed from the decider's side in its feature set;
   `get_afterstates()` returns `(envs, sides, kinds, observations, walks cut)`. The stream is unchanged (the bulk
   advance is the same single steps), and `tests/training/test_afterstate_critic.py` holds the rows to the Python
-  reference walk (`walk_afterstates`) bit for bit. `Config::leaf` chooses whose side a leaf's
+  reference walk (`walk_afterstates`) bit for bit. `get_afterstates_into(out)` writes the same rows into a buffer
+  the caller owns (the trainer's pinned one, copied to the device without blocking) instead of a new array. The env
+  step reads every env's decider, turn, VP, terminal flag and utility with one `get_env_scalars()` call. `Config::leaf` chooses whose side a leaf's
   critic is read from: `kMover` (the default and the measured root: the root mover's at every leaf) or
   `kDecider` (the leaf's decider's, the side the critic is trained on, its value negated into the
   mover's frame where that is the opponent) or `kOwn` (past the stop, play on to the root mover's next
