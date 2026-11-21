@@ -330,16 +330,18 @@ class RolloutBuffer:
         else:
             window_mask = self._gae_backward(key, last_v_win, last_v_vp, last_players)
 
-        if per_player_gae:
-            pp_adv, pp_ret = self._gae_per_player(gamma, gae_lambda, last_v_win, last_players)
+        if per_player_gae or afterstate_node is not None:
+            # One pass gives the plain per-player chain and, with P56's node, the node chain beside it.
+            pp_adv, pp_ret, node_adv = self._gae_per_player_both(gamma, gae_lambda, last_v_win, last_players,
+                                                                 afterstate_node)
             keep = ~window_mask
-            self.advantages = torch.where(keep, pp_adv, self.advantages)
-            self.returns_win = torch.where(keep, pp_ret, self.returns_win)
-        if afterstate_node is not None:
-            # P56: the policy's advantage from each side's own chain with the afterstate node; the value targets
-            # (returns_win) stay as computed above.
-            node_adv, _ = self._gae_per_player(gamma, gae_lambda, last_v_win, last_players, node=afterstate_node)
-            self.advantages = torch.where(~window_mask, node_adv, self.advantages)
+            if per_player_gae:
+                self.advantages = torch.where(keep, pp_adv, self.advantages)
+                self.returns_win = torch.where(keep, pp_ret, self.returns_win)
+            if afterstate_node is not None:
+                # P56: the policy's advantage from each side's own chain with the afterstate node; the value
+                # targets (returns_win) stay as computed above.
+                self.advantages = torch.where(keep, node_adv, self.advantages)
 
         self.normalise_advantages()
 
@@ -642,6 +644,8 @@ class RolloutBuffer:
         led straight to the side's next decision or to the end), lambda_opp[e] the decay at the node. The step is
         then split: d1 = U - V_t, d2 = R + disc V_next - U_post, A_t = d1 + lambda_opp (d2 + disc lambda A_next);
         with lambda_opp 1 and U_post = U it is the plain step exactly.
+        With `node` the advantages are the node chain's and the returns the plain chain's (the value targets keep
+        the plain chain).
 
         Walks backward once, carrying per-player state: the advantage and value at that player's
         NEXT own decision, the rewards accrued to it since, and the gap in steps. Vectorised over
@@ -651,71 +655,84 @@ class RolloutBuffer:
         player q as ``rewards[t] * players[t] * q`` -- which is how the opponent's moves enter q's
         return without any value being negated.
         """
+        adv, ret, node_adv = self._gae_per_player_both(gamma, gae_lambda, last_v_win, last_players, node)
+        return (node_adv if node is not None else adv), ret
+
+    def _gae_per_player_both(
+        self,
+        gamma: float,
+        gae_lambda: float,
+        last_v_win: torch.Tensor,
+        last_players: torch.Tensor,
+        node: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """_gae_per_player's one backward pass: the plain chain's advantages and returns, and the node chain's
+        advantages (the plain ones when `node` is None), each carried separately. On the host in numpy: the loop is
+        ~20 tiny operations a step over a (num_envs,) vector, which on the GPU is bound by launches and syncs (12%
+        of a rollout); the inputs come over once and the three results go back once."""
         T, N = self.buffer_size, self.num_envs
         dev = self.device
-        adv = torch.zeros((T, N), dtype=torch.float32, device=dev)
-        ret = torch.zeros((T, N), dtype=torch.float32, device=dev)
-
-        state = {}
+        players = self.players[:T].cpu().numpy().astype(np.int8)
+        p_f = players.astype(np.float32)
+        dones = self.dones[:T].cpu().numpy() > 0.5
+        rewards = self.rewards[:T].cpu().numpy().astype(np.float32)
+        values = self.values_win[:T].cpu().numpy().astype(np.float32)
+        last_v = (last_v_win.float() * last_players.float()).cpu().numpy().astype(np.float32)
+        on = node is not None
+        u_all = node[0].cpu().numpy().astype(np.float32) if node is not None else values
+        post_all = node[1].cpu().numpy().astype(np.float32) if node is not None else values
+        lam_opp = node[2].cpu().numpy().astype(np.float32) if node is not None else np.ones(N, np.float32)
+        adv = np.zeros((T, N), dtype=np.float32)
+        ret = np.zeros((T, N), dtype=np.float32)
+        nadv = np.zeros((T, N), dtype=np.float32) if on else adv
+        g = np.float32(gamma)
+        lam = np.float32(gae_lambda)
+        st = {}
         for q in (1, -1):
             # The next decision past the end of the buffer: value carried in q's own frame.
-            state[q] = {
-                "A": torch.zeros(N, dtype=torch.float32, device=dev),
-                "V": last_v_win * last_players.float() * float(q),
-                "R": torch.zeros(N, dtype=torch.float32, device=dev),
-                "gap": torch.zeros(N, dtype=torch.float32, device=dev),
-                "has": torch.ones(N, dtype=torch.bool, device=dev),
-            }
-
-        zero = torch.zeros(N, dtype=torch.float32, device=dev)
-        for t in reversed(range(T)):
-            p_t = self.players[t].float()
-            done_t = self.dones[t].bool()
-            r_t = self.rewards[t]
-
-            # A terminal step ends the episode: everything later belongs to a different game, and
-            # this step's own decision has nothing to bootstrap from.
-            if bool(done_t.any()):
+            st[q] = {"A": np.zeros(N, np.float32), "An": np.zeros(N, np.float32), "V": last_v * np.float32(q),
+                     "R": np.zeros(N, np.float32), "gap": np.zeros(N, np.float32), "has": np.ones(N, bool)}
+        for t in range(T - 1, -1, -1):
+            done_t = dones[t]
+            # A terminal step ends the episode: everything later belongs to a different game, and this step's own
+            # decision has nothing to bootstrap from.
+            if done_t.any():
                 for q in (1, -1):
-                    st = state[q]
-                    st["A"] = torch.where(done_t, zero, st["A"])
-                    st["V"] = torch.where(done_t, zero, st["V"])
-                    st["R"] = torch.where(done_t, zero, st["R"])
-                    st["gap"] = torch.where(done_t, zero, st["gap"])
-                    st["has"] = st["has"] & (~done_t)
-
+                    c = st[q]
+                    for k in ("A", "An", "V", "R", "gap"):
+                        c[k] = np.where(done_t, np.float32(0), c[k])
+                    c["has"] = c["has"] & ~done_t
+            r_t = rewards[t] * p_f[t]
+            v_t = values[t]
             for q in (1, -1):
-                st = state[q]
-                st["R"] = st["R"] + r_t * p_t * float(q)
-                st["gap"] = st["gap"] + 1.0
-
-                is_mover = (self.players[t] == q)
-                if not bool(is_mover.any()):
+                c = st[q]
+                c["R"] = c["R"] + r_t * np.float32(q)
+                c["gap"] = c["gap"] + np.float32(1)
+                mv = players[t] == q
+                if not mv.any():
                     continue
-
-                disc = torch.pow(torch.tensor(gamma, device=dev), st["gap"])
-                carry = st["has"].float()
-                v_t = self.values_win[t]
-                target = st["R"] + disc * st["V"] * carry
-                delta = target - v_t
-                a = delta + disc * gae_lambda * st["A"] * carry
-                if node is not None:
-                    u_t, post_t, lam_opp = node[0][t], node[1][t], node[2]
-                    has_u = torch.isfinite(u_t)
-                    post = torch.where(torch.isfinite(post_t), post_t, target)
-                    a_node = (u_t - v_t) + lam_opp * ((target - post) + disc * gae_lambda * st["A"] * carry)
-                    a = torch.where(has_u, a_node, a)
-
-                adv[t] = torch.where(is_mover, a, adv[t])
-                ret[t] = torch.where(is_mover, a + v_t, ret[t])
-
-                st["A"] = torch.where(is_mover, a, st["A"])
-                st["V"] = torch.where(is_mover, v_t, st["V"])
-                st["R"] = torch.where(is_mover, zero, st["R"])
-                st["gap"] = torch.where(is_mover, zero, st["gap"])
-                st["has"] = st["has"] | is_mover
-
-        return adv, ret
+                disc = np.power(g, c["gap"]).astype(np.float32)
+                carry = c["has"].astype(np.float32)
+                target = c["R"] + disc * c["V"] * carry
+                a = target - v_t + disc * lam * c["A"] * carry
+                adv[t] = np.where(mv, a, adv[t])
+                ret[t] = np.where(mv, a + v_t, ret[t])
+                c["A"] = np.where(mv, a, c["A"])
+                if on:
+                    an = target - v_t + disc * lam * c["An"] * carry
+                    u_t, post_t = u_all[t], post_all[t]
+                    has_u = np.isfinite(u_t)
+                    post = np.where(np.isfinite(post_t), post_t, target)
+                    a_node = (u_t - v_t) + lam_opp * ((target - post) + disc * lam * c["An"] * carry)
+                    an = np.where(has_u, a_node, an)
+                    nadv[t] = np.where(mv, an, nadv[t])
+                    c["An"] = np.where(mv, an, c["An"])
+                c["V"] = np.where(mv, v_t, c["V"])
+                c["R"] = np.where(mv, np.float32(0), c["R"])
+                c["gap"] = np.where(mv, np.float32(0), c["gap"])
+                c["has"] = c["has"] | mv
+        out = [torch.from_numpy(np.ascontiguousarray(x)).to(dev) for x in (adv, ret)]
+        return out[0], out[1], (torch.from_numpy(np.ascontiguousarray(nadv)).to(dev) if node is not None else out[0])
 
     def diagnostics(self) -> Dict[str, float]:
         """Value-head and advantage-distribution health metrics for the current rollout.

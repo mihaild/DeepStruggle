@@ -735,6 +735,10 @@ class BaseNashPGTrainer:
         self.afterstate_lambda_opp = float(afterstate_lambda_opp)
         if self.afterstate_advantage and float(afterstate_value_coef) <= 0.0:
             raise ValueError("--afterstate-advantage needs the afterstate critic (--afterstate-value-coef > 0)")
+        if self.afterstate_advantage and not per_player_gae:
+            # The policy's chain and the value targets must be one chain at one reach: without per-player returns the
+            # value targets stay interleaved, and --gae-lambda would set two different reaches (P56 plan, T1).
+            raise ValueError("--afterstate-advantage needs --per-player-gae (T1: --per-player-gae --gae-lambda 0.96)")
         if not 0.0 <= self.afterstate_lambda_opp <= 1.0:
             raise ValueError(f"--afterstate-lambda-opp must be in [0, 1], got {afterstate_lambda_opp}")
         if self.bf16_fp32_heads and not self.update_bf16:
@@ -2390,10 +2394,10 @@ class BaseNashPGTrainer:
         if self.afterstate_advantage:
             # P56: the rows' values and the rolls' averages from the rollout-time network, read in a few large batches.
             read_all_node_values(self._as_rows, lambda _o: _value_only(self.active_net, _o))
-            _u, _post = node_tensors(self._as_rows, self.buffer.buffer_size, self.num_envs, self.device)
+            # On the host: the per-player pass that takes them runs there.
+            _u, _post = node_tensors(self._as_rows, self.buffer.buffer_size, self.num_envs, torch.device("cpu"))
             # A game against a pool member keeps the plain chain's weight at the node.
-            _lam = torch.from_numpy(np.where(self._selfplay_mask, self.afterstate_lambda_opp, 1.0).astype(np.float32)
-                                    ).to(self.device)
+            _lam = torch.from_numpy(np.where(self._selfplay_mask, self.afterstate_lambda_opp, 1.0).astype(np.float32))
             _node = (_u, _post, _lam)
         self.buffer.compute_gae(
             last_v_win=last_v_win.squeeze(-1),

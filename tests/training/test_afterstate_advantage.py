@@ -7,6 +7,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
+import pytest
 import torch
 import ts_engine as ts
 
@@ -152,7 +153,8 @@ def _net() -> LadderNet:
 def test_a_rollout_takes_the_node_and_trains() -> None:
     t = NashPGTrainer(active_net=_net(), env=TsVectorizedEnv(num_envs=8, base_seed=7), num_envs=8, buffer_size=96,
                       lr=3e-4, eta=0.1, ref_update_freq=500, cuda_graphs=False, device=torch.device("cpu"),
-                      afterstate_value_coef=1.0, afterstate_frac=1.0, afterstate_advantage=True)
+                      afterstate_value_coef=1.0, afterstate_frac=1.0, afterstate_advantage=True,
+                      per_player_gae=True, gae_lambda=0.96)
     t.collect_rollouts()
     rows = t._as_rows
     assert rows and all(r.values is not None and r.avg is not None for r in rows)
@@ -191,7 +193,8 @@ def test_one_batched_read_equals_a_read_a_step() -> None:
     """read_all_node_values (a few large batches at the rollout's end) fills the same values as read_node_values."""
     t = NashPGTrainer(active_net=_net(), env=TsVectorizedEnv(num_envs=8, base_seed=3), num_envs=8, buffer_size=64,
                       lr=3e-4, eta=0.1, ref_update_freq=500, cuda_graphs=False, device=torch.device("cpu"),
-                      afterstate_value_coef=1.0, afterstate_frac=1.0, afterstate_advantage=True)
+                      afterstate_value_coef=1.0, afterstate_frac=1.0, afterstate_advantage=True,
+                      per_player_gae=True, gae_lambda=0.96)
     t.collect_rollouts()
     rows = t._as_rows
     batched = [(r.values.clone(), r.avg.clone()) for r in rows if r.values is not None and r.avg is not None]
@@ -207,3 +210,10 @@ def test_one_batched_read_equals_a_read_a_step() -> None:
         assert torch.allclose(a1, r.avg, atol=1e-5, equal_nan=True)
     for (v1, a1), (v2, a2) in zip(one, batched):
         assert torch.allclose(v1, v2, atol=1e-5) and torch.allclose(a1, a2, atol=1e-5, equal_nan=True)
+
+
+def test_the_node_needs_per_player_returns() -> None:
+    with pytest.raises(ValueError, match="per-player-gae"):
+        NashPGTrainer(active_net=_net(), env=TsVectorizedEnv(num_envs=4, base_seed=1), num_envs=4, buffer_size=16,
+                      lr=3e-4, eta=0.1, ref_update_freq=500, cuda_graphs=False, device=torch.device("cpu"),
+                      afterstate_value_coef=1.0, afterstate_frac=1.0, afterstate_advantage=True)

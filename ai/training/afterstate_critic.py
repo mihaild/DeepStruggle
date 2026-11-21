@@ -318,20 +318,21 @@ def read_node_values(rows: AfterstateRows, value_fn: Callable[[torch.Tensor], to
 
 
 def fill_node_values(rows: AfterstateRows, v: torch.Tensor) -> None:
-    """read_node_values from the values already read: `v` holds the rows' then the outcomes' values, in order."""
+    """read_node_values from the values already read: `v` holds the rows' then the outcomes' values, in order.
+    Done on the host (a few numpy operations; on the GPU these were many tiny launches a row); rows.values and
+    rows.avg are CPU tensors."""
     n = int(rows.obs.shape[0])
-    rows.values = v[:n]
-    avg = torch.full((n,), float("nan"), device=v.device)
+    vn = v.detach().float().cpu().numpy()
+    rows.values = torch.from_numpy(np.ascontiguousarray(vn[:n]))
+    avg = np.full(n, np.nan, dtype=np.float32)
     if rows.face_obs is not None and rows.face_obs.shape[0]:
         assert rows.face_row is not None and rows.face_prob is not None and rows.face_term is not None
         assert rows.face_res is not None
-        dev = v.device
-        fv = torch.where(torch.from_numpy(rows.face_term).to(dev), torch.from_numpy(rows.face_res).to(dev), v[n:])
-        idx = torch.from_numpy(rows.face_row).to(dev)
-        acc = torch.zeros(n, device=dev).index_add_(0, idx, torch.from_numpy(rows.face_prob).to(dev) * fv)
-        has = torch.zeros(n, dtype=torch.bool, device=dev).index_fill_(0, idx, True)
-        avg = torch.where(has, acc, avg)
-    rows.avg = avg
+        fv = np.where(rows.face_term, rows.face_res, vn[n:]).astype(np.float32)
+        acc = np.bincount(rows.face_row, weights=rows.face_prob * fv, minlength=n)[:n].astype(np.float32)
+        has = np.bincount(rows.face_row, minlength=n)[:n] > 0
+        avg = np.where(has, acc, avg).astype(np.float32)
+    rows.avg = torch.from_numpy(avg)
 
 
 def read_all_node_values(rows: Sequence[AfterstateRows], value_fn: Callable[[torch.Tensor], torch.Tensor],
@@ -350,7 +351,7 @@ def read_all_node_values(rows: Sequence[AfterstateRows], value_fn: Callable[[tor
             if r.face_obs is not None and r.face_obs.shape[0]:
                 parts.append(r.face_obs)
         with torch.no_grad():
-            v = value_fn(torch.cat(parts)).reshape(-1).float()
+            v = value_fn(torch.cat(parts)).reshape(-1).float().cpu()
         at = 0
         for r in group:
             n = int(r.obs.shape[0])
@@ -375,8 +376,8 @@ def node_tensors(rows: Sequence[AfterstateRows], horizon: int, num_envs: int, de
     after a die: the value after the roll that actually came (the next row), so the roll's own luck is left out of
     the advantage -- NaN when that state is no row (the side's own next decision, or the end of the game), where the
     step after the roll is zero. NaN in U: no afterstate, the plain step."""
-    u = torch.full((horizon, num_envs), float("nan"), device=device)
-    post = torch.full((horizon, num_envs), float("nan"), device=device)
+    u = np.full((horizon, num_envs), np.nan, dtype=np.float32)
+    post = np.full((horizon, num_envs), np.nan, dtype=np.float32)
     for r in rows:
         n = len(r.envs)
         if n == 0 or r.values is None:
@@ -384,21 +385,16 @@ def node_tensors(rows: Sequence[AfterstateRows], horizon: int, num_envs: int, de
         envs = np.asarray(r.envs)
         first = np.flatnonzero(np.r_[True, envs[1:] != envs[:-1]])
         kinds = np.asarray(r.kinds)
-        vals = r.values
-        avg = r.avg if r.avg is not None else torch.full((n,), float("nan"), device=vals.device)
-        f_t = torch.from_numpy(first).to(vals.device)
-        is_roll = torch.from_numpy(kinds[first] == BEFORE_ROLL).to(vals.device) & torch.isfinite(avg.index_select(0, f_t))
+        vals = r.values.detach().float().cpu().numpy()
+        avg = r.avg.detach().float().cpu().numpy() if r.avg is not None else np.full(n, np.nan, dtype=np.float32)
+        is_roll = (kinds[first] == BEFORE_ROLL) & np.isfinite(avg[first])
         nxt = np.minimum(first + 1, n - 1)
         after_ok = (first + 1 < n) & (envs[nxt] == envs[first]) & (kinds[nxt] == AFTER_ROLL)
-        u_f = torch.where(is_roll, avg.index_select(0, f_t), vals.index_select(0, f_t))
-        nan = torch.full_like(u_f, float("nan"))
-        after_v = torch.where(torch.from_numpy(after_ok).to(vals.device),
-                              vals.index_select(0, torch.from_numpy(nxt).to(vals.device)), nan)
-        post_f = torch.where(is_roll, after_v, u_f)
-        e_t = torch.from_numpy(envs[first]).to(device)
-        u[r.step].index_copy_(0, e_t, u_f.to(device))
-        post[r.step].index_copy_(0, e_t, post_f.to(device))
-    return u, post
+        u_f = np.where(is_roll, avg[first], vals[first])
+        post_f = np.where(is_roll, np.where(after_ok, vals[nxt], np.nan), u_f)
+        u[r.step, envs[first]] = u_f
+        post[r.step, envs[first]] = post_f
+    return torch.from_numpy(u).to(device), torch.from_numpy(post).to(device)
 
 
 def build_targets(rows: Sequence[AfterstateRows], players: np.ndarray, dones: np.ndarray, rewards: np.ndarray,

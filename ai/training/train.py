@@ -1287,7 +1287,8 @@ def build_parser() -> argparse.ArgumentParser:
                              "afterstate as a node (research/plans/P56_afterstate_advantage.md). For a move followed by a die "
                              "the node is the exact average over the die's distinct outcomes (the runner enumerates the faces "
                              "and merges identical results), also the before-roll row's value target; the roll's own luck is "
-                             "left out of the advantage. Value targets otherwise as configured. Needs --afterstate-value-coef.")
+                             "left out of the advantage. Needs --afterstate-value-coef and --per-player-gae (the value targets "
+                             "are the same chain at the same --gae-lambda: 0.96 matches the default's 0.98).")
     parser.add_argument("--afterstate-lambda-opp", type=float, default=1.0,
                         help="P56: the decay at the afterstate node -- the weight of the opponent's turn and the dice after a "
                              "decision's own effect in its advantage; 1 is the plain chain's weight (the default).")
