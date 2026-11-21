@@ -102,6 +102,24 @@ pulls:
 value of every learner decision beside its buffer row; the batch runner already records that moment. No engine
 change, no observation change.
 
+### The rolls' average: what it needs (the running session's reading of the code, 2026-11-21)
+
+* **No engine change.** A `ROLL_DIE` step already takes forced dice (a replayer and test affordance): one die for
+  a coup, the Space Race, a trap's escape and the wars; both dice for a realignment (36 pairs) and the Summit; the
+  Olympic Games re-roll a tie from the random state, so their 30 non-tie pairs are enumerated and renormalised.
+* **A bindings change** in the batch runner's afterstate capture: at each before-roll moment of a learner
+  decision, copy the state, step each face, take the observation from the decider's side. About 3 microseconds a
+  face; small against the step.
+* **A trainer change:** the faces' values are read at rollout time with the rollout-time network (about 500
+  value-only rows a step at 512 envs; their observations are too many to keep for the update), and one float a
+  before-roll row is kept: the average. It is the afterstate node's value in the advantage and the before-roll
+  row's training target; the roll's own step is left out of the advantage.
+* **Cost:** a few percent of throughput expected, to be measured before any run.
+* **Tests:** a forced face lands where a reseeded roll of that face lands; the average equals the reseeded mean
+  within sampling error; `lambda_opp` 1 without a die equals per-player GAE.
+
+The engine is untouched; a bindings change is the owner's to approve.
+
 ## The runs: a screen, then one long pair
 
 All from the baseline's state when the screen starts (R169 at 2,000M if the owner adopts it), every other flag
