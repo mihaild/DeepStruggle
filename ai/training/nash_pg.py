@@ -32,7 +32,7 @@ from ai.training.card_event_targets import aux_label
 from ai.training.afterstate_critic import KIND_NAMES as AFTERSTATE_KINDS
 from ai.training.afterstate_critic import AfterstateCapture, AfterstateRows
 from ai.training.afterstate_critic import build_targets as build_afterstate_targets
-from ai.training.afterstate_critic import next_decision_targets, node_tensors, read_node_values
+from ai.training.afterstate_critic import next_decision_targets, node_tensors, read_all_node_values
 from ai.training.restart_pool import critic_judge
 from ai.rewards.region_reward import RegionTargetedReward
 from tools.lib.openings import FORCED_OPENINGS_US, FORCED_OPENINGS_USSR, NODE_OFFSET as _NODE, OPENINGS
@@ -2222,9 +2222,6 @@ class BaseNashPGTrainer:
                 _asr = self.afterstate.after(self.env.runner, self.buffer.step, np.asarray(self._dones_np) > 0.5,
                                              self.device)
                 if _asr is not None:
-                    if self.afterstate_advantage:
-                        # P56: the rows' values and the rolls' averages from the rollout-time network.
-                        read_node_values(_asr, lambda _o: _value_only(self.active_net, _o))
                     self._as_rows.append(_asr)
             if self._predeal_on:
                 _pf, _pus, _pussr = self.env.runner.get_predeal()
@@ -2391,6 +2388,8 @@ class BaseNashPGTrainer:
                 None)).unsqueeze(-1)
         _node = None
         if self.afterstate_advantage:
+            # P56: the rows' values and the rolls' averages from the rollout-time network, read in a few large batches.
+            read_all_node_values(self._as_rows, lambda _o: _value_only(self.active_net, _o))
             _u, _post = node_tensors(self._as_rows, self.buffer.buffer_size, self.num_envs, self.device)
             # A game against a pool member keeps the plain chain's weight at the node.
             _lam = torch.from_numpy(np.where(self._selfplay_mask, self.afterstate_lambda_opp, 1.0).astype(np.float32)

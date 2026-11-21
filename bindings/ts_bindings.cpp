@@ -242,7 +242,13 @@ bool roll_outcomes(const ts::GameState& g, ts::Player side, uint32_t features, s
         rt == ts::RollType::NONE || rt == ts::RollType::TURN_CLEANUP || ts::Engine::is_terminal(g)) return false;
     const bool two = rt == ts::RollType::REALIGNMENT || rt == ts::RollType::SUMMIT || rt == ts::RollType::OLYMPIC_GAMES;
     const float w = two ? 1.0f / 36.0f : 1.0f / 6.0f;
-    std::vector<float> row(width);
+    thread_local std::vector<float> row;
+    row.resize(width);
+    // Positions already seen (with the step's die record cleared, which the observation does not read): a face that
+    // lands on one of them is that outcome without extracting its observation again -- a realignment tries 36 pairs.
+    thread_local std::vector<ts::GameState> seen;
+    thread_local std::vector<size_t> seen_at;
+    seen.clear(); seen_at.clear();
     float kept = 0.0f;
     for (uint8_t a = 1; a <= 6; ++a) {
         for (uint8_t b = two ? 1 : 0; b <= (two ? 6 : 0); ++b) {
@@ -256,13 +262,22 @@ bool roll_outcomes(const ts::GameState& g, ts::Player side, uint32_t features, s
             // a random draw) comes from the state's own stream, as it would after the real roll: unbiased in average.
             if (!ts::StateMachine::step(c, ma)) continue;
             kept += w;
+            c.last_roll = ts::DieRollRecord{};
+            c.last_die_roll = 0;
+            c.last_opp_die_roll = 0;
+            bool known = false;
+            for (size_t k = 0; k < seen.size(); ++k) {
+                if (std::memcmp(&seen[k], &c, sizeof(ts::GameState)) == 0) { prob[seen_at[k]] += w; known = true; break; }
+            }
+            if (known) continue;
+            seen.push_back(c);
             if (ts::Engine::is_terminal(c)) {
                 const float u = ts::Engine::get_terminal_utility(c) * (side == ts::Player::US ? 1.0f : -1.0f);
                 bool merged = false;
                 for (size_t k = 0; k < prob.size(); ++k) {
-                    if (terminal[k] && result[k] == u) { prob[k] += w; merged = true; break; }
+                    if (terminal[k] && result[k] == u) { prob[k] += w; merged = true; seen_at.push_back(k); break; }
                 }
-                if (!merged) { obs.insert(obs.end(), width, 0.0f); prob.push_back(w); terminal.push_back(1); result.push_back(u); }
+                if (!merged) { seen_at.push_back(prob.size()); obs.insert(obs.end(), width, 0.0f); prob.push_back(w); terminal.push_back(1); result.push_back(u); }
                 continue;
             }
             std::fill(row.begin(), row.end(), 0.0f);
@@ -270,10 +285,10 @@ bool roll_outcomes(const ts::GameState& g, ts::Player side, uint32_t features, s
             bool merged = false;
             for (size_t k = 0; k < prob.size(); ++k) {
                 if (!terminal[k] && std::memcmp(obs.data() + k * width, row.data(), width * sizeof(float)) == 0) {
-                    prob[k] += w; merged = true; break;
+                    prob[k] += w; merged = true; seen_at.push_back(k); break;
                 }
             }
-            if (!merged) { obs.insert(obs.end(), row.begin(), row.end()); prob.push_back(w); terminal.push_back(0); result.push_back(0.0f); }
+            if (!merged) { seen_at.push_back(prob.size()); obs.insert(obs.end(), row.begin(), row.end()); prob.push_back(w); terminal.push_back(0); result.push_back(0.0f); }
         }
     }
     if (kept <= 0.0f) { obs.clear(); prob.clear(); terminal.clear(); result.clear(); return false; }
@@ -1769,8 +1784,8 @@ NB_MODULE(ts_engine, m) {
             as_fobs.assign(nf, {}); as_fprob.assign(nf, {}); as_fres.assign(nf, {}); as_fterm.assign(nf, {}); as_fown.assign(nf, {});
         }
         void add_roll_faces(size_t idx, ts::Player side, int32_t owner) {
-            std::vector<float> o, pr, res;
-            std::vector<uint8_t> term;
+            thread_local std::vector<float> o, pr, res;
+            thread_local std::vector<uint8_t> term;
             if (!roll_outcomes(st(idx), side, features_for(idx, side), obs_width, o, pr, term, res)) return;
             as_fobs[idx].insert(as_fobs[idx].end(), o.begin(), o.end());
             as_fprob[idx].insert(as_fprob[idx].end(), pr.begin(), pr.end());
@@ -2281,6 +2296,47 @@ NB_MODULE(ts_engine, m) {
              "P56: the distinct outcomes of each before-roll row's die from the last step_flat_all, as (row -- the "
              "before-roll row's index in get_afterstates' order --, probability, finished game, its result from the "
              "decider's side, observation from the decider's side; zeros for a finished game).")
+        .def("get_afterstate_faces_into", [](VectorizedBatchRunner& self, nb::ndarray<float, nb::ndim<2>, nb::c_contig, nb::device::cpu> out) {
+                 if (!self.capture_roll_faces) throw std::runtime_error("get_afterstate_faces_into: roll faces are off");
+                 const size_t w = self.obs_width;
+                 if (out.shape(1) != w) throw std::invalid_argument("get_afterstate_faces_into: out must be (rows, obs_width)");
+                 std::vector<size_t> off(self.num_envs + 1, 0);
+                 size_t rows_before = 0;
+                 for (size_t i = 0; i < self.num_envs; ++i) off[i + 1] = off[i] + self.as_fprob[i].size();
+                 const size_t n = off[self.num_envs];
+                 int64_t* own = new int64_t[std::max<size_t>(1, n)];
+                 float* pr = new float[std::max<size_t>(1, n)];
+                 uint8_t* term = new uint8_t[std::max<size_t>(1, n)];
+                 float* res = new float[std::max<size_t>(1, n)];
+                 for (size_t i = 0; i < self.num_envs; ++i) {
+                     for (size_t j = 0; j < self.as_fprob[i].size(); ++j) {
+                         own[off[i] + j] = static_cast<int64_t>(rows_before + static_cast<size_t>(self.as_fown[i][j]));
+                         pr[off[i] + j] = self.as_fprob[i][j];
+                         term[off[i] + j] = self.as_fterm[i][j];
+                         res[off[i] + j] = self.as_fres[i][j];
+                     }
+                     rows_before += self.as_kind[i].size();
+                 }
+                 if (n <= out.shape(0)) {
+                     float* dst = out.data();
+                     nb::gil_scoped_release release;
+                     gomp_parallel_for(static_cast<int64_t>(self.num_envs), [&](int64_t i) {
+                         const size_t k = self.as_fprob[i].size();
+                         if (k) std::memcpy(dst + off[i] * w, self.as_fobs[i].data(), k * w * sizeof(float));
+                     });
+                 }
+                 size_t s1[1] = { n };
+                 nb::capsule o1(own, [](void* q) noexcept { delete[] static_cast<int64_t*>(q); });
+                 nb::capsule o2(pr, [](void* q) noexcept { delete[] static_cast<float*>(q); });
+                 nb::capsule o3(term, [](void* q) noexcept { delete[] static_cast<uint8_t*>(q); });
+                 nb::capsule o4(res, [](void* q) noexcept { delete[] static_cast<float*>(q); });
+                 return nb::make_tuple(nb::ndarray<nb::numpy, int64_t, nb::ndim<1>>(own, 1, s1, o1),
+                                       nb::ndarray<nb::numpy, float, nb::ndim<1>>(pr, 1, s1, o2),
+                                       nb::ndarray<nb::numpy, uint8_t, nb::ndim<1>>(term, 1, s1, o3),
+                                       nb::ndarray<nb::numpy, float, nb::ndim<1>>(res, 1, s1, o4), n);
+             }, nb::arg("out"),
+             "get_afterstate_faces with the observations written into `out` (float32, rows x obs_width; e.g. pinned) in "
+             "parallel: (row, probability, finished game, result, outcomes). Nothing is written when `out` is too small.")
         .def("set_capture_afterstates", &VectorizedBatchRunner::set_capture_afterstates, nb::arg("on"),
              nb::arg("roll_faces") = false,
              "The afterstate critic's moments, captured by the runner as it steps (set_afterstate_envs picks the "

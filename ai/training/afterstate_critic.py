@@ -132,6 +132,10 @@ class AfterstateCapture:
         self.forced = bool(forced)
         self.rng = np.random.default_rng(seed)
         self._on: Optional[Any] = None
+        # P56 on CUDA: the roll outcomes' own two pinned buffers, as for the rows below.
+        self._fpinned: List[Optional[torch.Tensor]] = [None, None]
+        self._fcopied: List[Optional[Any]] = [None, None]
+        self._fslot = 0
         # On CUDA, two pinned host buffers the runner gathers into in turn, each copied to the device without
         # blocking; a buffer is reused only once its copy (recorded by the event) has finished.
         self._pinned: List[Optional[torch.Tensor]] = [None, None]
@@ -212,14 +216,41 @@ class AfterstateCapture:
         """P56: the step's roll faces attached to its rows (at the buffer's width)."""
         if not self.roll_faces:
             return rows
-        fr, fp, ft, fres, fo = runner.get_afterstate_faces()
-        fo = np.asarray(fo)
-        fo = fo[:, :self.width] if fo.shape[1] >= self.width else np.pad(fo, ((0, 0), (0, self.width - fo.shape[1])))
+        dev = torch.device(device)
+        if dev.type == "cuda":
+            # Gathered in parallel into a pinned buffer and copied without blocking, like the rows.
+            k = self._fslot
+            self._fslot ^= 1
+            done = self._fcopied[k]
+            if done is not None:
+                done.synchronize()
+            width = int(runner.obs_width)
+            buf = self._fpinned[k]
+            if buf is None or buf.shape[1] != width:
+                buf = torch.empty((4096, width), dtype=torch.float32).pin_memory()
+            fr, fp, ft, fres, n = runner.get_afterstate_faces_into(buf.numpy())
+            if n > buf.shape[0]:
+                buf = torch.empty((2 * n, width), dtype=torch.float32).pin_memory()
+                fr, fp, ft, fres, n = runner.get_afterstate_faces_into(buf.numpy())
+            self._fpinned[k] = buf
+            fo_t = buf[:n].to(dev, non_blocking=True)
+            event = torch.cuda.Event()
+            event.record()
+            self._fcopied[k] = event
+            if width > self.width:
+                fo_t = fo_t[:, :self.width].contiguous()
+            elif width < self.width:
+                fo_t = torch.nn.functional.pad(fo_t, (0, self.width - width))
+        else:
+            fr, fp, ft, fres, fo = runner.get_afterstate_faces()
+            fo = np.asarray(fo)
+            fo = fo[:, :self.width] if fo.shape[1] >= self.width else np.pad(fo, ((0, 0), (0, self.width - fo.shape[1])))
+            fo_t = torch.from_numpy(np.ascontiguousarray(fo, dtype=np.float32)).to(dev)
         rows.face_row = np.asarray(fr, dtype=np.int64)
         rows.face_prob = np.asarray(fp, dtype=np.float32)
         rows.face_term = np.asarray(ft, dtype=bool)
         rows.face_res = np.asarray(fres, dtype=np.float32)
-        rows.face_obs = torch.from_numpy(np.ascontiguousarray(fo, dtype=np.float32)).to(device)
+        rows.face_obs = fo_t
         return rows
 
     def metrics(self) -> dict:
@@ -280,10 +311,15 @@ def read_node_values(rows: AfterstateRows, value_fn: Callable[[torch.Tensor], to
     """P56: fill rows.values (every row's value from its side, read by `value_fn` -- the rollout-time network) and
     rows.avg (a before-roll row's probability-weighted value over its die's outcomes, a finished game counting its
     result; NaN for a row without outcomes)."""
-    n = int(rows.obs.shape[0])
     obs = rows.obs if rows.face_obs is None or rows.face_obs.shape[0] == 0 else torch.cat([rows.obs, rows.face_obs])
     with torch.no_grad():
         v = value_fn(obs).reshape(-1).float()
+    fill_node_values(rows, v)
+
+
+def fill_node_values(rows: AfterstateRows, v: torch.Tensor) -> None:
+    """read_node_values from the values already read: `v` holds the rows' then the outcomes' values, in order."""
+    n = int(rows.obs.shape[0])
     rows.values = v[:n]
     avg = torch.full((n,), float("nan"), device=v.device)
     if rows.face_obs is not None and rows.face_obs.shape[0]:
@@ -296,6 +332,39 @@ def read_node_values(rows: AfterstateRows, value_fn: Callable[[torch.Tensor], to
         has = torch.zeros(n, dtype=torch.bool, device=dev).index_fill_(0, idx, True)
         avg = torch.where(has, acc, avg)
     rows.avg = avg
+
+
+def read_all_node_values(rows: Sequence[AfterstateRows], value_fn: Callable[[torch.Tensor], torch.Tensor],
+                         chunk: int = 32768) -> None:
+    """read_node_values for a whole rollout's rows in a few large batches instead of one small read a step: the
+    network does not change during a rollout, so the values are the rollout-time network's either way."""
+    group: List[AfterstateRows] = []
+    size = 0
+    def flush() -> None:
+        nonlocal group, size
+        if not group:
+            return
+        parts: List[torch.Tensor] = []
+        for r in group:
+            parts.append(r.obs)
+            if r.face_obs is not None and r.face_obs.shape[0]:
+                parts.append(r.face_obs)
+        with torch.no_grad():
+            v = value_fn(torch.cat(parts)).reshape(-1).float()
+        at = 0
+        for r in group:
+            n = int(r.obs.shape[0])
+            m = 0 if r.face_obs is None else int(r.face_obs.shape[0])
+            vals = v[at:at + n + m]
+            at += n + m
+            fill_node_values(r, vals)
+        group, size = [], 0
+    for r in rows:
+        group.append(r)
+        size += int(r.obs.shape[0]) + (0 if r.face_obs is None else int(r.face_obs.shape[0]))
+        if size >= chunk:
+            flush()
+    flush()
 
 
 def node_tensors(rows: Sequence[AfterstateRows], horizon: int, num_envs: int, device: Any

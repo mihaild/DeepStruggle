@@ -1361,6 +1361,11 @@ class VectorizedBatchRunner:
         P56: the distinct outcomes of each before-roll row's die from the last step_flat_all, as (row -- the before-roll row's index in get_afterstates' order --, probability, finished game, its result from the decider's side, observation from the decider's side; zeros for a finished game).
         """
 
+    def get_afterstate_faces_into(self, out: Annotated[NDArray[numpy.float32], dict(shape=(None, None), order='C', device='cpu')]) -> tuple:
+        """
+        get_afterstate_faces with the observations written into `out` (float32, rows x obs_width; e.g. pinned) in parallel: (row, probability, finished game, result, outcomes). Nothing is written when `out` is too small.
+        """
+
     def set_capture_afterstates(self, on: bool, roll_faces: bool = False) -> None:
         """
         The afterstate critic's moments, captured by the runner as it steps (set_afterstate_envs picks the envs before each step_flat_all, get_afterstates() reads them after it).

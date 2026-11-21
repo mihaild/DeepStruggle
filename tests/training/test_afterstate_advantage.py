@@ -11,8 +11,9 @@ import torch
 import ts_engine as ts
 
 from ai.models.ladder_net import LadderNet, create_ladder_net
-from ai.training.afterstate_critic import AFTER_ROLL, BEFORE_ROLL, walk_afterstates
-from ai.training.nash_pg import NashPGTrainer
+from ai.training.afterstate_critic import (AFTER_ROLL, BEFORE_ROLL, read_all_node_values, read_node_values,
+                                           walk_afterstates)
+from ai.training.nash_pg import NashPGTrainer, _value_only
 from ai.training.rollout_buffer import RolloutBuffer
 from bindings.ts_env import TsVectorizedEnv
 
@@ -159,3 +160,50 @@ def test_a_rollout_takes_the_node_and_trains() -> None:
     assert sum(rolls) > 0, "no before-roll row got its die's average"
     m = t.train_step()
     assert math.isfinite(m["afterstate_value_loss_before_roll"]) and math.isfinite(m["policy_loss"])
+
+
+def test_the_gathered_outcomes_are_the_listed_ones() -> None:
+    """get_afterstate_faces_into (the pinned path's parallel gather) writes exactly get_afterstate_faces' rows."""
+    env = TsVectorizedEnv(num_envs=32, base_seed=11)
+    obs, masks, _ = env.reset_all()
+    r = env.runner
+    r.set_capture_afterstates(True, True)
+    rng = np.random.default_rng(5)
+    seen = 0
+    for _ in range(200):
+        acts = np.array([rng.choice(np.flatnonzero(m)) if m.any() else 0 for m in np.asarray(masks)])
+        r.set_afterstate_envs((np.asarray(r.get_decision_players()) != 0).astype(np.uint8))
+        obs, masks, _, _, _ = env.step(acts)
+        own, prob, term, res, fobs = (np.asarray(x) for x in r.get_afterstate_faces())
+        buf = np.full((max(1, len(prob)) + 3, obs.shape[1]), -1.0, dtype=np.float32)
+        own2, prob2, term2, res2, n = r.get_afterstate_faces_into(buf)
+        assert n == len(prob)
+        for a, b in ((own, own2), (prob, prob2), (term, term2), (res, res2)):
+            assert np.array_equal(a, np.asarray(b))
+        assert np.array_equal(buf[:n], fobs)
+        seen += n
+    assert seen > 0
+    small = np.zeros((0, obs.shape[1]), dtype=np.float32)
+    assert r.get_afterstate_faces_into(small)[4] >= 0
+
+
+def test_one_batched_read_equals_a_read_a_step() -> None:
+    """read_all_node_values (a few large batches at the rollout's end) fills the same values as read_node_values."""
+    t = NashPGTrainer(active_net=_net(), env=TsVectorizedEnv(num_envs=8, base_seed=3), num_envs=8, buffer_size=64,
+                      lr=3e-4, eta=0.1, ref_update_freq=500, cuda_graphs=False, device=torch.device("cpu"),
+                      afterstate_value_coef=1.0, afterstate_frac=1.0, afterstate_advantage=True)
+    t.collect_rollouts()
+    rows = t._as_rows
+    batched = [(r.values.clone(), r.avg.clone()) for r in rows if r.values is not None and r.avg is not None]
+    fn = lambda o: _value_only(t.active_net, o)   # noqa: E731
+    for r in rows:
+        read_node_values(r, fn)
+    one = [(r.values, r.avg) for r in rows if r.values is not None and r.avg is not None]
+    assert len(batched) == len(one) == len(rows)
+    read_all_node_values(rows, fn, chunk=50)
+    for (v1, a1), r in zip(one, rows):
+        assert r.values is not None and r.avg is not None
+        assert torch.allclose(v1, r.values, atol=1e-5)
+        assert torch.allclose(a1, r.avg, atol=1e-5, equal_nan=True)
+    for (v1, a1), (v2, a2) in zip(one, batched):
+        assert torch.allclose(v1, v2, atol=1e-5) and torch.allclose(a1, a2, atol=1e-5, equal_nan=True)
