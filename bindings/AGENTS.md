@@ -194,7 +194,14 @@ are cited from elsewhere; keep them.
   advance is the same single steps), and `tests/training/test_afterstate_critic.py` holds the rows to the Python
   reference walk (`walk_afterstates`) bit for bit. `get_afterstates_into(out)` writes the same rows into a buffer
   the caller owns (the trainer's pinned one, copied to the device without blocking) instead of a new array. The env
-  step reads every env's decider, turn, VP, terminal flag and utility with one `get_env_scalars()` call. `Config::leaf` chooses whose side a leaf's
+  step reads every env's decider, turn, VP, terminal flag and utility with one `get_env_scalars()` call. P56: with
+  `set_capture_afterstates(True, roll_faces=True)` each before-roll row also gets its die's distinct outcomes
+  (`get_afterstate_faces()`: row, probability, finished game, result, observation from the decider's side): every face
+  -- every pair for a realignment, the Summit and the Olympic Games -- is stepped on a copy with the forced die
+  `ROLL_DIE` carries (primary_id the roller's, secondary_id the opponent's; no engine change), an Olympics tie pair is
+  no outcome (re-rolled when rolled, given to the opponent when forced), and outcomes with identical observations (or
+  the same finished-game result) are merged -- a failed coup is one row, ~2.9 outcomes a roll on average. The same
+  enumeration standalone: `ts.roll_outcomes(state, side, features)`. `Config::leaf` chooses whose side a leaf's
   critic is read from: `kMover` (the default and the measured root: the root mover's at every leaf) or
   `kDecider` (the leaf's decider's, the side the critic is trained on, its value negated into the
   mover's frame where that is the opponent) or `kOwn` (past the stop, play on to the root mover's next

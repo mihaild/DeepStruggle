@@ -228,6 +228,59 @@ constexpr size_t kTrackCards = 111;
 // The afterstate capture's longest walk (VectorizedBatchRunner::walk_afterstates; afterstate_critic.MAX_WALK).
 constexpr size_t kMaxAfterstateWalk = 64;
 
+// P56: every outcome of the die roll pending in `g` (a chance node, not the turn-end park), each with its
+// probability. Each face -- each pair for a realignment, the Summit and the Olympic Games -- is stepped on a copy
+// with the forced die ROLL_DIE carries (primary_id the roller's, secondary_id the opponent's); an Olympics tie pair
+// (re-rolled when rolled, given to the opponent when forced) is no outcome, the rest renormalised. Outcomes the critic cannot tell apart are merged: identical observations from `side`, or the same
+// result where the game ends. `obs` holds one row of `width` per outcome (zeros for a finished game). Returns
+// false where nothing can be enumerated.
+bool roll_outcomes(const ts::GameState& g, ts::Player side, uint32_t features, size_t width, std::vector<float>& obs,
+                   std::vector<float>& prob, std::vector<uint8_t>& terminal, std::vector<float>& result) {
+    obs.clear(); prob.clear(); terminal.clear(); result.clear();
+    const ts::RollType rt = g.ctx().pending_roll;
+    if (g.ctx().decision_player != ts::Player::NONE || g.ctx().decision_type != ts::DecisionType::ROLL_DIE ||
+        rt == ts::RollType::NONE || rt == ts::RollType::TURN_CLEANUP || ts::Engine::is_terminal(g)) return false;
+    const bool two = rt == ts::RollType::REALIGNMENT || rt == ts::RollType::SUMMIT || rt == ts::RollType::OLYMPIC_GAMES;
+    const float w = two ? 1.0f / 36.0f : 1.0f / 6.0f;
+    std::vector<float> row(width);
+    float kept = 0.0f;
+    for (uint8_t a = 1; a <= 6; ++a) {
+        for (uint8_t b = two ? 1 : 0; b <= (two ? 6 : 0); ++b) {
+            // The Olympic Games re-roll a tie of the sponsor's die + 2 against the opponent's, but only when both dice
+            // are rolled: a forced tie goes to the opponent without drawing (card_dispatcher.cpp), so the rng check
+            // below cannot see it. A tie pair is not an outcome; the rest are renormalised.
+            if (rt == ts::RollType::OLYMPIC_GAMES && a + 2 == b) continue;
+            ts::GameState c = g;
+            const ts::MicroAction ma{ts::DecisionType::ROLL_DIE, a, b, 0};
+            // Randomness the same engine step draws after the die (rare: a coup or realignment whose step goes on into
+            // a random draw) comes from the state's own stream, as it would after the real roll: unbiased in average.
+            if (!ts::StateMachine::step(c, ma)) continue;
+            kept += w;
+            if (ts::Engine::is_terminal(c)) {
+                const float u = ts::Engine::get_terminal_utility(c) * (side == ts::Player::US ? 1.0f : -1.0f);
+                bool merged = false;
+                for (size_t k = 0; k < prob.size(); ++k) {
+                    if (terminal[k] && result[k] == u) { prob[k] += w; merged = true; break; }
+                }
+                if (!merged) { obs.insert(obs.end(), width, 0.0f); prob.push_back(w); terminal.push_back(1); result.push_back(u); }
+                continue;
+            }
+            std::fill(row.begin(), row.end(), 0.0f);
+            ts::extract_observation_features(c, side, features, row.data());
+            bool merged = false;
+            for (size_t k = 0; k < prob.size(); ++k) {
+                if (!terminal[k] && std::memcmp(obs.data() + k * width, row.data(), width * sizeof(float)) == 0) {
+                    prob[k] += w; merged = true; break;
+                }
+            }
+            if (!merged) { obs.insert(obs.end(), row.begin(), row.end()); prob.push_back(w); terminal.push_back(0); result.push_back(0.0f); }
+        }
+    }
+    if (kept <= 0.0f) { obs.clear(); prob.clear(); terminal.clear(); result.clear(); return false; }
+    for (float& q : prob) q /= kept;
+    return true;
+}
+
 NB_MODULE(ts_engine, m) {
     m.doc() = "Twilight Struggle C++ Simulation Engine Python Bindings (nanobind)";
 
@@ -1575,6 +1628,22 @@ NB_MODULE(ts_engine, m) {
     m.attr("BUILD_COMPILER") = std::string("unknown");
 #endif
 
+    m.def("roll_outcomes", [](const ts::GameState& g, ts::Player side, uint32_t features) {
+              const size_t w = ts::OBS_SIZE_V23 + ts::obs_features::extra_width(features);
+              std::vector<float> obs, prob, res;
+              std::vector<uint8_t> term;
+              roll_outcomes(g, side, features, w, obs, prob, term, res);
+              const size_t n = prob.size();
+              float* o = new float[std::max<size_t>(1, n * w)];
+              if (n) std::memcpy(o, obs.data(), n * w * sizeof(float));
+              size_t s2[2] = { n, w };
+              nb::capsule own(o, [](void* q) noexcept { delete[] static_cast<float*>(q); });
+              return nb::make_tuple(nb::ndarray<nb::numpy, float, nb::ndim<2>>(o, 2, s2, own), prob,
+                                    std::vector<int>(term.begin(), term.end()), res);
+          }, nb::arg("state"), nb::arg("side"), nb::arg("features") = 0u,
+          "P56: the distinct outcomes of the die roll pending in `state` (empty if none): (observations from `side`, "
+          "probabilities, finished-game flags, results from `side`) -- the runner's roll faces, standalone.");
+
     nb::class_<ts::ActionMask>(m, "ActionMask")
         .def_static("generate_flat_mask", &flat_mask_array,
                     nb::arg("state"), nb::arg("merged_influence") = false, nb::arg("macro_influence") = false)
@@ -1681,13 +1750,33 @@ NB_MODULE(ts_engine, m) {
         std::vector<std::vector<uint8_t>> as_kind;
         std::vector<int8_t> as_side;
         std::vector<uint8_t> as_cut;
-        void set_capture_afterstates(bool on) {
+        // P56: with roll faces on, each before-roll row of a walk also gets the distinct outcomes of its die
+        // (roll_outcomes): their observations, probabilities, finished-game results, and the row they belong to
+        // (its index among the env's rows of this step).
+        bool capture_roll_faces = false;
+        std::vector<std::vector<float>> as_fobs, as_fprob, as_fres;
+        std::vector<std::vector<uint8_t>> as_fterm;
+        std::vector<std::vector<int32_t>> as_fown;
+        void set_capture_afterstates(bool on, bool roll_faces = false) {
             capture_afterstates = on;
+            capture_roll_faces = on && roll_faces;
             as_pick.assign(num_envs, 0);
             as_obs.assign(on ? num_envs : 0, {});
             as_kind.assign(on ? num_envs : 0, {});
             as_side.assign(num_envs, 0);
             as_cut.assign(num_envs, 0);
+            const size_t nf = capture_roll_faces ? num_envs : 0;
+            as_fobs.assign(nf, {}); as_fprob.assign(nf, {}); as_fres.assign(nf, {}); as_fterm.assign(nf, {}); as_fown.assign(nf, {});
+        }
+        void add_roll_faces(size_t idx, ts::Player side, int32_t owner) {
+            std::vector<float> o, pr, res;
+            std::vector<uint8_t> term;
+            if (!roll_outcomes(st(idx), side, features_for(idx, side), obs_width, o, pr, term, res)) return;
+            as_fobs[idx].insert(as_fobs[idx].end(), o.begin(), o.end());
+            as_fprob[idx].insert(as_fprob[idx].end(), pr.begin(), pr.end());
+            as_fres[idx].insert(as_fres[idx].end(), res.begin(), res.end());
+            as_fterm[idx].insert(as_fterm[idx].end(), term.begin(), term.end());
+            as_fown[idx].insert(as_fown[idx].end(), pr.size(), owner);
         }
         static bool at_chance(const ts::GameState& g) {
             return g.ctx().decision_player == ts::Player::NONE && g.ctx().decision_type == ts::DecisionType::ROLL_DIE;
@@ -1718,8 +1807,10 @@ NB_MODULE(ts_engine, m) {
             for (size_t k = 0; k < kMaxAfterstateWalk; ++k) {
                 if (ts::Engine::is_terminal(st(idx))) { ended = true; break; }
                 if (at_chance(st(idx))) {
-                    if (!fresh) keep_afterstate(idx, side, kBeforeRoll, forced);
-                    else if (!kinds.empty() && kinds.back() == kAfterDecision) kinds.back() = kBeforeRoll;
+                    bool before_row = false;
+                    if (!fresh) { const size_t n0 = kinds.size(); keep_afterstate(idx, side, kBeforeRoll, forced); before_row = kinds.size() > n0; }
+                    else if (!kinds.empty() && kinds.back() == kAfterDecision) { kinds.back() = kBeforeRoll; before_row = true; }
+                    if (before_row && capture_roll_faces) add_roll_faces(idx, side, static_cast<int32_t>(kinds.size() - 1));
                     if (forced) {
                         if (capture_predeal && ts::rollout::at_turn_cleanup(st(idx))) record_predeal(idx);
                         if (slots[idx].auto_advance(1) == 0) { ended = true; break; }
@@ -1736,7 +1827,10 @@ NB_MODULE(ts_engine, m) {
                 add_tracks(idx);
                 fresh = false;
             }
-            if (!ended) { as_cut[idx] = 1; as_obs[idx].clear(); kinds.clear(); }
+            if (!ended) {
+                as_cut[idx] = 1; as_obs[idx].clear(); kinds.clear();
+                if (capture_roll_faces) { as_fobs[idx].clear(); as_fprob[idx].clear(); as_fres[idx].clear(); as_fterm[idx].clear(); as_fown[idx].clear(); }
+            }
         }
         void record_predeal(size_t idx) {
             for (int side = 0; side < 2; ++side) {
@@ -1899,6 +1993,7 @@ NB_MODULE(ts_engine, m) {
                 const bool walk = capture_afterstates && as_pick[i];
                 if (capture_afterstates) {
                     as_obs[i].clear(); as_kind[i].clear(); as_cut[i] = 0; as_side[i] = 0; as_pick[i] = 0;
+                    if (capture_roll_faces) { as_fobs[i].clear(); as_fprob[i].clear(); as_fres[i].clear(); as_fterm[i].clear(); as_fown[i].clear(); }
                 }
                 if (static_cast<size_t>(i) >= act_count) return;
                 if (ts::Engine::is_terminal(st(i))) {
@@ -2148,7 +2243,46 @@ NB_MODULE(ts_engine, m) {
              nb::arg("env_index"), nb::arg("us"), nb::arg("ussr"),
              "P23 / E4.1: the same for one env; rebuilds only that env's cached mask.")
         .def("step_flat_all", &VectorizedBatchRunner::step_flat_all, nb::arg("actions"), nb::arg("auto_advance") = false)
+        .def("get_afterstate_faces", [](VectorizedBatchRunner& self) {
+                 if (!self.capture_roll_faces) throw std::runtime_error("get_afterstate_faces: roll faces are off (set_capture_afterstates(on, roll_faces=True))");
+                 const size_t w = self.obs_width;
+                 size_t rows_before = 0, n = 0;
+                 for (size_t i = 0; i < self.num_envs; ++i) n += self.as_fprob[i].size();
+                 int64_t* own = new int64_t[std::max<size_t>(1, n)];
+                 float* pr = new float[std::max<size_t>(1, n)];
+                 uint8_t* term = new uint8_t[std::max<size_t>(1, n)];
+                 float* res = new float[std::max<size_t>(1, n)];
+                 float* obs = new float[std::max<size_t>(1, n * w)];
+                 size_t r = 0;
+                 for (size_t i = 0; i < self.num_envs; ++i) {
+                     const size_t k = self.as_fprob[i].size();
+                     for (size_t j = 0; j < k; ++j) {
+                         own[r + j] = static_cast<int64_t>(rows_before + static_cast<size_t>(self.as_fown[i][j]));
+                         pr[r + j] = self.as_fprob[i][j];
+                         term[r + j] = self.as_fterm[i][j];
+                         res[r + j] = self.as_fres[i][j];
+                     }
+                     if (k) std::memcpy(obs + r * w, self.as_fobs[i].data(), k * w * sizeof(float));
+                     r += k;
+                     rows_before += self.as_kind[i].size();
+                 }
+                 size_t s1[1] = { n }, s2[2] = { n, w };
+                 nb::capsule o1(own, [](void* q) noexcept { delete[] static_cast<int64_t*>(q); });
+                 nb::capsule o2(pr, [](void* q) noexcept { delete[] static_cast<float*>(q); });
+                 nb::capsule o3(term, [](void* q) noexcept { delete[] static_cast<uint8_t*>(q); });
+                 nb::capsule o4(res, [](void* q) noexcept { delete[] static_cast<float*>(q); });
+                 nb::capsule o5(obs, [](void* q) noexcept { delete[] static_cast<float*>(q); });
+                 return nb::make_tuple(nb::ndarray<nb::numpy, int64_t, nb::ndim<1>>(own, 1, s1, o1),
+                                       nb::ndarray<nb::numpy, float, nb::ndim<1>>(pr, 1, s1, o2),
+                                       nb::ndarray<nb::numpy, uint8_t, nb::ndim<1>>(term, 1, s1, o3),
+                                       nb::ndarray<nb::numpy, float, nb::ndim<1>>(res, 1, s1, o4),
+                                       nb::ndarray<nb::numpy, float, nb::ndim<2>>(obs, 2, s2, o5));
+             },
+             "P56: the distinct outcomes of each before-roll row's die from the last step_flat_all, as (row -- the "
+             "before-roll row's index in get_afterstates' order --, probability, finished game, its result from the "
+             "decider's side, observation from the decider's side; zeros for a finished game).")
         .def("set_capture_afterstates", &VectorizedBatchRunner::set_capture_afterstates, nb::arg("on"),
+             nb::arg("roll_faces") = false,
              "The afterstate critic's moments, captured by the runner as it steps (set_afterstate_envs picks the "
              "envs before each step_flat_all, get_afterstates() reads them after it).")
         .def("set_afterstate_envs", [](VectorizedBatchRunner& self, nb::ndarray<const uint8_t, nb::ndim<1>, nb::c_contig, nb::device::cpu> pick) {

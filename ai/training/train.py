@@ -1282,6 +1282,15 @@ def build_parser() -> argparse.ArgumentParser:
                         help="P52b: with --update-bf16, run the heads (policy logits, values, risk) in fp32 from an fp32 "
                              "copy of the trunk's output, so the logits PPO's ratio reads are not rounded to bf16 (rounded, "
                              "the taken action's log-prob moved 0.025 on average and 4.5%% of rows left the 0.1 clip band).")
+    parser.add_argument("--afterstate-advantage", action="store_true", default=False,
+                        help="P56: the policy's advantage from each side's own chain of decisions with the decision's own-view "
+                             "afterstate as a node (research/plans/P56_afterstate_advantage.md). For a move followed by a die "
+                             "the node is the exact average over the die's distinct outcomes (the runner enumerates the faces "
+                             "and merges identical results), also the before-roll row's value target; the roll's own luck is "
+                             "left out of the advantage. Value targets otherwise as configured. Needs --afterstate-value-coef.")
+    parser.add_argument("--afterstate-lambda-opp", type=float, default=1.0,
+                        help="P56: the decay at the afterstate node -- the weight of the opponent's turn and the dice after a "
+                             "decision's own effect in its advantage; 1 is the plain chain's weight (the default).")
     parser.add_argument("--predeal-value-coef", type=float, default=0.0,
                         help="P33, the pre-deal critic: weight (times --vf-coef) of a value loss on each env's turn-end park -- after a turn's last action, before the deal, nobody's decision -- read from both sides, each with its own next decision's lambda-return as the target (the result where the game ends first). The rollout root's stop=predeal reads the critic there. 0 = off.")
     parser.add_argument("--search-rollout-leaf-side", choices=["mover", "decider", "own"], default="mover",
@@ -1553,6 +1562,8 @@ def main():
             afterstate_frac=args.afterstate_frac,
             update_bf16=args.update_bf16,
             bf16_fp32_heads=args.bf16_fp32_heads,
+            afterstate_advantage=args.afterstate_advantage,
+            afterstate_lambda_opp=args.afterstate_lambda_opp,
             setup_random_frac=args.setup_random_frac,
             target_endings=args.target_endings,
             target_region=args.target_region,

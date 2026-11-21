@@ -1231,6 +1231,11 @@ FLAT_MACRO_NODE: int = 220
 
 BUILD_COMPILER: str
 
+def roll_outcomes(state: GameState, side: Player, features: int = 0) -> tuple:
+    """
+    P56: the distinct outcomes of the die roll pending in `state` (empty if none): (observations from `side`, probabilities, finished-game flags, results from `side`) -- the runner's roll faces, standalone.
+    """
+
 class ActionMask:
     @staticmethod
     def generate_flat_mask(state: GameState, merged_influence: bool = False, macro_influence: bool = False) -> Annotated[NDArray[numpy.uint8], dict(shape=(None,))]: ...
@@ -1351,7 +1356,12 @@ class VectorizedBatchRunner:
 
     def step_flat_all(self, actions: Sequence[int], auto_advance: bool = False) -> list[int]: ...
 
-    def set_capture_afterstates(self, on: bool) -> None:
+    def get_afterstate_faces(self) -> tuple:
+        """
+        P56: the distinct outcomes of each before-roll row's die from the last step_flat_all, as (row -- the before-roll row's index in get_afterstates' order --, probability, finished game, its result from the decider's side, observation from the decider's side; zeros for a finished game).
+        """
+
+    def set_capture_afterstates(self, on: bool, roll_faces: bool = False) -> None:
         """
         The afterstate critic's moments, captured by the runner as it steps (set_afterstate_envs picks the envs before each step_flat_all, get_afterstates() reads them after it).
         """

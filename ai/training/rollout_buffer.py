@@ -284,6 +284,7 @@ class RolloutBuffer:
         defcon_risk_horizon: int = 4,
         same_perspective_bootstrap: bool = False,
         per_player_gae: bool = False,
+        afterstate_node: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None,
     ) -> None:
         """Computes Generalized Advantage Estimation (GAE) with Zero-Sum Alternating Perspective Alignment.
 
@@ -334,6 +335,11 @@ class RolloutBuffer:
             keep = ~window_mask
             self.advantages = torch.where(keep, pp_adv, self.advantages)
             self.returns_win = torch.where(keep, pp_ret, self.returns_win)
+        if afterstate_node is not None:
+            # P56: the policy's advantage from each side's own chain with the afterstate node; the value targets
+            # (returns_win) stay as computed above.
+            node_adv, _ = self._gae_per_player(gamma, gae_lambda, last_v_win, last_players, node=afterstate_node)
+            self.advantages = torch.where(~window_mask, node_adv, self.advantages)
 
         self.normalise_advantages()
 
@@ -626,8 +632,16 @@ class RolloutBuffer:
         gae_lambda: float,
         last_v_win: torch.Tensor,
         last_players: torch.Tensor,
+        node: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """GAE within each player's own subsequence of decisions.
+
+        `node` (P56): (U, U_post, lambda_opp) -- U[t, e] the decision's afterstate value in its own frame (NaN: no
+        afterstate, the plain step), U_post[t, e] the value its next step is measured from (U itself, or the value
+        after the roll that actually came when the roll's own luck is left out; NaN: that step is zero -- the roll
+        led straight to the side's next decision or to the end), lambda_opp[e] the decay at the node. The step is
+        then split: d1 = U - V_t, d2 = R + disc V_next - U_post, A_t = d1 + lambda_opp (d2 + disc lambda A_next);
+        with lambda_opp 1 and U_post = U it is the plain step exactly.
 
         Walks backward once, carrying per-player state: the advantage and value at that player's
         NEXT own decision, the rewards accrued to it since, and the gap in steps. Vectorised over
@@ -682,8 +696,15 @@ class RolloutBuffer:
                 disc = torch.pow(torch.tensor(gamma, device=dev), st["gap"])
                 carry = st["has"].float()
                 v_t = self.values_win[t]
-                delta = st["R"] + disc * st["V"] * carry - v_t
+                target = st["R"] + disc * st["V"] * carry
+                delta = target - v_t
                 a = delta + disc * gae_lambda * st["A"] * carry
+                if node is not None:
+                    u_t, post_t, lam_opp = node[0][t], node[1][t], node[2]
+                    has_u = torch.isfinite(u_t)
+                    post = torch.where(torch.isfinite(post_t), post_t, target)
+                    a_node = (u_t - v_t) + lam_opp * ((target - post) + disc * gae_lambda * st["A"] * carry)
+                    a = torch.where(has_u, a_node, a)
 
                 adv[t] = torch.where(is_mover, a, adv[t])
                 ret[t] = torch.where(is_mover, a + v_t, ret[t])

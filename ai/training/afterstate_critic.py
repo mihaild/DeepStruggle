@@ -28,7 +28,7 @@ than MAX_WALK nodes is dropped and counted.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, List, Optional, Sequence, Tuple
+from typing import Any, Callable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
@@ -50,6 +50,17 @@ class AfterstateRows:
     sides: np.ndarray
     kinds: np.ndarray
     obs: torch.Tensor
+    #: P56, with roll faces: the distinct outcomes of each before-roll row's die (the runner's roll_outcomes) --
+    #: the row each belongs to, its probability, whether it ends the game and with what result (the decider's
+    #: side), its observation.
+    face_row: Optional[np.ndarray] = None
+    face_prob: Optional[np.ndarray] = None
+    face_term: Optional[np.ndarray] = None
+    face_res: Optional[np.ndarray] = None
+    face_obs: Optional[torch.Tensor] = None
+    #: P56: each row's value read at rollout time, and a before-roll row's rolls' average (NaN elsewhere).
+    values: Optional[torch.Tensor] = None
+    avg: Optional[torch.Tensor] = None
 
 
 def _is_chance(state: Any) -> bool:
@@ -109,10 +120,13 @@ class AfterstateCapture:
 
     `before()` runs before the env step (it picks the envs), `after()` right after it (it reads the rows)."""
 
-    def __init__(self, frac: float, features: int, width: int, forced: bool = True, seed: int = 0) -> None:
+    def __init__(self, frac: float, features: int, width: int, forced: bool = True, seed: int = 0,
+                 roll_faces: bool = False) -> None:
         if not 0.0 < frac <= 1.0:
             raise ValueError(f"--afterstate-frac must be in (0, 1], got {frac}")
         self.frac = float(frac)
+        #: P56: also capture each before-roll row's distinct die outcomes (rows' face_* fields).
+        self.roll_faces = bool(roll_faces)
         self.features = int(features)
         self.width = int(width)
         self.forced = bool(forced)
@@ -134,7 +148,7 @@ class AfterstateCapture:
         """Pick the learner decisions of this step whose moments the runner records as it applies them. `deciders`
         is +1 / -1 / 0 per env."""
         if self._on is not runner:
-            runner.set_capture_afterstates(True)
+            runner.set_capture_afterstates(True, self.roll_faces)
             self._on = runner
         pick = (np.asarray(learner, dtype=bool) & (np.asarray(deciders) != 0)
                 & (self.rng.random(len(deciders)) < self.frac))
@@ -156,8 +170,9 @@ class AfterstateCapture:
         o = np.asarray(obs)
         # The buffer's width: rows are zero-padded to the widest set in a mixed batch.
         o = o[:, :self.width] if o.shape[1] >= self.width else np.pad(o, ((0, 0), (0, self.width - o.shape[1])))
-        return AfterstateRows(step, np.asarray(envs, dtype=np.int64), np.asarray(sides, dtype=np.int8), kinds,
-                              torch.from_numpy(np.ascontiguousarray(o, dtype=np.float32)).to(device))
+        return self._with_faces(runner, AfterstateRows(
+            step, np.asarray(envs, dtype=np.int64), np.asarray(sides, dtype=np.int8), kinds,
+            torch.from_numpy(np.ascontiguousarray(o, dtype=np.float32)).to(device)), device)
 
     def _after_pinned(self, runner: Any, step: int, device: torch.device) -> Optional[AfterstateRows]:
         """after() on CUDA: the runner gathers the rows in parallel into a pinned buffer, copied to the device without
@@ -190,7 +205,22 @@ class AfterstateCapture:
             obs = obs[:, :self.width].contiguous()
         elif width < self.width:
             obs = torch.nn.functional.pad(obs, (0, self.width - width))
-        return AfterstateRows(step, np.asarray(envs, dtype=np.int64), np.asarray(sides, dtype=np.int8), kinds, obs)
+        return self._with_faces(runner, AfterstateRows(step, np.asarray(envs, dtype=np.int64),
+                                                       np.asarray(sides, dtype=np.int8), kinds, obs), device)
+
+    def _with_faces(self, runner: Any, rows: AfterstateRows, device: Any) -> AfterstateRows:
+        """P56: the step's roll faces attached to its rows (at the buffer's width)."""
+        if not self.roll_faces:
+            return rows
+        fr, fp, ft, fres, fo = runner.get_afterstate_faces()
+        fo = np.asarray(fo)
+        fo = fo[:, :self.width] if fo.shape[1] >= self.width else np.pad(fo, ((0, 0), (0, self.width - fo.shape[1])))
+        rows.face_row = np.asarray(fr, dtype=np.int64)
+        rows.face_prob = np.asarray(fp, dtype=np.float32)
+        rows.face_term = np.asarray(ft, dtype=bool)
+        rows.face_res = np.asarray(fres, dtype=np.float32)
+        rows.face_obs = torch.from_numpy(np.ascontiguousarray(fo, dtype=np.float32)).to(device)
+        return rows
 
     def metrics(self) -> dict:
         out = {"afterstate/decisions": float(self.decisions), "afterstate/mismatched": float(self.mismatched)}
@@ -246,6 +276,62 @@ def next_decision_targets(t: np.ndarray, e: np.ndarray, side: np.ndarray, player
     return np.where(ends, result, np.asarray(rets)[dd, e]).astype(np.float32), keep
 
 
+def read_node_values(rows: AfterstateRows, value_fn: Callable[[torch.Tensor], torch.Tensor]) -> None:
+    """P56: fill rows.values (every row's value from its side, read by `value_fn` -- the rollout-time network) and
+    rows.avg (a before-roll row's probability-weighted value over its die's outcomes, a finished game counting its
+    result; NaN for a row without outcomes)."""
+    n = int(rows.obs.shape[0])
+    obs = rows.obs if rows.face_obs is None or rows.face_obs.shape[0] == 0 else torch.cat([rows.obs, rows.face_obs])
+    with torch.no_grad():
+        v = value_fn(obs).reshape(-1).float()
+    rows.values = v[:n]
+    avg = torch.full((n,), float("nan"), device=v.device)
+    if rows.face_obs is not None and rows.face_obs.shape[0]:
+        assert rows.face_row is not None and rows.face_prob is not None and rows.face_term is not None
+        assert rows.face_res is not None
+        dev = v.device
+        fv = torch.where(torch.from_numpy(rows.face_term).to(dev), torch.from_numpy(rows.face_res).to(dev), v[n:])
+        idx = torch.from_numpy(rows.face_row).to(dev)
+        acc = torch.zeros(n, device=dev).index_add_(0, idx, torch.from_numpy(rows.face_prob).to(dev) * fv)
+        has = torch.zeros(n, dtype=torch.bool, device=dev).index_fill_(0, idx, True)
+        avg = torch.where(has, acc, avg)
+    rows.avg = avg
+
+
+def node_tensors(rows: Sequence[AfterstateRows], horizon: int, num_envs: int, device: Any
+                 ) -> Tuple[torch.Tensor, torch.Tensor]:
+    """P56: (U, U_post), each (horizon, num_envs), for compute_gae's afterstate node (RolloutBuffer._gae_per_player).
+    A decision's walk is its env's rows in its step. U is the value of the walk's first moment: the rolls' average
+    when that moment is a roll's (the move is followed by a die), else the moment's own value. U_post is U, except
+    after a die: the value after the roll that actually came (the next row), so the roll's own luck is left out of
+    the advantage -- NaN when that state is no row (the side's own next decision, or the end of the game), where the
+    step after the roll is zero. NaN in U: no afterstate, the plain step."""
+    u = torch.full((horizon, num_envs), float("nan"), device=device)
+    post = torch.full((horizon, num_envs), float("nan"), device=device)
+    for r in rows:
+        n = len(r.envs)
+        if n == 0 or r.values is None:
+            continue
+        envs = np.asarray(r.envs)
+        first = np.flatnonzero(np.r_[True, envs[1:] != envs[:-1]])
+        kinds = np.asarray(r.kinds)
+        vals = r.values
+        avg = r.avg if r.avg is not None else torch.full((n,), float("nan"), device=vals.device)
+        f_t = torch.from_numpy(first).to(vals.device)
+        is_roll = torch.from_numpy(kinds[first] == BEFORE_ROLL).to(vals.device) & torch.isfinite(avg.index_select(0, f_t))
+        nxt = np.minimum(first + 1, n - 1)
+        after_ok = (first + 1 < n) & (envs[nxt] == envs[first]) & (kinds[nxt] == AFTER_ROLL)
+        u_f = torch.where(is_roll, avg.index_select(0, f_t), vals.index_select(0, f_t))
+        nan = torch.full_like(u_f, float("nan"))
+        after_v = torch.where(torch.from_numpy(after_ok).to(vals.device),
+                              vals.index_select(0, torch.from_numpy(nxt).to(vals.device)), nan)
+        post_f = torch.where(is_roll, after_v, u_f)
+        e_t = torch.from_numpy(envs[first]).to(device)
+        u[r.step].index_copy_(0, e_t, u_f.to(device))
+        post[r.step].index_copy_(0, e_t, post_f.to(device))
+    return u, post
+
+
 def build_targets(rows: Sequence[AfterstateRows], players: np.ndarray, dones: np.ndarray, rewards: np.ndarray,
                   rets: np.ndarray, learner: np.ndarray, device: Any
                   ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
@@ -258,6 +344,13 @@ def build_targets(rows: Sequence[AfterstateRows], players: np.ndarray, dones: np
     side = np.concatenate([r.sides for r in rows]).astype(np.int64)
     kinds = np.concatenate([r.kinds for r in rows]).astype(np.int64)
     target, keep = next_decision_targets(t, e, side, players, dones, rewards, rets, learner)
+    if any(r.avg is not None for r in rows):
+        # P56: a before-roll row's target is its die's outcomes' average, read at rollout time.
+        ovr = np.concatenate([r.avg.detach().float().cpu().numpy() if r.avg is not None
+                              else np.full(len(r.envs), np.nan, dtype=np.float32) for r in rows])
+        has = np.isfinite(ovr)
+        target = np.where(has, ovr, target).astype(np.float32)
+        keep = keep | has
     if not keep.any():
         return None, None, None
     idx = torch.from_numpy(np.flatnonzero(keep)).to(rows[0].obs.device)

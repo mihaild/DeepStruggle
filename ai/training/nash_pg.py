@@ -32,7 +32,7 @@ from ai.training.card_event_targets import aux_label
 from ai.training.afterstate_critic import KIND_NAMES as AFTERSTATE_KINDS
 from ai.training.afterstate_critic import AfterstateCapture, AfterstateRows
 from ai.training.afterstate_critic import build_targets as build_afterstate_targets
-from ai.training.afterstate_critic import next_decision_targets
+from ai.training.afterstate_critic import next_decision_targets, node_tensors, read_node_values
 from ai.training.restart_pool import critic_judge
 from ai.rewards.region_reward import RegionTargetedReward
 from tools.lib.openings import FORCED_OPENINGS_US, FORCED_OPENINGS_USSR, NODE_OFFSET as _NODE, OPENINGS
@@ -419,6 +419,8 @@ class BaseNashPGTrainer:
         afterstate_frac: float = 0.25,    # the share of the learner's decisions whose moments are captured
         update_bf16: bool = False,        # P52: the update's network forwards under bf16 autocast
         bf16_fp32_heads: bool = False,    # P52: ...with the heads (logits, values) in fp32
+        afterstate_advantage: bool = False,   # P56: the policy's advantage from each side's chain with the afterstate node
+        afterstate_lambda_opp: float = 1.0,   # P56: the decay at that node (1: the plain chain's weight)
         searched_games_workers: int = 0,  # P33: worker processes playing whole games with the rollout root
         searched_games_envs: int = 32,    # games each of them plays at once
         searched_value_coef: float = 0.0,  # weight of the value loss on those games' decisions
@@ -724,6 +726,17 @@ class BaseNashPGTrainer:
         #: logits PPO's ratio reads are not rounded to bf16 (rounded, 4.5% of rows left the 0.1 clip band before any
         #: learning). Sets the networks' fp32_heads each update.
         self.bf16_fp32_heads = bool(bf16_fp32_heads)
+        #: P56 (owner, 2026-11-21): the policy's advantage from each side's own chain (per-player GAE) with the
+        #: decision's own-view afterstate as a node; for a move followed by a die the node is the exact average over
+        #: the die's distinct outcomes (the runner's roll faces), which is also the before-roll row's value target,
+        #: and the roll's own luck is left out of the advantage. Value targets otherwise as configured. The decay at
+        #: the node (--afterstate-lambda-opp) defaults to 1; rows in a game against a pool member keep 1.
+        self.afterstate_advantage = bool(afterstate_advantage)
+        self.afterstate_lambda_opp = float(afterstate_lambda_opp)
+        if self.afterstate_advantage and float(afterstate_value_coef) <= 0.0:
+            raise ValueError("--afterstate-advantage needs the afterstate critic (--afterstate-value-coef > 0)")
+        if not 0.0 <= self.afterstate_lambda_opp <= 1.0:
+            raise ValueError(f"--afterstate-lambda-opp must be in [0, 1], got {afterstate_lambda_opp}")
         if self.bf16_fp32_heads and not self.update_bf16:
             raise ValueError("--bf16-fp32-heads needs --update-bf16")
         self.afterstate: Optional[AfterstateCapture] = None
@@ -2185,7 +2198,8 @@ class BaseNashPGTrainer:
                 if self.afterstate is None:
                     self.afterstate = AfterstateCapture(self.afterstate_frac, self.obs_features, self.buffer.obs_dim,
                                                         forced=bool(self.env._auto_advance),
-                                                        seed=int(np.random.randint(1 << 30)))
+                                                        seed=int(np.random.randint(1 << 30)),
+                                                        roll_faces=self.afterstate_advantage)
                 self.afterstate.before(self.env.runner, np.asarray(learner_np, dtype=bool), np.asarray(_dp))
             if self.restart_pool is not None:
                 self.restart_pool.steps = int(self.total_env_steps + self.buffer.step * self.num_envs)
@@ -2208,6 +2222,9 @@ class BaseNashPGTrainer:
                 _asr = self.afterstate.after(self.env.runner, self.buffer.step, np.asarray(self._dones_np) > 0.5,
                                              self.device)
                 if _asr is not None:
+                    if self.afterstate_advantage:
+                        # P56: the rows' values and the rolls' averages from the rollout-time network.
+                        read_node_values(_asr, lambda _o: _value_only(self.active_net, _o))
                     self._as_rows.append(_asr)
             if self._predeal_on:
                 _pf, _pus, _pussr = self.env.runner.get_predeal()
@@ -2372,6 +2389,13 @@ class BaseNashPGTrainer:
             last_v_win = prior_apply(last_v_win.squeeze(-1), self._prior_shift_rollout(
                 last_obs_t, last_v_win.squeeze(-1), _last_info["decision_players"], _last_info["turns"],
                 None)).unsqueeze(-1)
+        _node = None
+        if self.afterstate_advantage:
+            _u, _post = node_tensors(self._as_rows, self.buffer.buffer_size, self.num_envs, self.device)
+            # A game against a pool member keeps the plain chain's weight at the node.
+            _lam = torch.from_numpy(np.where(self._selfplay_mask, self.afterstate_lambda_opp, 1.0).astype(np.float32)
+                                    ).to(self.device)
+            _node = (_u, _post, _lam)
         self.buffer.compute_gae(
             last_v_win=last_v_win.squeeze(-1),
             last_v_vp=last_v_vp.squeeze(-1),
@@ -2382,6 +2406,7 @@ class BaseNashPGTrainer:
             blunder_window=self.blunder_window,
             same_perspective_bootstrap=self.same_perspective_bootstrap,
             per_player_gae=self.per_player_gae,
+            afterstate_node=_node,
         )
         if self.search_value_beta > 0.0:
             self._mix_search_values()
