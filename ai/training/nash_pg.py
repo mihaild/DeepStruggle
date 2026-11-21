@@ -418,6 +418,7 @@ class BaseNashPGTrainer:
         afterstate_value_coef: float = 0.0,  # the critic right after a side's decision and around its rolls (0 = off)
         afterstate_frac: float = 0.25,    # the share of the learner's decisions whose moments are captured
         update_bf16: bool = False,        # P52: the update's network forwards under bf16 autocast
+        bf16_fp32_heads: bool = False,    # P52: ...with the heads (logits, values) in fp32
         searched_games_workers: int = 0,  # P33: worker processes playing whole games with the rollout root
         searched_games_envs: int = 32,    # games each of them plays at once
         searched_value_coef: float = 0.0,  # weight of the value loss on those games' decisions
@@ -719,6 +720,12 @@ class BaseNashPGTrainer:
         #: P52 (owner, 2026-11-20): the update's network forwards under bf16 autocast, their outputs cast back to fp32
         #: before any loss. The rollout keeps fp32 (its CUDA graphs and the stored log-probs). A numerics change.
         self.update_bf16 = bool(update_bf16)
+        #: P52b (owner, 2026-11-21): under --update-bf16 the heads run in fp32 from an fp32 copy of the trunk, so the
+        #: logits PPO's ratio reads are not rounded to bf16 (rounded, 4.5% of rows left the 0.1 clip band before any
+        #: learning). Sets the networks' fp32_heads each update.
+        self.bf16_fp32_heads = bool(bf16_fp32_heads)
+        if self.bf16_fp32_heads and not self.update_bf16:
+            raise ValueError("--bf16-fp32-heads needs --update-bf16")
         self.afterstate: Optional[AfterstateCapture] = None
         self._as_rows: List[AfterstateRows] = []
         self._as_obs: Optional[torch.Tensor] = None
@@ -2965,6 +2972,10 @@ class NashPGTrainer(BaseNashPGTrainer):
 
     def train_step(self) -> Dict[str, float]:
         self.active_net.train()
+        if self.bf16_fp32_heads:
+            for _net in (self.active_net, self.reference_net, self.teacher_net):
+                if _net is not None:
+                    setattr(_net, "fp32_heads", True)
 
         total_loss_accum = 0.0
         policy_loss_accum = 0.0

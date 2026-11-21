@@ -1278,6 +1278,10 @@ def build_parser() -> argparse.ArgumentParser:
                              "the extra critics' rows) under bf16 autocast, outputs cast back to fp32 before the losses. "
                              "The rollout stays fp32. A numerics change (P26: bf16 moves the argmax on ~7%% of decisions "
                              "at inference), so off until an A/B passes.")
+    parser.add_argument("--bf16-fp32-heads", action="store_true", default=False,
+                        help="P52b: with --update-bf16, run the heads (policy logits, values, risk) in fp32 from an fp32 "
+                             "copy of the trunk's output, so the logits PPO's ratio reads are not rounded to bf16 (rounded, "
+                             "the taken action's log-prob moved 0.025 on average and 4.5%% of rows left the 0.1 clip band).")
     parser.add_argument("--predeal-value-coef", type=float, default=0.0,
                         help="P33, the pre-deal critic: weight (times --vf-coef) of a value loss on each env's turn-end park -- after a turn's last action, before the deal, nobody's decision -- read from both sides, each with its own next decision's lambda-return as the target (the result where the game ends first). The rollout root's stop=predeal reads the critic there. 0 = off.")
     parser.add_argument("--search-rollout-leaf-side", choices=["mover", "decider", "own"], default="mover",
@@ -1548,6 +1552,7 @@ def main():
             afterstate_value_coef=args.afterstate_value_coef,
             afterstate_frac=args.afterstate_frac,
             update_bf16=args.update_bf16,
+            bf16_fp32_heads=args.bf16_fp32_heads,
             setup_random_frac=args.setup_random_frac,
             target_endings=args.target_endings,
             target_region=args.target_region,

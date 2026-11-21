@@ -1,5 +1,7 @@
 """ColdWarNetV2: Graph-Card Cross-Attention Neural Network for Twilight Struggle."""
 
+import contextlib
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -450,6 +452,19 @@ class ColdWarNetV2(nn.Module):
             nn.Linear(128, 1),
         )
 
+    #: P52 (--bf16-fp32-heads): under bf16 autocast the heads -- policy logits, values, the risk logit -- run in fp32 from
+    #: an fp32 copy of the trunk's output, so the logits PPO's ratio reads are not rounded to bf16. Set by the trainer;
+    #: not a weight and not saved. Without autocast it changes nothing.
+    fp32_heads: bool = False
+
+    def _heads_in(self, h: torch.Tensor, tokens: tuple[torch.Tensor, ...] | None
+                  ) -> tuple[contextlib.AbstractContextManager, torch.Tensor, tuple[torch.Tensor, ...] | None]:
+        """(context, h, tokens) for the heads: autocast off and fp32 inputs when fp32_heads applies, else as given."""
+        if self.fp32_heads and torch.is_autocast_enabled("cuda"):
+            return (torch.autocast("cuda", enabled=False), h.float(),
+                    None if tokens is None else tuple(t.float() for t in tokens))
+        return contextlib.nullcontext(), h, tokens
+
     def _value_scalars(self, h: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """(v_win, v_vp), from whichever value head this instance has.
 
@@ -478,8 +493,10 @@ class ColdWarNetV2(nn.Module):
         """forward()'s v_win alone: the trunk and the value heads, without the policy heads, whose output a
         value-only caller would throw away (the afterstate and pre-deal critics' rows in the update). The same
         tensor as forward(obs)[1]."""
-        h, _attn, _tokens = self._encode(obs)
-        return self._value_scalars(h)[0]
+        h, _attn, tokens = self._encode(obs)
+        ctx, h, tokens = self._heads_in(h, tokens)
+        with ctx:
+            return self._value_scalars(h)[0]
 
     def forward_with_value_logits(
         self, obs: torch.Tensor, mask: torch.Tensor | None = None
@@ -490,13 +507,15 @@ class ColdWarNetV2(nn.Module):
         double the cost of every update. `None` on a scalar-headed model.
         """
         h, _attn, tokens = self._encode(obs)
-        raw_logits = self._cap_logits(pad_to_mask(self._policy_logits(h, tokens), mask), mask)
-        masked_logits = mask_logits(raw_logits, mask)
-        v_win, v_vp = self._value_scalars(h)
-        value_logits = None
-        if self.categorical_value:
-            assert self.value_dist_head is not None
-            value_logits = self.value_dist_head(h)
+        ctx, h, tokens = self._heads_in(h, tokens)
+        with ctx:
+            raw_logits = self._cap_logits(pad_to_mask(self._policy_logits(h, tokens), mask), mask)
+            masked_logits = mask_logits(raw_logits, mask)
+            v_win, v_vp = self._value_scalars(h)
+            value_logits = None
+            if self.categorical_value:
+                assert self.value_dist_head is not None
+                value_logits = self.value_dist_head(h)
         return masked_logits, v_win, v_vp, value_logits
 
     def two_hot(self, vp: torch.Tensor) -> torch.Tensor:
@@ -683,11 +702,11 @@ class ColdWarNetV2(nn.Module):
             v_vp: (B, 1) float tensor in [-20, 20].
         """
         h, _attn, tokens = self._encode(obs)
-        raw_logits = self._cap_logits(pad_to_mask(self._policy_logits(h, tokens), mask), mask)
-
-        masked_logits = mask_logits(raw_logits, mask)
-
-        v_win, v_vp = self._value_scalars(h)
+        ctx, h, tokens = self._heads_in(h, tokens)
+        with ctx:
+            raw_logits = self._cap_logits(pad_to_mask(self._policy_logits(h, tokens), mask), mask)
+            masked_logits = mask_logits(raw_logits, mask)
+            v_win, v_vp = self._value_scalars(h)
         return masked_logits, v_win, v_vp
 
     def forward_with_risk(
@@ -699,10 +718,13 @@ class ColdWarNetV2(nn.Module):
         other caller depends on, is untouched.
         """
         h, _attn, tokens = self._encode(obs)
-        raw_logits = self._cap_logits(pad_to_mask(self._policy_logits(h, tokens), mask), mask)
-        masked_logits = mask_logits(raw_logits, mask)
-        v_win, v_vp = self._value_scalars(h)
-        return masked_logits, v_win, v_vp, self.defcon_risk_head(h)
+        ctx, h, tokens = self._heads_in(h, tokens)
+        with ctx:
+            raw_logits = self._cap_logits(pad_to_mask(self._policy_logits(h, tokens), mask), mask)
+            masked_logits = mask_logits(raw_logits, mask)
+            v_win, v_vp = self._value_scalars(h)
+            risk = self.defcon_risk_head(h)
+        return masked_logits, v_win, v_vp, risk
 
     @torch.no_grad()
     def defcon_risk(self, obs: torch.Tensor) -> torch.Tensor:
