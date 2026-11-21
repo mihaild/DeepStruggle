@@ -1,5 +1,8 @@
 # P56 — the afterstate critic inside the advantage (owner, 2026-11-21)
 
+**Approved by the owner, 2026-11-21: step 1 built; checks, then pairs of 800M branches from R169 at 2,000M** (the
+section "The approved plan"). The first assessment follows.
+
 **Assessment: sound, and worth a short screen of branches rather than one arm,** because it is two changes at
 once -- a much shorter reach, and a split of the step at the afterstate -- and one arm cannot tell which of them
 did what. Measurements: [`../log/P56_afterstate_advantage_probe.md`](../log/P56_afterstate_advantage_probe.md).
@@ -120,7 +123,74 @@ change, no observation change.
 
 The engine is untouched; a bindings change is the owner's to approve.
 
-## The runs: a screen, then one long pair
+## The approved plan (owner, 2026-11-21): checks, then pairs of branches
+
+Step 1 is built (`--afterstate-advantage`: each side's own chain with the afterstate node and the die's exact
+average, `--afterstate-lambda-opp` default 1). The baseline is R169 at 2,000M. This section replaces the screen
+below it.
+
+### Checks, before any long run
+
+1. **Throughput,** alone on an idle GPU, the baseline's flags with and without `--afterstate-advantage`.
+2. **The new advantage on one rollout of the baseline** (CPU, the trainer's own code path on a recorded
+   rollout):
+   * the advantage's spread with the roll's luck dropped and with it kept, overall and by kind of move (coup,
+     realignment, the Space Race, a war, moves with no die);
+   * the advantage's mean by kind of move, dropped against kept: they must agree within their errors. This is
+     the check on real data that leaving the luck out does not bias a kind of move;
+   * the outcomes read per roll after merging (2.9 on random play).
+3. **The noise between two runs of one recipe:** C' below. It is a run, listed here because every read is
+   interpreted against it.
+
+### The arms
+
+All from R169's state at 2,000M, every other flag the baseline's (`launch_flags.py --diff` showing only the
+lines named), 800M each, two at a time.
+
+| pair | arm | what it is | compared with | rule |
+|:---|:---|:---|:---|:---|
+| 1 | **C** | the baseline continued under its own name | | |
+| 1 | **T1** | `--afterstate-advantage`, `--afterstate-lambda-opp 1` | C | it must cost nothing |
+| 2 | **C'** | the baseline continued with another sampling seed | C | the noise of one recipe, head to head and on the references |
+| 2 | **A8** | T1 with `--afterstate-lambda-opp 0.8` | T1 | it must show a gain |
+| 3, only if A8 gains | **A5** | T1 with `--afterstate-lambda-opp 0.5` | T1 | it must show a gain |
+| 3, only if A8 gains | **S** | T1 with its lambda lowered to A8's reach (0.88 by the probe; set from check 2's sweep), no decay at the afterstate | A8 | is A8's gain the split or the shorter reach |
+
+* **0.8 before 0.5** (owner): what a move is worth depends on whether the opponent can answer it, and the
+  positions after the reply are where the critic's first view of the move is corrected. 0.5 runs only if 0.8
+  helps.
+* T1 runs the per-player chain at the lambda that matches the baseline's reach (0.96 for a baseline at 0.98).
+* Rows against a fixed opponent, if the baseline has any, keep `lambda_opp` 1 (the build's default).
+
+### Reads at +800M
+
+1. Head to head on the same deals, SWAs of the last 80M, greedy, 2,000 deals a side, per seat from the JSON:
+   T1 against C, C' against C, A8 against T1 (and against C).
+2. The references (the old reference, J1's best), every arm, as context.
+3. For T1 and A8, on the CPU: the critic before a roll against the outcomes' exact average (off by 0.052 a
+   position on the baseline at 1,200M; it is now that row's training target, so it should fall), and the
+   critic's AUC and Brier against results beside C's.
+4. Health throughout: entropy, clip fraction, the size of a policy update, explained variance, the self-play
+   seat balance, the commonest opening setup's share in each seat.
+
+### How each is judged
+
+* **T1, by what it is:** not under C. The two-standard-error floor of its head to head at 49% or over, the
+  references not under C's by more than C' differs from C, health level. A gain is welcome and not required.
+* **A8 (and A5), a trade:** 52% or over against T1 on 4,000 games, and by more than C' differs from C; the
+  references not under T1's; health level.
+* **S** is read only against A8: level with it, the gain was the reach, and a flag gives it; under it, the split
+  at the afterstate is what gained.
+
+**Stop early** only on a clear problem inside 100M: entropy rising or falling steadily, explained variance
+falling, one seat running away.
+
+**Prediction.** T1 level to +2 against C; C' within 1.5 points of C; A8 level to +2 against T1. Held loosely.
+
+**Then.** T1 not under C: the baseline takes it. A8 over the bar: the baseline takes 0.8 and pair 3 says whether
+to go lower and why.
+
+## The first version's screen (superseded by the approved plan above)
 
 All from the baseline's state when the screen starts (R169 at 2,000M if the owner adopts it), every other flag
 the baseline's (`launch_flags.py --diff`), 300M each, in pairs in the two slots.
