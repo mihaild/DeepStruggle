@@ -1231,6 +1231,11 @@ FLAT_MACRO_NODE: int = 220
 
 BUILD_COMPILER: str
 
+def gae_per_player(players: Annotated[NDArray[numpy.int8], dict(shape=(None, None), order='C', device='cpu', writable=False)], dones: Annotated[NDArray[numpy.uint8], dict(shape=(None, None), order='C', device='cpu', writable=False)], rewards: Annotated[NDArray[numpy.float32], dict(shape=(None, None), order='C', device='cpu', writable=False)], values: Annotated[NDArray[numpy.float32], dict(shape=(None, None), order='C', device='cpu', writable=False)], last_v: Annotated[NDArray[numpy.float32], dict(shape=(None,), order='C', device='cpu', writable=False)], gamma: float, lam: float, u: Annotated[NDArray[numpy.float32], dict(shape=(None, None), order='C', device='cpu', writable=False)], post: Annotated[NDArray[numpy.float32], dict(shape=(None, None), order='C', device='cpu', writable=False)], lam_opp: Annotated[NDArray[numpy.float32], dict(shape=(None,), order='C', device='cpu', writable=False)], adv: Annotated[NDArray[numpy.float32], dict(shape=(None, None), order='C', device='cpu')], ret: Annotated[NDArray[numpy.float32], dict(shape=(None, None), order='C', device='cpu')], nadv: Annotated[NDArray[numpy.float32], dict(shape=(None, None), order='C', device='cpu')]) -> None:
+    """
+    Per-player GAE (RolloutBuffer._gae_per_player_both), each env's backward pass in parallel. players int8 (T, N), dones uint8, rewards / values float32, last_v (N,) in US frame; u / post (T, N) or (0, 0) for no node, lam_opp (N,). Writes adv, ret (plain chain) and nadv (node chain) for every mover row; other rows are left as given.
+    """
+
 def roll_outcomes(state: GameState, side: Player, features: int = 0) -> tuple:
     """
     P56: the distinct outcomes of the die roll pending in `state` (empty if none): (observations from `side`, probabilities, finished-game flags, results from `side`) -- the runner's roll faces, standalone.
@@ -1359,6 +1364,11 @@ class VectorizedBatchRunner:
     def get_afterstate_faces(self) -> tuple:
         """
         P56: the distinct outcomes of each before-roll row's die from the last step_flat_all, as (row -- the before-roll row's index in get_afterstates' order --, probability, finished game, its result from the decider's side, observation from the decider's side; zeros for a finished game).
+        """
+
+    def get_afterstates_with_faces_into(self, out: Annotated[NDArray[numpy.float32], dict(shape=(None, None), order='C', device='cpu')]) -> tuple:
+        """
+        P56: get_afterstates_into and get_afterstate_faces_into in one call and one buffer: the rows' observations in out[:rows], then the outcomes' in out[rows:rows + outcomes], gathered in parallel: (envs, sides, kinds, rows, walks cut, outcome row, probability, finished game, result, outcomes). Nothing is written when `out` has fewer than rows + outcomes rows.
         """
 
     def get_afterstate_faces_into(self, out: Annotated[NDArray[numpy.float32], dict(shape=(None, None), order='C', device='cpu')]) -> tuple:

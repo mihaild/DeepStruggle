@@ -2,6 +2,7 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 
 // The batch runner's parallel loops go through libgomp's own entry point, not `#pragma omp`.
@@ -27,19 +28,25 @@ namespace ts_parallel {
 // -- what `schedule(static)` does. Each iteration must be independent (they are: one env each).
 template <class F>
 void gomp_parallel_for(int64_t n, F&& body) {
+    // Indices are handed out from a shared counter in small chunks rather than as one fixed block a thread: a block
+    // holding a few long walks (a realignment's dice, a long afterstate walk) no longer holds up the whole team.
+    // Every body here writes only its own index's outputs, so results do not depend on the schedule.
     struct Job {
         int64_t n;
+        int64_t chunk;
+        std::atomic<int64_t> next;
         F* body;
     };
-    Job job{n, &body};
+    Job job{n, 1, {0}, &body};
     GOMP_parallel(
         [](void* p) {
-            const Job* j = static_cast<const Job*>(p);
-            const int64_t team = omp_get_num_threads();
-            const int64_t chunk = (j->n + team - 1) / team;
-            const int64_t lo = static_cast<int64_t>(omp_get_thread_num()) * chunk;
-            const int64_t hi = std::min(j->n, lo + chunk);
-            for (int64_t i = lo; i < hi; ++i) (*j->body)(i);
+            Job* j = static_cast<Job*>(p);
+            for (;;) {
+                const int64_t lo = j->next.fetch_add(j->chunk, std::memory_order_relaxed);
+                if (lo >= j->n) break;
+                const int64_t hi = std::min(j->n, lo + j->chunk);
+                for (int64_t i = lo; i < hi; ++i) (*j->body)(i);
+            }
         },
         &job, /*num_threads=*/0 /* OMP_NUM_THREADS / the team torch sized */, /*flags=*/0);
 }

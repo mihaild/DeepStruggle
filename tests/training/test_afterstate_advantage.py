@@ -217,3 +217,87 @@ def test_the_node_needs_per_player_returns() -> None:
         NashPGTrainer(active_net=_net(), env=TsVectorizedEnv(num_envs=4, base_seed=1), num_envs=4, buffer_size=16,
                       lr=3e-4, eta=0.1, ref_update_freq=500, cuda_graphs=False, device=torch.device("cpu"),
                       afterstate_value_coef=1.0, afterstate_frac=1.0, afterstate_advantage=True)
+
+
+def test_the_merged_gather_is_the_two_gathers() -> None:
+    """get_afterstates_with_faces_into: the rows in out[:n] and the outcomes in out[n:], equal to the two calls."""
+    env = TsVectorizedEnv(num_envs=32, base_seed=13)
+    obs, masks, _ = env.reset_all()
+    r = env.runner
+    r.set_capture_afterstates(True, True)
+    rng = np.random.default_rng(6)
+    seen = 0
+    for _ in range(150):
+        acts = np.array([rng.choice(np.flatnonzero(m)) if m.any() else 0 for m in np.asarray(masks)])
+        r.set_afterstate_envs((np.asarray(r.get_decision_players()) != 0).astype(np.uint8))
+        obs, masks, _, _, _ = env.step(acts)
+        e0, s0, k0, a0, cut = r.get_afterstates()
+        envs, sides, kinds, aobs = (np.asarray(x) for x in (e0, s0, k0, a0))
+        own, prob, term, res, fobs = (np.asarray(x) for x in r.get_afterstate_faces())
+        buf = np.zeros((len(kinds) + len(prob) + 2, obs.shape[1]), dtype=np.float32)
+        e2, s2, k2, n, c2, o2, p2, t2, r2, nf = r.get_afterstates_with_faces_into(buf)
+        assert n == len(kinds) and nf == len(prob) and c2 == cut
+        for a, b in ((envs, e2), (sides, s2), (kinds, k2), (own, o2), (prob, p2), (term, t2), (res, r2)):
+            assert np.array_equal(a, np.asarray(b))
+        assert np.array_equal(buf[:n], aobs) and np.array_equal(buf[n:n + nf], fobs)
+        seen += nf
+    assert seen > 0
+
+
+def _gae_numpy(players, dones, rewards, values, last_v, gamma, lam, node):
+    """The numpy per-player loop ts.gae_per_player replaced (RolloutBuffer._gae_per_player_both before it moved to C++)."""
+    T, N = players.shape
+    adv = np.zeros((T, N), np.float32); ret = np.zeros((T, N), np.float32); nadv = np.zeros((T, N), np.float32)
+    st = {q: {"A": np.zeros(N, np.float32), "An": np.zeros(N, np.float32), "V": last_v * np.float32(q),
+              "R": np.zeros(N, np.float32), "gap": np.zeros(N, np.float32), "has": np.ones(N, bool)} for q in (1, -1)}
+    g, lm = np.float32(gamma), np.float32(lam)
+    for t in range(T - 1, -1, -1):
+        if dones[t].any():
+            for q in (1, -1):
+                for k in ("A", "An", "V", "R", "gap"):
+                    st[q][k] = np.where(dones[t], np.float32(0), st[q][k])
+                st[q]["has"] = st[q]["has"] & ~dones[t]
+        r_t = rewards[t] * players[t].astype(np.float32)
+        v_t = values[t]
+        for q in (1, -1):
+            c = st[q]
+            c["R"] = c["R"] + r_t * np.float32(q)
+            c["gap"] = c["gap"] + np.float32(1)
+            mv = players[t] == q
+            disc = np.power(g, c["gap"]).astype(np.float32)
+            carry = c["has"].astype(np.float32)
+            target = c["R"] + disc * c["V"] * carry
+            a = target - v_t + disc * lm * c["A"] * carry
+            an = target - v_t + disc * lm * c["An"] * carry
+            if node is not None:
+                u, post, lo = node[0][t], node[1][t], node[2]
+                p2 = np.where(np.isfinite(post), post, target)
+                an = np.where(np.isfinite(u), (u - v_t) + lo * ((target - p2) + disc * lm * c["An"] * carry), an)
+            adv[t] = np.where(mv, a, adv[t]); ret[t] = np.where(mv, a + v_t, ret[t]); nadv[t] = np.where(mv, an, nadv[t])
+            c["A"] = np.where(mv, a, c["A"]); c["An"] = np.where(mv, an, c["An"])
+            c["V"] = np.where(mv, v_t, c["V"]); c["R"] = np.where(mv, np.float32(0), c["R"])
+            c["gap"] = np.where(mv, np.float32(0), c["gap"]); c["has"] = c["has"] | mv
+    return adv, ret, nadv
+
+
+def test_the_cpp_per_player_pass_is_the_numpy_loop() -> None:
+    T2, N2 = 96, 40
+    for seed in range(6):
+        rng = np.random.default_rng(seed)
+        players = rng.choice([1, -1, 1], size=(T2, N2)).astype(np.int8)
+        players[rng.random((T2, N2)) < 0.05] = 0
+        dones = rng.random((T2, N2)) < 0.03
+        rewards = np.where(dones, rng.choice([-1.0, 1.0], size=(T2, N2)), 0).astype(np.float32)
+        values = rng.uniform(-0.8, 0.8, (T2, N2)).astype(np.float32)
+        last_v = rng.uniform(-0.5, 0.5, N2).astype(np.float32)
+        u = rng.uniform(-0.6, 0.6, (T2, N2)).astype(np.float32)
+        u[rng.random((T2, N2)) < 0.4] = np.nan
+        post = (u + rng.uniform(-0.2, 0.2, (T2, N2))).astype(np.float32)
+        post[rng.random((T2, N2)) < 0.1] = np.nan
+        lo = rng.choice([1.0, 0.8, 0.5], N2).astype(np.float32)
+        for gamma in (1.0, 0.999):
+            want = _gae_numpy(players, dones, rewards, values, last_v, gamma, 0.96, (u, post, lo))
+            got = [np.zeros((T2, N2), np.float32) for _ in range(3)]
+            ts.gae_per_player(players, dones.astype(np.uint8), rewards, values, last_v, gamma, 0.96, u, post, lo, *got)
+            for a, b in zip(got, want):
+                assert np.allclose(a, b, atol=2e-6)

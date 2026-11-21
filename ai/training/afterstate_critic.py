@@ -189,18 +189,28 @@ class AfterstateCapture:
         width = int(np.asarray(runner.get_observations()).shape[1])
         buf = self._pinned[k]
         if buf is None or buf.shape[1] != width:
-            buf = torch.empty((1024, width), dtype=torch.float32).pin_memory()
-        envs, sides, kinds, n, cut = runner.get_afterstates_into(buf.numpy())
-        if n > buf.shape[0]:
-            buf = torch.empty((2 * n, width), dtype=torch.float32).pin_memory()
+            buf = torch.empty((4096 if self.roll_faces else 1024, width), dtype=torch.float32).pin_memory()
+        faces: Optional[Tuple[Any, Any, Any, Any]] = None
+        nf = 0
+        if self.roll_faces:
+            # P56: the rows and their rolls' outcomes in one gather, one buffer and one copy.
+            envs, sides, kinds, n, cut, fr, fp, ft, fres, nf = runner.get_afterstates_with_faces_into(buf.numpy())
+            if n + nf > buf.shape[0]:
+                buf = torch.empty((2 * (n + nf), width), dtype=torch.float32).pin_memory()
+                envs, sides, kinds, n, cut, fr, fp, ft, fres, nf = runner.get_afterstates_with_faces_into(buf.numpy())
+            faces = (fr, fp, ft, fres)
+        else:
             envs, sides, kinds, n, cut = runner.get_afterstates_into(buf.numpy())
+            if n > buf.shape[0]:
+                buf = torch.empty((2 * n, width), dtype=torch.float32).pin_memory()
+                envs, sides, kinds, n, cut = runner.get_afterstates_into(buf.numpy())
         self._pinned[k] = buf
         self.mismatched += int(cut)
         kinds = np.asarray(kinds, dtype=np.int8)
         if n == 0:
             return None
         self.rows_by_kind = [m + int(c) for m, c in zip(self.rows_by_kind, np.bincount(kinds, minlength=3))]
-        obs = buf[:n].to(device, non_blocking=True)
+        obs = buf[:n + nf].to(device, non_blocking=True)
         event = torch.cuda.Event()
         event.record()
         self._copied[k] = event
@@ -209,8 +219,15 @@ class AfterstateCapture:
             obs = obs[:, :self.width].contiguous()
         elif width < self.width:
             obs = torch.nn.functional.pad(obs, (0, self.width - width))
-        return self._with_faces(runner, AfterstateRows(step, np.asarray(envs, dtype=np.int64),
-                                                       np.asarray(sides, dtype=np.int8), kinds, obs), device)
+        rows = AfterstateRows(step, np.asarray(envs, dtype=np.int64), np.asarray(sides, dtype=np.int8), kinds, obs[:n])
+        if faces is not None:
+            fr, fp, ft, fres = faces
+            rows.face_row = np.asarray(fr, dtype=np.int64)
+            rows.face_prob = np.asarray(fp, dtype=np.float32)
+            rows.face_term = np.asarray(ft, dtype=bool)
+            rows.face_res = np.asarray(fres, dtype=np.float32)
+            rows.face_obs = obs[n:]
+        return rows
 
     def _with_faces(self, runner: Any, rows: AfterstateRows, device: Any) -> AfterstateRows:
         """P56: the step's roll faces attached to its rows (at the buffer's width)."""

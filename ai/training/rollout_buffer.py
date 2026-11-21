@@ -5,6 +5,7 @@ import torch
 
 from bindings.ts_env import obs_size
 import numpy as np
+import ts_engine as ts
 from bindings.action_encoder import ActionEncoder
 
 BLOCK_LAMBDA_MODES = ("off", "setup", "setup-side", "same-side")
@@ -672,67 +673,28 @@ class RolloutBuffer:
         of a rollout); the inputs come over once and the three results go back once."""
         T, N = self.buffer_size, self.num_envs
         dev = self.device
-        players = self.players[:T].cpu().numpy().astype(np.int8)
-        p_f = players.astype(np.float32)
-        dones = self.dones[:T].cpu().numpy() > 0.5
-        rewards = self.rewards[:T].cpu().numpy().astype(np.float32)
-        values = self.values_win[:T].cpu().numpy().astype(np.float32)
-        last_v = (last_v_win.float() * last_players.float()).cpu().numpy().astype(np.float32)
-        on = node is not None
-        u_all = node[0].cpu().numpy().astype(np.float32) if node is not None else values
-        post_all = node[1].cpu().numpy().astype(np.float32) if node is not None else values
-        lam_opp = node[2].cpu().numpy().astype(np.float32) if node is not None else np.ones(N, np.float32)
+        players = np.ascontiguousarray(self.players[:T].cpu().numpy().astype(np.int8))
+        dones = np.ascontiguousarray((self.dones[:T].cpu().numpy() > 0.5).astype(np.uint8))
+        rewards = np.ascontiguousarray(self.rewards[:T].cpu().numpy().astype(np.float32))
+        values = np.ascontiguousarray(self.values_win[:T].cpu().numpy().astype(np.float32))
+        last_v = np.ascontiguousarray((last_v_win.float() * last_players.float()).cpu().numpy().astype(np.float32))
+        if node is not None:
+            u_all = np.ascontiguousarray(node[0].cpu().numpy().astype(np.float32))
+            post_all = np.ascontiguousarray(node[1].cpu().numpy().astype(np.float32))
+            lam_opp = np.ascontiguousarray(node[2].cpu().numpy().astype(np.float32))
+        else:
+            u_all = post_all = np.zeros((0, 0), np.float32)
+            lam_opp = np.ones(N, np.float32)
         adv = np.zeros((T, N), dtype=np.float32)
         ret = np.zeros((T, N), dtype=np.float32)
-        nadv = np.zeros((T, N), dtype=np.float32) if on else adv
-        g = np.float32(gamma)
-        lam = np.float32(gae_lambda)
-        st = {}
-        for q in (1, -1):
-            # The next decision past the end of the buffer: value carried in q's own frame.
-            st[q] = {"A": np.zeros(N, np.float32), "An": np.zeros(N, np.float32), "V": last_v * np.float32(q),
-                     "R": np.zeros(N, np.float32), "gap": np.zeros(N, np.float32), "has": np.ones(N, bool)}
-        for t in range(T - 1, -1, -1):
-            done_t = dones[t]
-            # A terminal step ends the episode: everything later belongs to a different game, and this step's own
-            # decision has nothing to bootstrap from.
-            if done_t.any():
-                for q in (1, -1):
-                    c = st[q]
-                    for k in ("A", "An", "V", "R", "gap"):
-                        c[k] = np.where(done_t, np.float32(0), c[k])
-                    c["has"] = c["has"] & ~done_t
-            r_t = rewards[t] * p_f[t]
-            v_t = values[t]
-            for q in (1, -1):
-                c = st[q]
-                c["R"] = c["R"] + r_t * np.float32(q)
-                c["gap"] = c["gap"] + np.float32(1)
-                mv = players[t] == q
-                if not mv.any():
-                    continue
-                disc = np.power(g, c["gap"]).astype(np.float32)
-                carry = c["has"].astype(np.float32)
-                target = c["R"] + disc * c["V"] * carry
-                a = target - v_t + disc * lam * c["A"] * carry
-                adv[t] = np.where(mv, a, adv[t])
-                ret[t] = np.where(mv, a + v_t, ret[t])
-                c["A"] = np.where(mv, a, c["A"])
-                if on:
-                    an = target - v_t + disc * lam * c["An"] * carry
-                    u_t, post_t = u_all[t], post_all[t]
-                    has_u = np.isfinite(u_t)
-                    post = np.where(np.isfinite(post_t), post_t, target)
-                    a_node = (u_t - v_t) + lam_opp * ((target - post) + disc * lam * c["An"] * carry)
-                    an = np.where(has_u, a_node, an)
-                    nadv[t] = np.where(mv, an, nadv[t])
-                    c["An"] = np.where(mv, an, c["An"])
-                c["V"] = np.where(mv, v_t, c["V"])
-                c["R"] = np.where(mv, np.float32(0), c["R"])
-                c["gap"] = np.where(mv, np.float32(0), c["gap"])
-                c["has"] = c["has"] | mv
-        out = [torch.from_numpy(np.ascontiguousarray(x)).to(dev) for x in (adv, ret)]
-        return out[0], out[1], (torch.from_numpy(np.ascontiguousarray(nadv)).to(dev) if node is not None else out[0])
+        nadv = np.zeros((T, N), dtype=np.float32)
+        # Each env's backward pass in C++, in parallel (ts.gae_per_player): the arithmetic of the numpy loop it
+        # replaced, in float32 (tests/training/test_afterstate_advantage.py keeps that loop as the reference).
+        ts.gae_per_player(players, dones, rewards, values, last_v, float(gamma), float(gae_lambda), u_all, post_all,
+                          lam_opp, adv, ret, nadv)
+        a_t = torch.from_numpy(adv).to(dev)
+        r_t = torch.from_numpy(ret).to(dev)
+        return a_t, r_t, (torch.from_numpy(nadv).to(dev) if node is not None else a_t)
 
     def diagnostics(self) -> Dict[str, float]:
         """Value-head and advantage-distribution health metrics for the current rollout.

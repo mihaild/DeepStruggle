@@ -240,8 +240,10 @@ bool roll_outcomes(const ts::GameState& g, ts::Player side, uint32_t features, s
     const ts::RollType rt = g.ctx().pending_roll;
     if (g.ctx().decision_player != ts::Player::NONE || g.ctx().decision_type != ts::DecisionType::ROLL_DIE ||
         rt == ts::RollType::NONE || rt == ts::RollType::TURN_CLEANUP || ts::Engine::is_terminal(g)) return false;
+    // A realignment, the Summit and the Olympic Games depend on the two dice only through their difference (each
+    // side's modifiers are added apart, and the higher total removes the difference or wins): 11 differences, each
+    // weighted (6 - |d|) / 36 and stepped once with a pair that has it, instead of 36 pairs.
     const bool two = rt == ts::RollType::REALIGNMENT || rt == ts::RollType::SUMMIT || rt == ts::RollType::OLYMPIC_GAMES;
-    const float w = two ? 1.0f / 36.0f : 1.0f / 6.0f;
     thread_local std::vector<float> row;
     row.resize(width);
     // Positions already seen (with the step's die record cleared, which the observation does not read): a face that
@@ -250,8 +252,11 @@ bool roll_outcomes(const ts::GameState& g, ts::Player side, uint32_t features, s
     thread_local std::vector<size_t> seen_at;
     seen.clear(); seen_at.clear();
     float kept = 0.0f;
-    for (uint8_t a = 1; a <= 6; ++a) {
-        for (uint8_t b = two ? 1 : 0; b <= (two ? 6 : 0); ++b) {
+    for (int k = two ? -5 : 1; k <= (two ? 5 : 6); ++k) {
+        {
+            const uint8_t a = two ? static_cast<uint8_t>(std::max(1, 1 + k)) : static_cast<uint8_t>(k);
+            const uint8_t b = two ? static_cast<uint8_t>(a - k) : 0;
+            const float w = two ? static_cast<float>(6 - std::abs(k)) / 36.0f : 1.0f / 6.0f;
             // The Olympic Games re-roll a tie of the sponsor's die + 2 against the opponent's, but only when both dice
             // are rolled: a forced tie goes to the opponent without drawing (card_dispatcher.cpp), so the rng check
             // below cannot see it. A tie pair is not an outcome; the rest are renormalised.
@@ -1643,6 +1648,67 @@ NB_MODULE(ts_engine, m) {
     m.attr("BUILD_COMPILER") = std::string("unknown");
 #endif
 
+    m.def("gae_per_player", [](nb::ndarray<const int8_t, nb::ndim<2>, nb::c_contig, nb::device::cpu> players,
+                               nb::ndarray<const uint8_t, nb::ndim<2>, nb::c_contig, nb::device::cpu> dones,
+                               nb::ndarray<const float, nb::ndim<2>, nb::c_contig, nb::device::cpu> rewards,
+                               nb::ndarray<const float, nb::ndim<2>, nb::c_contig, nb::device::cpu> values,
+                               nb::ndarray<const float, nb::ndim<1>, nb::c_contig, nb::device::cpu> last_v,
+                               float gamma, float lam,
+                               nb::ndarray<const float, nb::ndim<2>, nb::c_contig, nb::device::cpu> u,
+                               nb::ndarray<const float, nb::ndim<2>, nb::c_contig, nb::device::cpu> post,
+                               nb::ndarray<const float, nb::ndim<1>, nb::c_contig, nb::device::cpu> lam_opp,
+                               nb::ndarray<float, nb::ndim<2>, nb::c_contig, nb::device::cpu> adv,
+                               nb::ndarray<float, nb::ndim<2>, nb::c_contig, nb::device::cpu> ret,
+                               nb::ndarray<float, nb::ndim<2>, nb::c_contig, nb::device::cpu> nadv) {
+              const int64_t T = static_cast<int64_t>(players.shape(0)), N = static_cast<int64_t>(players.shape(1));
+              const bool node = u.shape(0) == static_cast<size_t>(T);
+              const int8_t* P = players.data(); const uint8_t* D = dones.data(); const float* Rw = rewards.data();
+              const float* V = values.data(); const float* LV = last_v.data(); const float* U = node ? u.data() : nullptr;
+              const float* PO = node ? post.data() : nullptr; const float* LO = node ? lam_opp.data() : nullptr;
+              float* A = adv.data(); float* RT = ret.data(); float* NA = nadv.data();
+              nb::gil_scoped_release release;
+              gomp_parallel_for(N, [&](int64_t e) {
+                  // Each env's own backward pass; per player q (0: US +1, 1: USSR -1) the advantage (plain and node
+                  // chains), value and rewards at q's next own decision, and the gap -- RolloutBuffer._gae_per_player_both.
+                  float cA[2] = {0, 0}, cAn[2] = {0, 0}, cV[2], cR[2] = {0, 0}, gap[2] = {0, 0};
+                  bool has[2] = {true, true};
+                  cV[0] = LV[e]; cV[1] = -LV[e];
+                  for (int64_t t = T - 1; t >= 0; --t) {
+                      const int64_t i = t * N + e;
+                      if (D[i]) { for (int q = 0; q < 2; ++q) { cA[q] = cAn[q] = cV[q] = cR[q] = gap[q] = 0.0f; has[q] = false; } }
+                      const float r_t = Rw[i] * static_cast<float>(P[i]);
+                      const float v_t = V[i];
+                      for (int q = 0; q < 2; ++q) {
+                          const float sq = q == 0 ? 1.0f : -1.0f;
+                          cR[q] = cR[q] + r_t * sq;
+                          gap[q] = gap[q] + 1.0f;
+                          if (static_cast<float>(P[i]) != sq) continue;
+                          const float disc = std::pow(gamma, gap[q]);
+                          const float carry = has[q] ? 1.0f : 0.0f;
+                          const float target = cR[q] + disc * cV[q] * carry;
+                          const float a = target - v_t + disc * lam * cA[q] * carry;
+                          A[i] = a; RT[i] = a + v_t; cA[q] = a;
+                          if (node) {
+                              float an = target - v_t + disc * lam * cAn[q] * carry;
+                              const float ut = U[i], pt = PO[i];
+                              if (std::isfinite(ut)) {
+                                  const float po = std::isfinite(pt) ? pt : target;
+                                  an = (ut - v_t) + LO[e] * ((target - po) + disc * lam * cAn[q] * carry);
+                              }
+                              NA[i] = an; cAn[q] = an;
+                          }
+                          cV[q] = v_t; cR[q] = 0.0f; gap[q] = 0.0f; has[q] = true;
+                      }
+                  }
+              });
+          }, nb::arg("players"), nb::arg("dones"), nb::arg("rewards"), nb::arg("values"), nb::arg("last_v"),
+          nb::arg("gamma"), nb::arg("lam"), nb::arg("u"), nb::arg("post"), nb::arg("lam_opp"), nb::arg("adv"),
+          nb::arg("ret"), nb::arg("nadv"),
+          "Per-player GAE (RolloutBuffer._gae_per_player_both), each env's backward pass in parallel. players int8 "
+          "(T, N), dones uint8, rewards / values float32, last_v (N,) in US frame; u / post (T, N) or (0, 0) for no "
+          "node, lam_opp (N,). Writes adv, ret (plain chain) and nadv (node chain) for every mover row; other rows are "
+          "left as given.");
+
     m.def("roll_outcomes", [](const ts::GameState& g, ts::Player side, uint32_t features) {
               const size_t w = ts::OBS_SIZE_V23 + ts::obs_features::extra_width(features);
               std::vector<float> obs, prob, res;
@@ -2296,6 +2362,71 @@ NB_MODULE(ts_engine, m) {
              "P56: the distinct outcomes of each before-roll row's die from the last step_flat_all, as (row -- the "
              "before-roll row's index in get_afterstates' order --, probability, finished game, its result from the "
              "decider's side, observation from the decider's side; zeros for a finished game).")
+        .def("get_afterstates_with_faces_into", [](VectorizedBatchRunner& self, nb::ndarray<float, nb::ndim<2>, nb::c_contig, nb::device::cpu> out) {
+                 if (!self.capture_roll_faces) throw std::runtime_error("get_afterstates_with_faces_into: roll faces are off");
+                 const size_t w = self.obs_width;
+                 if (out.shape(1) != w) throw std::invalid_argument("get_afterstates_with_faces_into: out must be (rows, obs_width)");
+                 const size_t E = self.num_envs;
+                 std::vector<size_t> off(E + 1, 0), foff(E + 1, 0);
+                 size_t cut = 0;
+                 for (size_t i = 0; i < E; ++i) {
+                     off[i + 1] = off[i] + self.as_kind[i].size();
+                     foff[i + 1] = foff[i] + self.as_fprob[i].size();
+                     cut += self.as_cut[i];
+                 }
+                 const size_t n = off[E], nf = foff[E];
+                 int64_t* envs = new int64_t[std::max<size_t>(1, n)];
+                 int8_t* sides = new int8_t[std::max<size_t>(1, n)];
+                 int8_t* kinds = new int8_t[std::max<size_t>(1, n)];
+                 int64_t* own = new int64_t[std::max<size_t>(1, nf)];
+                 float* pr = new float[std::max<size_t>(1, nf)];
+                 uint8_t* term = new uint8_t[std::max<size_t>(1, nf)];
+                 float* res = new float[std::max<size_t>(1, nf)];
+                 const bool fits = n + nf <= out.shape(0);
+                 float* dst = out.data();
+                 {
+                     nb::gil_scoped_release release;
+                     gomp_parallel_for(static_cast<int64_t>(E), [&](int64_t ii) {
+                         const size_t i = static_cast<size_t>(ii);
+                         const size_t k = self.as_kind[i].size(), kf = self.as_fprob[i].size();
+                         for (size_t j = 0; j < k; ++j) {
+                             envs[off[i] + j] = static_cast<int64_t>(i);
+                             sides[off[i] + j] = self.as_side[i];
+                             kinds[off[i] + j] = static_cast<int8_t>(self.as_kind[i][j]);
+                         }
+                         for (size_t j = 0; j < kf; ++j) {
+                             own[foff[i] + j] = static_cast<int64_t>(off[i] + static_cast<size_t>(self.as_fown[i][j]));
+                             pr[foff[i] + j] = self.as_fprob[i][j];
+                             term[foff[i] + j] = self.as_fterm[i][j];
+                             res[foff[i] + j] = self.as_fres[i][j];
+                         }
+                         if (fits) {
+                             if (k) std::memcpy(dst + off[i] * w, self.as_obs[i].data(), k * w * sizeof(float));
+                             if (kf) std::memcpy(dst + (n + foff[i]) * w, self.as_fobs[i].data(), kf * w * sizeof(float));
+                         }
+                     });
+                 }
+                 size_t s1[1] = { n }, s2[1] = { nf };
+                 nb::capsule c1(envs, [](void* q) noexcept { delete[] static_cast<int64_t*>(q); });
+                 nb::capsule c2(sides, [](void* q) noexcept { delete[] static_cast<int8_t*>(q); });
+                 nb::capsule c3(kinds, [](void* q) noexcept { delete[] static_cast<int8_t*>(q); });
+                 nb::capsule c4(own, [](void* q) noexcept { delete[] static_cast<int64_t*>(q); });
+                 nb::capsule c5(pr, [](void* q) noexcept { delete[] static_cast<float*>(q); });
+                 nb::capsule c6(term, [](void* q) noexcept { delete[] static_cast<uint8_t*>(q); });
+                 nb::capsule c7(res, [](void* q) noexcept { delete[] static_cast<float*>(q); });
+                 return nb::make_tuple(nb::ndarray<nb::numpy, int64_t, nb::ndim<1>>(envs, 1, s1, c1),
+                                       nb::ndarray<nb::numpy, int8_t, nb::ndim<1>>(sides, 1, s1, c2),
+                                       nb::ndarray<nb::numpy, int8_t, nb::ndim<1>>(kinds, 1, s1, c3),
+                                       n, cut,
+                                       nb::ndarray<nb::numpy, int64_t, nb::ndim<1>>(own, 1, s2, c4),
+                                       nb::ndarray<nb::numpy, float, nb::ndim<1>>(pr, 1, s2, c5),
+                                       nb::ndarray<nb::numpy, uint8_t, nb::ndim<1>>(term, 1, s2, c6),
+                                       nb::ndarray<nb::numpy, float, nb::ndim<1>>(res, 1, s2, c7), nf);
+             }, nb::arg("out"),
+             "P56: get_afterstates_into and get_afterstate_faces_into in one call and one buffer: the rows' observations "
+             "in out[:rows], then the outcomes' in out[rows:rows + outcomes], gathered in parallel: (envs, sides, kinds, "
+             "rows, walks cut, outcome row, probability, finished game, result, outcomes). Nothing is written when `out` "
+             "has fewer than rows + outcomes rows.")
         .def("get_afterstate_faces_into", [](VectorizedBatchRunner& self, nb::ndarray<float, nb::ndim<2>, nb::c_contig, nb::device::cpu> out) {
                  if (!self.capture_roll_faces) throw std::runtime_error("get_afterstate_faces_into: roll faces are off");
                  const size_t w = self.obs_width;
