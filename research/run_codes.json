@@ -3430,6 +3430,27 @@
     "batch_size": 16384,
     "no_blunder_window": true
    }
+  },
+  "R170": {
+   "description": "P56 T1 (owner, 2026-11-21): R169 (critic everywhere + compile) with each side's own advantage chain and the afterstate node (--per-player-gae --gae-lambda 0.96 --afterstate-advantage, lambda_opp 1): the move's own-view afterstate as a node, the die's exact average for a move followed by a roll (also the before-roll row's value target), the roll's luck left out; 800M from R169 at 2,010M against C (R169 continued) -- must not cost anything",
+   "first": "E8.1-A8-R169-S45@2010M+R170_20261121_231650",
+   "flags": {
+    "reward_scheme": "terminal",
+    "per_player_gae": true,
+    "predeal_value_coef": 1.0,
+    "afterstate_value_coef": 1.0,
+    "afterstate_frac": 1.0,
+    "afterstate_advantage": true,
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "compile_update": "max-autotune",
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true,
+    "gae_lambda": 0.96
+   }
   }
  },
  "views": {
@@ -3806,7 +3827,8 @@
   "E8.1-A8-R166-S45_20261120_230137": "E8.1-A8-R166-S45",
   "E8.1-A8-R167-S45_20261121_095317": "E8.1-A8-R167-S45",
   "E8.1-A8-R168-S45_20261121_095342": "E8.1-A8-R168-S45",
-  "E8.1-A8-R169-S45_20261121_150423": "E8.1-A8-R169-S45"
+  "E8.1-A8-R169-S45_20261121_150423": "E8.1-A8-R169-S45",
+  "E8.1-A8-R169-S45@2010M+R170_20261121_231650": "E8.1-A8-R169-S45@2010M+R170"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
