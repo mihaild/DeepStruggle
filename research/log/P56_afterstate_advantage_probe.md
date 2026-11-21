@@ -147,6 +147,13 @@ outcomes, no re-extraction of a position already seen, and the per-player pass o
 rollout as small GPU operations, so most of P50's 14% slowdown was probably that loop, not measured alone). On
 trained play at 512 envs: 201 afterstate rows and 212 distinct outcomes an env step, from 54 rolls.
 
+> **Update, the same day (`fc65976`): the cost is 4.5%, not 11%.** The same probe on the later build: the baseline
+> 98.6k steps a second (rollout 343 s, update 255 s), T1's flags 94.1k (rollout 376 s, update 251 s). What
+> changed: a realignment, the Summit and the Olympics enumerate the 11 differences of the dice, weighted
+> (6 - |d|) / 36, instead of 36 pairs (the owner's point: they depend on the dice only through the difference;
+> equal to the 36-pair enumeration on 2,246 rolls); a dynamic parallel schedule; one gather for the afterstate
+> rows and the outcomes; per-player GAE in C++ (equal to the numpy loop within 5e-7). No result changes.
+
 **Check 2, the new advantage on one rollout.** `E8.1-A8-R169-S45` at 2,010M (`snapshot_final`), the trainer's
 own code path on the CPU: 1,024 games warmed through 4 x 256 steps, then one recorded rollout of 262,144 rows;
 lambda 0.96, `lambda_opp` 1. The kind of move is the walk's first moment and its roll.

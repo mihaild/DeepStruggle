@@ -142,8 +142,8 @@ below it.
 3. **The noise between two runs of one recipe:** C' below. It is a run, listed here because every read is
    interpreted against it.
 
-> **Checks 1 and 2 done (2026-11-21; the log's section 5): both pass.** T1's flags cost 11% of throughput
-> (100.4k to 89.4k steps a second alone); leaving the luck out biases no kind of move (every paired difference of
+> **Checks 1 and 2 done (2026-11-21; the log's section 5): both pass.** T1's flags cost 4.5% of throughput
+> (98.6k to 94.1k steps a second alone, on the later build `fc65976`; 11% as first measured); leaving the luck out biases no kind of move (every paired difference of
 > the mean within 1.2 standard errors) and takes 4% off the advantage's spread, 15% on wars; 4.16 outcomes read a
 > roll on trained play. S's policy lambda is **0.86** (A8's spread on the baseline), which needs a knob for the
 > policy's chain apart from the value targets', not built. The baseline for read 3 is 0.029 mean absolute.
