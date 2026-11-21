@@ -3382,6 +3382,36 @@
     "batch_size": 16384,
     "no_blunder_window": true
    }
+  },
+  "R167": {
+   "description": "P54 (owner, 2026-11-21): R132 (B6's recipe, pure self-play) with only the update compiled (--compile-update max-autotune); from scratch, 8 h beside R168 -- P53's R165 had compile and bf16 together ~4-5 points behind B6 at matched steps",
+   "first": "E8.1-A8-R167-S45_20261121_095317",
+   "flags": {
+    "reward_scheme": "terminal",
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "compile_update": "max-autotune",
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
+  },
+  "R168": {
+   "description": "P54 (owner, 2026-11-21): R132 (B6's recipe, pure self-play) with only the update's forwards in bf16 (--update-bf16); from scratch, 8 h beside R167 -- P53's R165 had compile and bf16 together ~4-5 points behind B6 at matched steps",
+   "first": "E8.1-A8-R168-S45_20261121_095342",
+   "flags": {
+    "reward_scheme": "terminal",
+    "update_bf16": true,
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "zero_avoid_coef": 0.01,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true
+   }
   }
  },
  "views": {
@@ -3755,7 +3785,9 @@
   "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R163_20261120_094634": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R163",
   "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R164_20261120_113842": "E8.1-A8-R132-S45@11600M+R139@12400M+R155@13200M+R164",
   "E8.1-A8-R165-S45_20261120_230117": "E8.1-A8-R165-S45",
-  "E8.1-A8-R166-S45_20261120_230137": "E8.1-A8-R166-S45"
+  "E8.1-A8-R166-S45_20261120_230137": "E8.1-A8-R166-S45",
+  "E8.1-A8-R167-S45_20261121_095317": "E8.1-A8-R167-S45",
+  "E8.1-A8-R168-S45_20261121_095342": "E8.1-A8-R168-S45"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
