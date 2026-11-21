@@ -142,6 +142,12 @@ below it.
 3. **The noise between two runs of one recipe:** C' below. It is a run, listed here because every read is
    interpreted against it.
 
+> **Checks 1 and 2 done (2026-11-21; the log's section 5): both pass.** T1's flags cost 11% of throughput
+> (100.4k to 89.4k steps a second alone); leaving the luck out biases no kind of move (every paired difference of
+> the mean within 1.2 standard errors) and takes 4% off the advantage's spread, 15% on wars; 4.16 outcomes read a
+> roll on trained play. S's policy lambda is **0.86** (A8's spread on the baseline), which needs a knob for the
+> policy's chain apart from the value targets', not built. The baseline for read 3 is 0.029 mean absolute.
+
 ### The arms
 
 All from R169's state at 2,000M, every other flag the baseline's (`launch_flags.py --diff` showing only the
@@ -154,7 +160,7 @@ lines named), 800M each, two at a time.
 | 2 | **C'** | the baseline continued with another sampling seed | C | the noise of one recipe, head to head and on the references |
 | 2 | **A8** | T1 with `--afterstate-lambda-opp 0.8` | T1 | it must show a gain |
 | 3, only if A8 gains | **A5** | T1 with `--afterstate-lambda-opp 0.5` | T1 | it must show a gain |
-| 3, only if A8 gains | **S** | T1 with its lambda lowered to A8's reach (0.88 by the probe; set from check 2's sweep), no decay at the afterstate | A8 | is A8's gain the split or the shorter reach |
+| 3, only if A8 gains | **S** | T1 with its lambda lowered to A8's reach (0.86 by check 2's sweep), no decay at the afterstate | A8 | is A8's gain the split or the shorter reach |
 
 * **0.8 before 0.5** (owner): what a move is worth depends on whether the opponent can answer it, and the
   positions after the reply are where the critic's first view of the move is corrected. 0.5 runs only if 0.8
@@ -167,8 +173,8 @@ lines named), 800M each, two at a time.
 1. Head to head on the same deals, SWAs of the last 80M, greedy, 2,000 deals a side, per seat from the JSON:
    T1 against C, C' against C, A8 against T1 (and against C).
 2. The references (the old reference, J1's best), every arm, as context.
-3. For T1 and A8, on the CPU: the critic before a roll against the outcomes' exact average (off by 0.052 a
-   position on the baseline at 1,200M; it is now that row's training target, so it should fall), and the
+3. For T1 and A8, on the CPU: the critic before a roll against the outcomes' exact average (off by 0.029 mean
+   absolute on the baseline at 2,010M; it is now that row's training target, so it should fall), and the
    critic's AUC and Brier against results beside C's.
 4. Health throughout: entropy, clip fraction, the size of a policy update, explained variance, the self-play
    seat balance, the commonest opening setup's share in each seat.

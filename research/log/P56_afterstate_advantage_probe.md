@@ -128,3 +128,55 @@ afterstates), the afterstate's value should be the rolls' average of the value a
 and as the before-roll row's training target. The roll's own step, the value after the actual roll minus that
 average, then has mean zero by construction whatever the critic's quality, and can be left out of the advantage
 with no bias.
+
+## 5. The approved plan's checks 1 and 2, on the build (2026-11-21, the running session)
+
+**Verdict: both pass.** T1's flags cost 11% of throughput, and leaving the roll's luck out of the advantage
+biases no kind of move.
+
+**Check 1, throughput.** R169's configuration, 60M steps from scratch, an idle GPU, one engine build
+(`1d2cae4`).
+
+| | steps a second | rollout | update |
+|:---|---:|---:|---:|
+| the baseline | 100.4k | 335 s | 251 s |
+| T1's flags (`--per-player-gae --gae-lambda 0.96 --afterstate-advantage`) | 89.4k (-11%) | 409 s | 252 s |
+
+The first build read 77k (-23%); the difference is one batched value read a rollout, a pinned fetch of the
+outcomes, no re-extraction of a position already seen, and the per-player pass on the host (it was 12% of the
+rollout as small GPU operations, so most of P50's 14% slowdown was probably that loop, not measured alone). On
+trained play at 512 envs: 201 afterstate rows and 212 distinct outcomes an env step, from 54 rolls.
+
+**Check 2, the new advantage on one rollout.** `E8.1-A8-R169-S45` at 2,010M (`snapshot_final`), the trainer's
+own code path on the CPU: 1,024 games warmed through 4 x 256 steps, then one recorded rollout of 262,144 rows;
+lambda 0.96, `lambda_opp` 1. The kind of move is the walk's first moment and its roll.
+
+| kind of move | rows | advantage SD, luck kept | dropped | mean, kept | dropped | paired difference |
+|:---|---:|---:|---:|---:|---:|---:|
+| all | 262,144 | 0.2275 | 0.2185 (-4%) | +0.0016 | +0.0017 | +0.0001 ± 0.0001 |
+| no afterstate (70% of rows) | | 0.2206 | 0.2119 | | | |
+| an afterstate, no die | 48,563 | 0.2398 | 0.2323 | +0.0001 | +0.0002 | +0.0001 ± 0.0003 |
+| coup | 12,443 | 0.2416 | 0.2275 (-6%) | +0.0080 | +0.0080 | +0.0000 ± 0.0008 |
+| realignment | 5,824 | 0.2564 | 0.2470 (-4%) | +0.0005 | +0.0018 | +0.0013 ± 0.0011 |
+| the Space Race | 4,732 | 0.2393 | 0.2275 (-5%) | +0.0041 | +0.0053 | +0.0012 ± 0.0011 |
+| a war | 2,370 | 0.2514 | 0.2129 (-15%) | +0.0028 | +0.0031 | +0.0003 ± 0.0028 |
+| other dice (the Olympics, the Summit, a trap) | 3,793 | 0.2669 | 0.2589 | +0.0001 | -0.0000 | -0.0001 ± 0.0012 |
+
+* Every paired difference is within 1.2 standard errors of zero.
+* Rows with no die of their own shrink too: the luck of later rolls sits in their chain.
+* Outcomes read after merging, on trained play: 110,219 for 26,464 rolls, 4.16 a roll (2.9 on random play).
+* With the luck kept, T1's advantage equals the plain per-player chain at 0.96 exactly (0.2275 both).
+
+**The baseline for read 3.** The critic before a roll against its outcomes' exact average, R169 at 2,010M: 0.0293
+mean absolute (signed mean -0.0048). Section 4's 0.052 is an SD at 1,200M by 30 sampled rolls; its mean absolute
+was 0.0285, so the two agree and the gap has not closed by itself between 1,200M and 2,010M.
+
+**The plain per-player chain's spread over lambda** (the same rollout): 0.50: 0.0805, 0.62: 0.0881, 0.70: 0.0961,
+0.78: 0.1088, 0.82: 0.1185, 0.86: 0.1321, 0.90: 0.1532, 0.94: 0.1916, 0.96: 0.2275, 0.98: 0.2969. A8
+(`lambda_opp` 0.8, luck dropped) has SD 0.1318, the plain chain's at 0.86; A5 0.0839, the plain chain's at 0.56;
+T1 0.2185, between 0.95 and 0.96. Section 2's 0.88 and 0.69 were matched on return error on a network at 1,200M;
+these are matched on spread on the baseline itself and are the ones the arms use.
+
+**What the dice removal is worth.** 4% of the advantage's spread overall, 15% on wars: the dice are a small part
+of what a side does not control (section 1: 0.040 against the opponent's 0.097). Step 1's case is that it is
+exact and that the before-roll value gets a correct target, not the size of this number.
