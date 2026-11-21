@@ -100,3 +100,31 @@ probability; the correlation of log-probability with V_after over a decision's m
 the player that picks the critic's best move and the policy, not run here. Whether a shorter reach trains a
 stronger network: nothing shorter than lambda 0.97 has been trained
 ([`E4_late_dynamics.md`](E4_late_dynamics.md)). One rollout of one network at 1,200M, far from its plateau.
+
+## 4. Is the critic before a die roll the average of the critic after it? (2026-11-21, the owner's question)
+
+**No.** Unbiased on average, but position by position it differs from the rolls' average by 0.052 (SD), against
+0.064 of luck in the roll itself; and it sees about a sixth of what the move changed.
+
+The same network, 200 games; 4,993 moments right before a roll that follows the mover's action (half sampled),
+each rolled 30 times from the same position with the random state reseeded, the value after the roll read from
+the mover's view (the result where the roll ends the game, 0.9% of rolls).
+`data/reports/p56_dice_consistency_r169_1200M.json` (untracked).
+
+| | all | card | play mode | point |
+|:---|---:|---:|---:|---:|
+| rolls | 4,993 | 268 | 925 | 3,784 |
+| V_before - mean V_after: mean | -0.0002 | -0.0027 | +0.0034 | -0.0009 |
+| the same, SD net of the 30-roll sampling error | 0.0517 | 0.0369 | 0.0380 | 0.0555 |
+| luck: RMS over positions of the SD of V_after over the rolls | 0.0638 | 0.0718 | 0.0485 | 0.0665 |
+
+The move's effect, measured from the decision's own value: by the rolls' average SD 0.0562, by the critic before
+the roll SD 0.0271; the regression slope of the second on the first is 0.17 (correlation 0.36). The first also
+carries the after-roll critic's own error, which lowers the slope, so 0.17 is a floor; the critic before a roll
+stays close to the value at the decision whatever the move.
+
+**What follows.** For a move followed by a die (a coup, a realignment, the Space Race, a war: 39% of the
+afterstates), the afterstate's value should be the rolls' average of the value after the roll, in the advantage
+and as the before-roll row's training target. The roll's own step, the value after the actual roll minus that
+average, then has mean zero by construction whatever the critic's quality, and can be left out of the advantage
+with no bias.

@@ -4,6 +4,30 @@
 once -- a much shorter reach, and a split of the step at the afterstate -- and one arm cannot tell which of them
 did what. Measurements: [`../log/P56_afterstate_advantage_probe.md`](../log/P56_afterstate_advantage_probe.md).
 
+> **Correction (2026-11-21, on the owner's objection that a clearer signal from the critic is no risk).** The
+> first version of this plan mixed two things and overstated the second.
+>
+> * **Reading the critic right after the side's own action, from its own view, is no risk.** The advantage is
+>   already made of the critic's values at later nodes; this only replaces a node that cannot see the mover's
+>   hand by one that can. It is P50's reasoning with a nearer node.
+> * **"The policy is pulled toward the critic's favourite move" was wrong for this estimator.** The gradient
+>   reads the afterstate only of the move that was played, and every such afterstate is a training row of the
+>   critic. The match of the critic's-best-move player against the policy tests the critic on moves nobody
+>   played; it is withdrawn as a gate. The locked setups of P44-P46 came from pool games, which condition 3
+>   already keeps out.
+> * **What remains a trade is only `lambda_opp` under 1:** how far a systematic error of the afterstate's value
+>   is left uncorrected by what happens next. The probe found that error small where no die follows.
+> * **Where a die follows, the owner's expectation fails and the fix is exact:** the critic before a roll is not
+>   the average of the critic after it (it differs by 0.052 a position against 0.064 of luck, and carries about
+>   a sixth of the move's effect; the log's section 4). Taking the rolls' average of the after-roll value as the
+>   afterstate's value removes the luck with no bias, whatever the critic's quality.
+>
+> **The order is therefore changed:** (1) the own-view afterstate as a node with `lambda_opp` 1, and the rolls'
+> average for moves followed by a die, in the advantage and as the before-roll row's target -- both justified
+> by what they are, judged as P50 was (does it cost anything); (2) `lambda_opp` under 1 as the one arm that has
+> to show a gain, on top of (1). The screen below stands for (2); "The risk" and the CPU match are superseded by
+> this note.
+
 ## The proposal
 
 In each side's own chain ([P50](P50_own_value_chain.md)), the step from a decision to the side's next decision is
