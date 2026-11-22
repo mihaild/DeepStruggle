@@ -78,9 +78,18 @@ AUX_OWN_COUNTRIES = 84
 #: outputs per card of the card-event head: 5 Ops-reach + 12 event-outcome targets
 #: (ai.training.card_event_targets.AUX_DIM; restated here so the model does not import the engine).
 CARD_AUX_DIM = 17
-#: Attention heads in the C1 token path. Pinned, like the lookup's head width, because the head
-#: count cannot be recovered from the weights.
+#: Attention heads in the C1 token path. Pinned (not a setting), because the head count cannot be
+#: recovered from the weights.
 TOKEN_HEADS = 4
+#: The attention head count a checkpoint without `num_attn_heads_buf` was built with (every one before 2026-11-22).
+DEFAULT_NUM_ATTN_HEADS = 4
+
+
+def conventional_card_lookup_dim(hk: int) -> int:
+    """The card lookup's per-head width a checkpoint without `cl_heads_buf` was built with, from heads x dim."""
+    return 32 if hk % 32 == 0 else hk
+
+
 #: How the observation is read before the trunk.
 INPUT_MODES: Tuple[str, ...] = ("flat", "grouped", "entity")
 #: How per-entity tokens become a fixed-size vector. Only meaningful for `input_mode="entity"`.
@@ -325,6 +334,10 @@ class LadderNet(ColdWarNetV2):
         self.head_entities = str(head_entities)
         self.entity_proj_dim = int(entity_proj_dim)
         self.ladder_num_attn_heads = int(num_attn_heads)
+        # The head count is not recoverable from an attention layer's weights (audit M-3.3: the reload assumed 4). A
+        # buffer only off that default, so every earlier checkpoint loads unchanged and the count travels with the rest.
+        if self.ladder_num_attn_heads != DEFAULT_NUM_ATTN_HEADS:
+            self.register_buffer("num_attn_heads_buf", torch.tensor(self.ladder_num_attn_heads, dtype=torch.int64))
         self.ladder_per_entity_heads = int(per_entity_heads)
         # Kept explicitly rather than read back off `fusion_in`, so the config
         # record cannot drift from what was asked for.
@@ -422,6 +435,10 @@ class LadderNet(ColdWarNetV2):
                     f"card_lookup needs positive heads and dim, got "
                     f"{self.card_lookup_heads} and {self.card_lookup_dim}.")
             hk = self.card_lookup_heads * self.card_lookup_dim
+            # heads x dim is recoverable from the weights, its factorisation is not (audit M-3.3: the reload pinned dim
+            # at 32). A buffer only off that convention, so every earlier checkpoint loads unchanged.
+            if self.card_lookup_dim != conventional_card_lookup_dim(hk):
+                self.register_buffer("cl_heads_buf", torch.tensor(self.card_lookup_heads, dtype=torch.int64))
             if self.card_lookup_identity_dim:
                 # Identity is what makes a card addressable. Without it, Europe Scoring and Asia
                 # Scoring are identical on every property -- same ops, same era, both scoring --
@@ -1256,12 +1273,14 @@ def ladder_config_from_state_dict(sd: Dict[str, Any]) -> Dict[str, Any] | None:
         hk = int(sd["cl_out.weight"].shape[0])
         cl_ident = sd.get("cl_identity")
         card_lookup_identity_dim = int(cl_ident.shape[1]) if cl_ident is not None else 0
-        n_props = int(cl_key.shape[1]) - card_lookup_identity_dim
-        # heads*dim is recoverable but not their factorisation; dim is pinned by convention to
-        # the value the ladder uses, and heads follow. Recorded in metadata either way.
-        card_lookup_dim = 32 if hk % 32 == 0 else hk
-        card_lookup_heads = hk // card_lookup_dim
-        del n_props
+        # heads*dim is recoverable but not their factorisation: a network off the convention (dim 32) carries its head
+        # count (`cl_heads_buf`); one without the buffer is on it.
+        if "cl_heads_buf" in sd:
+            card_lookup_heads = int(sd["cl_heads_buf"])
+            card_lookup_dim = hk // card_lookup_heads
+        else:
+            card_lookup_dim = conventional_card_lookup_dim(hk)
+            card_lookup_heads = hk // card_lookup_dim
     else:
         card_lookup = False
         card_lookup_heads = card_lookup_dim = card_lookup_identity_dim = 0
@@ -1310,7 +1329,7 @@ def ladder_config_from_state_dict(sd: Dict[str, Any]) -> Dict[str, Any] | None:
         hidden_dim=hidden_dim,
         num_res_blocks=len(blocks),
         entity_proj_dim=int(proj.shape[0]) if proj is not None else 0,
-        num_attn_heads=4,
+        num_attn_heads=(int(sd["num_attn_heads_buf"]) if "num_attn_heads_buf" in sd else DEFAULT_NUM_ATTN_HEADS),
         head_center="pe_center" in sd,
         categorical_value=any(k.startswith("value_dist_head") for k in sd),
         aux_heads=any(k.startswith("aux_own_head.") for k in sd),
