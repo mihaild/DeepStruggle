@@ -516,3 +516,13 @@ def test_a_per_player_rollout_bootstraps_every_side_from_its_own_moment() -> Non
     assert t.afterstate is not None and t.afterstate.every_decider
     m = t.train_step()
     assert math.isfinite(m["policy_loss"])
+
+
+def test_without_per_player_gae_the_capture_stays_learner_only() -> None:
+    """R169 and every run without --per-player-gae: the capture picks the learner's decisions only, as before V-5 (a
+    CPU comparison of R169's flags before / after the change gave identical losses, weights and RNG states)."""
+    t = NashPGTrainer(active_net=_net(), env=TsVectorizedEnv(num_envs=4, base_seed=2), num_envs=4, buffer_size=16,
+                      lr=3e-4, eta=0.1, ref_update_freq=500, cuda_graphs=False, device=torch.device("cpu"),
+                      afterstate_value_coef=1.0, afterstate_frac=1.0, predeal_value_coef=1.0)
+    t.collect_rollouts()
+    assert t.afterstate is not None and not t.afterstate.every_decider
