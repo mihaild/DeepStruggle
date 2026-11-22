@@ -825,3 +825,23 @@ def test_an_unraced_decision_is_untouched_by_the_race_bookkeeping() -> None:
     _value_leaves(b, {0: 0.0, 1: 0.0, 2: 0.0})
     with pytest.raises(ValueError, match="worlds x 110"):
         b.race(0, 4, hands=hands)
+
+
+def test_a_lead_in_one_world_never_switches_the_z_rule() -> None:
+    """Audit S-6: with one valued world the lead's standard error is 0 and any lead used to pass z2; fewer than four
+    valued worlds now keep the policy's move, while argmax still takes the better candidate."""
+    st = _position()
+    mask = np.asarray(ActionEncoder.get_legal_mask(st), dtype=np.uint8)
+    cands = _legal(st)[:2]
+    for n_worlds, switch in ((1, False), (3, False), (4, True)):
+        b = ts.RolloutBatch(horizon=0, seed=7)
+        b.add(st, cands, n_worlds)
+        cand = b.row_candidate()
+        values = np.asarray([0.0 if cand[r] == 0 else 0.3 for r in range(b.rows())], dtype=np.float32)
+        b.fill_leaves()
+        b.set_leaf_values(values)
+        logits = np.zeros(mask.shape[0], dtype=np.float32)
+        d = ts.rollout_decide(b, 0, cands, logits, mask, "z2")
+        assert d["worlds"] == n_worlds and d["lead_se"][1] == 0.0
+        assert d["pick"] == (cands[1] if switch else cands[0]), n_worlds
+        assert ts.rollout_decide(b, 0, cands, logits, mask, "argmax")["pick"] == cands[1]

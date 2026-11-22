@@ -23,28 +23,41 @@ namespace ts::rollout {
 namespace {
 
 constexpr size_t A = FLAT_ACTION_SPACE_SIZE;
+// The z rule's fewest valued worlds behind a switch away from candidate 0 (audit S-6).
+constexpr size_t kMinZWorlds = 4;
 
-// Resolve the die rolls a position is sitting on, nothing else (bindings.settle's CHANCE depth).
-void drain_chance(GameState& s) noexcept {
+// Resolve the die rolls a position is sitting on, nothing else (bindings.settle's CHANCE depth). Under keyed
+// chance the stream is keyed before each roll, as the playout's own advance keys it (audit S-7, 2026-11-22: the
+// probe used to roll the decision step's keyed stream on, so it could see another die than the playout would).
+void drain_chance(GameState& s, bool keyed = false, uint64_t world_key = 0, bool keyed2 = false) noexcept {
     while (!Engine::is_terminal(s) && s.ctx().decision_player == Player::NONE &&
            s.ctx().decision_type == DecisionType::ROLL_DIE) {
+        if (keyed) keyed::key(s, world_key, keyed2);
         if (!Engine::step(s, MicroAction{DecisionType::ROLL_DIE, 0, 0, 0})) return;
     }
 }
 
 // Does `a` end the game against `who` on the spot? (ai/eval/paired_playouts.loses_now)
-bool loses_now(const GameState& s, uint16_t a, Player who) noexcept {
+bool loses_now(const GameState& s, uint16_t a, Player who, bool keyed = false, uint64_t world_key = 0,
+               bool keyed2 = false) noexcept {
     GameState probe = s;
     if (!Engine::step_flat(probe, a)) return false;
-    drain_chance(probe);
+    drain_chance(probe, keyed, world_key, keyed2);
     if (!Engine::is_terminal(probe)) return false;
     const float u = Engine::get_terminal_utility(probe);
     return who == Player::US ? (u < 0.0f) : (u > 0.0f);
 }
 
+// Where a move can lose the game at once. Audit S-7 (2026-11-22): a coup also loses at any DEFCON when the Cuban
+// Missile Crisis stands against its side, and Che's and Ortega's coups are made at the event's own target choice,
+// where op_mode is not COUP -- both used to pass unguarded.
 bool guarded_decision(const GameState& s) noexcept {
-    if (s.defcon > 2) return false;
+    const Player who = acting_player(s);
+    const bool cmc = (who == Player::USSR && s.has_flag(effect_bits::CMC_ACTIVE_US)) ||
+                     (who == Player::US && s.has_flag(effect_bits::CMC_ACTIVE_USSR));
+    if (s.defcon > 2 && !cmc) return false;
     const auto& ctx = s.ctx();
+    if (ctx.resolving_card == card_ids::CHE || ctx.resolving_card == card_ids::ORTEGA_ELECTED_IN_NICARAGUA) return true;
     switch (ctx.decision_type) {
         case DecisionType::SELECT_PLAY_MODE:
         case DecisionType::CHOOSE_BRANCH:
@@ -425,7 +438,7 @@ size_t RolloutBatch::fill_live(float* obs, uint8_t* masks) {
 }
 
 uint16_t RolloutBatch::guarded_choice(const GameState& s, const float* logits, const uint8_t* mask,
-                                      uint16_t argmax) const noexcept {
+                                      uint16_t argmax, uint64_t world_key) const noexcept {
     if (!cfg_.guard || !guarded_decision(s)) return argmax;
     const Player who = acting_player(s);
     // The top four legal moves by logit, best first.
@@ -444,7 +457,7 @@ uint16_t RolloutBatch::guarded_choice(const GameState& s, const float* logits, c
         top[n++] = static_cast<uint16_t>(best);
     }
     for (size_t t = 0; t < n; ++t) {
-        if (!loses_now(s, top[t], who)) return top[t];
+        if (!loses_now(s, top[t], who, cfg_.keyed, world_key, cfg_.keyed2)) return top[t];
     }
     return argmax;
 }
@@ -462,7 +475,7 @@ void RolloutBatch::step(const float* logits) {
         }
         if (best < 0) { r.refused = r.done = true; return; }
         if (cfg_.keyed) keyed::key(r.state, r.world_key, cfg_.keyed2);   // the guard's probes see the same draws
-        const uint16_t a = guarded_choice(r.state, lg, mask, static_cast<uint16_t>(best));
+        const uint16_t a = guarded_choice(r.state, lg, mask, static_cast<uint16_t>(best), r.world_key);
         if (!Engine::step_flat(r.state, a)) { r.refused = r.done = true; return; }
         settle_and_mark(r);
     });
@@ -580,8 +593,10 @@ Decision decide(const RolloutBatch& batch, size_t position, const uint16_t* cand
             d.pick = candidates[best];
             break;
         case Rule::Z: {
+            // Audit S-6 (2026-11-22): a lead measured in fewer than kMinZWorlds worlds never switches -- with one
+            // world the standard error is 0 and any lead passed. A zero error from several agreeing worlds still does.
             const float m = d.lead[best], se = d.lead_se[best];
-            const bool clear = best != 0 && m > 0.0f && (se == 0.0f || m / se >= rule.param);
+            const bool clear = best != 0 && m > 0.0f && ok.size() >= kMinZWorlds && (se == 0.0f || m / se >= rule.param);
             d.pick = clear ? candidates[best] : candidates[0];
             break;
         }

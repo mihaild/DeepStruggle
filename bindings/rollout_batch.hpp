@@ -238,7 +238,7 @@ private:
     void advance(Row& r) const noexcept;
     bool at_stop(const Row& r) const noexcept;   // a row at its stop under cfg_.horizon and cfg_.stop
     uint16_t guarded_choice(const GameState& s, const float* logits, const uint8_t* mask,
-                            uint16_t argmax) const noexcept;
+                            uint16_t argmax, uint64_t world_key) const noexcept;
 };
 
 // ---- the root's choice, shared by ai/search/rollout_root.py and the page -----------------------
