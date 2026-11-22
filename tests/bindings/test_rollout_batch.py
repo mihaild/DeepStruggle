@@ -915,3 +915,141 @@ def test_a_lead_in_one_world_never_switches_the_z_rule() -> None:
         assert d["worlds"] == n_worlds and d["lead_se"][1] == 0.0
         assert d["pick"] == (cands[1] if switch else cands[0]), n_worlds
         assert ts.rollout_decide(b, 0, cands, logits, mask, "argmax")["pick"] == cands[1]
+
+
+# ---- Audit S-7 (2026-11-22): the playouts' suicide guard (rollout_batch.cpp guarded_decision, drain_chance) ----
+
+def _card(name: str) -> int:
+    return int(ts.CardData.get_card_by_name(name))
+
+
+def _country(name: str) -> int:
+    return next(i for i in range(84) if ts.MapData.get_country_info(i)["name"] == name)
+
+
+def _action_round(side: ts.Player, seed: int) -> ts.GameState:
+    """A turn 1-3 position where `side` picks its action round's card (seeded random play from the deal)."""
+    for k in range(100):
+        s = ts.GameState()
+        ts.Engine.init_game(s, seed + k)
+        rng = np.random.default_rng(seed + k)
+        for _ in range(5000):
+            if ts.Engine.is_terminal(s):
+                break
+            if (s.current_phase == ts.Phase.ACTION_ROUND and s.ctx_stack_depth == 0
+                    and s.ctx().decision_type == ts.DecisionType.SELECT_CARD and s.ctx().decision_player == side
+                    and s.phasing_player == side and 1 <= s.turn <= 3 and s.action_round <= 5):
+                return s
+            s_mask = np.flatnonzero(np.asarray(ts.Engine.get_flat_action_mask(s)))
+            ts.Engine.step_flat(s, int(rng.choice(s_mask)))
+    raise AssertionError("no action round reached")
+
+
+def _event_then_target(st: ts.GameState, card: int, losing: int, guard: bool) -> List[ts.GameState]:
+    """Plays `card` (the root's one candidate) in 8 worlds to the action round's end: its Event, then at the Event's
+    target choice the policy's favourite is `losing`, done (CONFIRM_DONE) its second. The rows' final states."""
+    b = ts.RolloutBatch(horizon=1, guard=guard, seed=3)
+    b.add(st, [card - 1], 8)
+    plies = 0
+    while not b.all_done():
+        _, masks = b.fill_live()
+        live = [r for r, d in enumerate(b.row_done()) if not d]
+        lg = np.where(masks > 0, np.random.default_rng(plies).random(masks.shape), -1e9).astype(np.float32)
+        for j, r in enumerate(live):
+            if b.row_state(r).ctx().decision_type == ts.DecisionType.SELECT_PLAY_MODE and masks[j, ts.FLAT_RESOLUTION]:
+                lg[j, ts.FLAT_RESOLUTION] = 50.0          # the Event
+            if masks[j, losing]:
+                lg[j, losing] = 100.0
+            if masks[j, ts.FLAT_CONFIRM_DONE]:
+                lg[j, ts.FLAT_CONFIRM_DONE] = 90.0
+        b.step(np.ascontiguousarray(lg))
+        plies += 1
+        assert plies < 500
+    return [b.row_state(r) for r in range(b.rows())]
+
+
+def test_the_guard_covers_ortegas_coup_at_defcon_two() -> None:
+    """Ortega's free coup is made at the Event's own target choice, where op_mode is not COUP: a coup in Cuba (a
+    battleground) at DEFCON 2 loses at once, and the guard now takes another move."""
+    ortega = _card("Ortega Elected in Nicaragua")
+    st = _action_round(ts.Player.USSR, 500)
+    st.set_card_location(ortega, ts.CardLocation.HAND_USSR_UNKNOWN)
+    st.defcon = 2
+    for name in ("Cuba", "Honduras", "Costa Rica"):
+        st.set_country(_country(name), 2, 0)
+    cuba = ts.FLAT_NODE + _country("Cuba")
+    unguarded = _event_then_target(st, ortega, cuba, guard=False)
+    assert all(str(ts.game_ending_reason(s)) == "DEFCON 1 (own decision)" for s in unguarded)   # the hole
+    for s in _event_then_target(st, ortega, cuba, guard=True):
+        assert not ts.Engine.is_terminal(s) and int(s.defcon) == 2
+
+
+def test_the_guard_covers_che_under_the_cuban_missile_crisis_at_any_defcon() -> None:
+    """Che's coups (non-battlegrounds, so DEFCON never decides them) lose at once while the Cuban Missile Crisis stands
+    against the USSR -- at DEFCON 4, where the guard used to stand down -- and are made at Che's own target choice."""
+    che = _card("Che")
+    st = _action_round(ts.Player.USSR, 500)
+    st.set_card_location(che, ts.CardLocation.HAND_USSR_UNKNOWN)
+    st.defcon = 4
+    st.set_flag(ts.EffectBits.CMC_ACTIVE_US)
+    st.set_country(_country("Cuba"), 0, 0)               # nothing to cancel the crisis with
+    guatemala = _country("Guatemala")
+    st.set_country(guatemala, 2, 0)
+    unguarded = _event_then_target(st, che, ts.FLAT_NODE + guatemala, guard=False)
+    assert all(s.has_flag(ts.EffectBits.CMC_SUICIDE_LOSS) for s in unguarded)
+    for s in _event_then_target(st, che, ts.FLAT_NODE + guatemala, guard=True):
+        assert not ts.Engine.is_terminal(s) and int(s.defcon) == 4
+
+
+def _korean_war_with_space(korean_war: int) -> ts.GameState:
+    """A US action round at DEFCON 2 and -19 VP, Korean War in hand and Space open to it."""
+    for seed in range(700, 1700, 50):
+        st = _action_round(ts.Player.US, seed)
+        st.set_card_location(korean_war, ts.CardLocation.HAND_US_UNKNOWN)
+        st.defcon = 2
+        st.victory_points = -19
+        probe = ts.state_from_save_json(st.to_save_json())
+        ts.Engine.step_flat(probe, ts.FLAT_CARD + korean_war - 1)
+        if ts.Engine.get_flat_action_mask(probe)[ts.FLAT_RESOLUTION + 1]:
+            return st
+    raise AssertionError("no position with Space open to Korean War")
+
+
+@pytest.mark.parametrize("mode", [{}, {"keyed": True}, {"keyed2": True}, {"keyedsym": True}],
+                         ids=["shared", "keyed", "keyed2", "keyedsym"])
+def test_the_guards_probe_rolls_the_die_the_playout_rolls(mode: Dict[str, bool]) -> None:
+    """The US at DEFCON 2 and -19 VP plays Korean War: its Event first loses exactly when the war's die goes to the
+    USSR, Space does not fire it. The guard probes the Event with the die the playout will roll -- under keyed chance
+    the stream re-keyed before the roll as the playout keys it -- so, row by row, the guarded playout takes Space
+    exactly where the unguarded one lost, and keeps the Event everywhere else."""
+    korean_war = _card("Korean War")
+    st = _korean_war_with_space(korean_war)
+
+    def first_choice(guard: bool) -> List[str]:
+        b = ts.RolloutBatch(horizon=1, guard=guard, seed=3, keyed=mode.get("keyed", False),
+                            keyed2=mode.get("keyed2", False), keyedsym=mode.get("keyedsym", False))
+        b.add(st, [korean_war - 1], 64)
+        _, masks = b.fill_live()
+        live = [r for r, d in enumerate(b.row_done()) if not d]
+        assert len(live) == b.rows()
+        lg = np.where(masks > 0, 0.0, -1e9).astype(np.float32)
+        lg[:, ts.FLAT_RESOLUTION] = 100.0             # the Event first
+        lg[:, ts.FLAT_RESOLUTION + 1] = 90.0          # Space, the safe second
+        for r in live:
+            ctx = b.row_state(r).ctx()
+            assert ctx.decision_type == ts.DecisionType.SELECT_PLAY_MODE and ctx.pending_op_card == korean_war
+        b.step(np.ascontiguousarray(lg))
+        out = []
+        for r in live:
+            s = b.row_state(r)
+            if ts.Engine.is_terminal(s):
+                assert int(s.victory_points) == -20
+                out.append("lost")
+            else:
+                out.append("space" if ts.state_to_dict(s)["space_turns_used"]["US"] > 0 else "event")
+        return out
+
+    unguarded, guarded = first_choice(False), first_choice(True)
+    assert "space" not in unguarded and 0 < unguarded.count("lost") < len(unguarded)
+    assert "lost" not in guarded
+    assert [g == "space" for g in guarded] == [u == "lost" for u in unguarded]
