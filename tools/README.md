@@ -290,7 +290,10 @@ Every iteration goes to `<run>/training_metrics.jsonl` and to TensorBoard under 
   series are the whole games alone, `*_restart` the restarted ones, and `restart/*` the pool: size by turn,
   admission rate and the openness of the admitted, continuations handed out, n at retirement, put-backs
   and the share of them the disagreement term decided, z, and by turn the critic's error beyond chance
-  at retirement. A restart's game is kept out of the critic tracker too.
+  at retirement. A restart's game is kept out of the critic tracker too. The restart and start pools are
+  unmaintained since P48b: restart turns below 3, `--forced-opening` with `--restart-pool-frac`, and
+  `--start-pool-frac` with a featured or merged / macro network are refused (audit T-7..T-9; `TODO(pool)`
+  marks what must be fixed before a pool is used again).
 * Not logged on purpose: auxiliary losses whose term is off, and `game_start<N>/` breakdowns
   without a start pool. `steps_per_sec` is since the previous iteration; `steps_per_sec_avg`
   overstates a resumed run's rate (its clock includes the previous leg).

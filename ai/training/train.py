@@ -1435,8 +1435,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--restart-pool-capacity", type=int, default=1000,
                         help="Positions the restart pool holds in all, in per-turn buckets sized by the turn weights.")
     parser.add_argument("--restart-turn-weights", type=str, default=None,
-                        help="'turn:weight,...' share of restart draws per turn (default 3:5,4:5,5:10,6:10,7:15,8:20,"
-                             "9:20,10:15).")
+                        help="'turn:weight,...' share of restart draws per turn, turns >= 3 (default 3:5,4:5,5:10,"
+                             "6:10,7:15,8:20,9:20,10:15).")
     parser.add_argument("--restart-max-continuations", type=int, default=8,
                         help="A restart position is retired after this many continuations.")
     parser.add_argument("--restart-max-age-steps", type=int, default=10_000_000,

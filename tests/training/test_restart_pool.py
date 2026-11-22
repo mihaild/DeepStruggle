@@ -96,7 +96,7 @@ def test_an_old_position_is_retired() -> None:
 
 def test_live_capture_offers_pre_deal_states_of_whole_games() -> None:
     env = TsVectorizedEnv(num_envs=16, base_seed=3)
-    pool = RestartPool(16, frac=0.25, turn_weights={t: 1.0 for t in range(2, 11)}, seed=2)
+    pool = RestartPool(16, frac=0.25, turn_weights={t: 1.0 for t in range(3, 11)}, seed=2)
     env.start_provider = pool.provide
     obs, masks, _ = env.reset_all()
     rng = np.random.default_rng(0)
@@ -174,3 +174,20 @@ def test_complete_reads_the_finished_continuations_value_not_the_next_ones() -> 
     assert pool.playing[0] is not None and pool.playing[0] is not first
     pool.complete(0, 1.0)
     assert first.v_values == [pytest.approx(0.9)], "the finished continuation's own v, not p_admit = 0.5"
+
+
+def test_turn_two_restarts_are_refused() -> None:
+    """Audit T-8: a turn-2 position is pre-deal at state.turn 1, so its continuation would be booked as a whole game,
+    never completed, and its bucket would wedge."""
+    with pytest.raises(ValueError, match=">= 3"):
+        parse_turn_weights("2:1,5:1")
+    with pytest.raises(ValueError, match=">= 3"):
+        RestartPool(8, frac=0.5, turn_weights={2: 1.0}, seed=1)
+
+
+def test_an_iteration_with_restarts_and_no_whole_game_has_the_empty_whole_group() -> None:
+    """Audit T-7: the unsuffixed keys are the empty group's, so the loop holds them back, not a KeyError."""
+    restarted = [{"turn": 10, "winner": "USSR", "ending_reason": "final_scoring", "start_turn": 9} for _ in range(3)]
+    stats = summarize_completed_episodes(restarted)
+    assert stats["episodes_completed"] == 0.0 and stats["mean_turn"] == 0.0 and stats["mean_ply"] == 0.0
+    assert stats["episodes_completed_restart"] == 3.0

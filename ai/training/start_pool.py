@@ -33,7 +33,7 @@ import numpy as np
 import torch
 
 from ai.eval.position_diagnostics import is_salvageable, region_score_sums
-from bindings.ts_env import TsVectorizedEnv
+from bindings.ts_env import TsVectorizedEnv, model_obs_features
 
 # Share of environments started from each turn. Turn 1 keeps the majority: start sampling
 # shifts the distribution the policy is optimised for away from the real game, and the real
@@ -181,6 +181,14 @@ class StartPositionPool:
         the new hand has not been dealt. Capturing after the deal would fix the cards, and
         every rollout from that position would replay the same draw.
         """
+        # Audit T-9: the harvest env below is a bare TsVectorizedEnv (base observation, no rule bits, E4 view).
+        # TODO(pool): give it the model's feature set (env.set_obs_features) and action view before the start pool
+        # is used again with a featured or merged / macro network; until then such a model is refused.
+        if model_obs_features(model) != 0:
+            raise ValueError(f"StartPositionPool.harvest plays in the base observation; this model reads feature set "
+                             f"{model_obs_features(model):#x} and would misread every harvested game")
+        if bool(getattr(model, "macro_influence", False)):
+            raise ValueError("StartPositionPool.harvest masks in the E4 action view; this model acts in the macro view")
         device = next(model.parameters()).device
         was_training = model.training
         model.eval()

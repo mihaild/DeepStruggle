@@ -660,7 +660,11 @@ def summarize_completed_episodes(episodes: List[Dict[str, Any]]) -> Dict[str, fl
     whole = [ep for ep in episodes if int(ep.get("start_turn", 1)) == 1]
     restarted = [ep for ep in episodes if int(ep.get("start_turn", 1)) > 1]
     if restarted:
-        stats = _episode_group_stats(whole, "") if whole else {}
+        # Audit T-7: an iteration that finished restarts and no whole game still carries the unsuffixed keys, as the
+        # empty group (episodes_completed 0), which the loop reads as "no episode this iteration" and holds back from
+        # the charts -- not a KeyError, and not a restart's numbers under the whole-game names.
+        # TODO(pool): the restart pool (P48b) is unmaintained; re-check its metrics end to end before it is used again.
+        stats = _episode_group_stats(whole, "")
         stats.update(_episode_group_stats(restarted, "_restart"))
         episodes = whole
     else:
@@ -2816,6 +2820,13 @@ def train_pipeline(
         if start_pool_frac > 0.0:
             raise ValueError("--forced-opening and --start-pool-frac are not combined: the start "
                              "pool's harvested games would still use the policy's own setup")
+        if restart_pool_frac > 0.0:
+            # Audit T-9: the restart pool's start provider and the opening's are one slot; the restart pool was
+            # silently dropped while metadata.json recorded its fraction.
+            # TODO(pool): combine the two providers (a restart is past the setup) before the restart pool is used
+            # again with a forced opening.
+            raise ValueError("--forced-opening and --restart-pool-frac are not combined: both replace the env's "
+                             "start position, and only one start provider exists")
         if forced_opening not in OPENINGS:
             raise ValueError(f"unknown opening {forced_opening!r}; known: {sorted(OPENINGS)}")
         _opening_env: List[TsVectorizedEnv] = []
@@ -2852,6 +2863,16 @@ def train_pipeline(
               f"{restart_max_continuations} continuations a position, {restart_max_age_steps / 1e6:.0f}M steps "
               f"old at most", flush=True)
     elif start_pool_frac > 0.0:
+        # Audit T-9: StartPositionPool.harvest plays its games in a bare TsVectorizedEnv -- the base observation (no
+        # feature set, no rule bits) and the E4 action view -- so a featured or merged / macro network would harvest
+        # from games it misreads or masks in another view.
+        # TODO(pool): give the harvest env the model's feature set and action view before the start pool is used
+        # again with such a model.
+        if int(obs_features) != 0 or merged_influence or macro_influence:
+            raise ValueError(f"--start-pool-frac harvests in the base observation and the E4 action view; this run "
+                             f"has feature set {int(obs_features):#x}, merged influence {bool(merged_influence)}, "
+                             f"macro influence {bool(macro_influence)}. Unsupported until the harvest env takes the "
+                             f"model's view (TODO(pool) in generic_trainer.py).")
         mix = dict(DEFAULT_TURN_MIX)
         pool_turns = tuple(t for t in mix if t != 1)
         start_pool = StartPositionPool(turns=pool_turns,

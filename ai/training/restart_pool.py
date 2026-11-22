@@ -67,9 +67,23 @@ def parse_turn_weights(text: str) -> Dict[int, float]:
         t, w = item.split(":")
         out[int(t)] = float(w)
     total = sum(out.values())
-    if total <= 0 or any(w < 0 for w in out.values()) or any(t < 2 for t in out):
-        raise ValueError(f"turn weights must be non-negative on turns >= 2 with a positive sum, got {text!r}")
+    if total <= 0 or any(w < 0 for w in out.values()):
+        raise ValueError(f"turn weights must be non-negative with a positive sum, got {text!r}")
+    check_turns(out)
     return {t: w / total for t, w in sorted(out.items())}
+
+
+def check_turns(weights: Dict[int, float]) -> None:
+    """Refuse restart turns below 3 (audit T-8). A turn-2 position is captured pre-deal with ``state.turn == 1``,
+    so the env books its continuation as a whole game (``start_turn`` 1): ``complete()`` is never called, the bucket's
+    checked-out count grows until it wedges, and the restart's games pollute the whole-game statistics.
+
+    TODO(pool): mark restarts explicitly instead of inferring them from the start turn before turn 2 is allowed, and
+    before the restart pool is used again at all (it is unmaintained since P48b)."""
+    bad = sorted(t for t in weights if t < 3)
+    if bad:
+        raise ValueError(f"restart turns must be >= 3 (a turn-2 restart is booked as a whole game and never "
+                         f"completes); got turns {bad}")
 
 
 def put_back_probability(n: int, mean: float, v: float, critic_weight: float = CRITIC_WEIGHT,
@@ -116,6 +130,7 @@ class RestartPool:
             raise ValueError("capacity, max_continuations and max_age_steps must be positive")
         self.num_envs = int(num_envs)
         self.turn_weights = dict(turn_weights or DEFAULT_TURN_WEIGHTS)
+        check_turns(self.turn_weights)
         self.capacity = {t: max(1, int(round(capacity * w))) for t, w in self.turn_weights.items()}
         self.max_continuations = int(max_continuations)
         self.max_age_steps = int(max_age_steps)

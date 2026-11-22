@@ -11,6 +11,7 @@ untouched from turn 8 on. Two properties have to hold or the idea backfires:
 
 import collections
 
+import pytest
 import torch
 import ts_engine as ts
 
@@ -115,3 +116,11 @@ def test_env_starts_from_an_injected_position() -> None:
     turns = [int(env.runner.get_state(i).turn) for i in range(4)]
     assert turns[0] == 5 and turns[2] == 5, f"injection did not take: {turns}"
     assert turns[1] == 1 and turns[3] == 1, f"None must leave the real opening: {turns}"
+
+
+def test_harvest_refuses_a_featured_model() -> None:
+    """Audit T-9: the harvest env plays the base observation; a featured network would misread every game."""
+    net = create_coldwar_net_v2("cpu")
+    object.__setattr__(net, "obs_feature_bits", 1 << 2)
+    with pytest.raises(ValueError, match="feature set"):
+        StartPositionPool(turns=(2, 3), capacity_per_turn=4, seed=5).harvest(net, num_envs=4, num_episodes=1)
