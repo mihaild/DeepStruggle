@@ -145,7 +145,7 @@ below it.
 > **Checks 1 and 2 done (2026-11-21; the log's section 5): both pass.** T1's flags cost 4.5% of throughput
 > (98.6k to 94.1k steps a second alone, on the later build `fc65976`; 11% as first measured); leaving the luck out biases no kind of move (every paired difference of
 > the mean within 1.2 standard errors) and takes 4% off the advantage's spread, 15% on wars; 4.16 outcomes read a
-> roll on trained play. S's policy lambda is **0.86** (A8's spread on the baseline), which needs a knob for the
+> roll on trained play. S's policy lambda is **0.86** (L8's spread on the baseline), which needs a knob for the
 > policy's chain apart from the value targets', not built. The baseline for read 3 is 0.029 mean absolute.
 
 > **Pair 1 (2026-11-22; the log's section 6): T1 meets its rule.** 53.7% ± 0.8 against C at +800M (as US 50.3, as
@@ -164,9 +164,9 @@ lines named), 800M each, two at a time.
 | 1 | **C** | the baseline continued under its own name | | |
 | 1 | **T1** | `--afterstate-advantage`, `--afterstate-lambda-opp 1` | C | it must cost nothing |
 | 2 | **C'** | the baseline continued with another sampling seed | C | the noise of one recipe, head to head and on the references |
-| 2 | **A8** | T1 with `--afterstate-lambda-opp 0.8` | T1 | it must show a gain |
-| 3, only if A8 gains | **A5** | T1 with `--afterstate-lambda-opp 0.5` | T1 | it must show a gain |
-| 3, only if A8 gains | **S** | T1 with its lambda lowered to A8's reach (0.86 by check 2's sweep), no decay at the afterstate | A8 | is A8's gain the split or the shorter reach |
+| 2 | **L8** | T1 with `--afterstate-lambda-opp 0.8` | T1 | it must show a gain |
+| 3, only if L8 gains | **L5** | T1 with `--afterstate-lambda-opp 0.5` | T1 | it must show a gain |
+| 3, only if L8 gains | **S** | T1 with its lambda lowered to L8's reach (0.86 by check 2's sweep), no decay at the afterstate | L8 | is L8's gain the split or the shorter reach |
 
 * **0.8 before 0.5** (owner): what a move is worth depends on whether the opponent can answer it, and the
   positions after the reply are where the critic's first view of the move is corrected. 0.5 runs only if 0.8
@@ -177,9 +177,9 @@ lines named), 800M each, two at a time.
 ### Reads at +800M
 
 1. Head to head on the same deals, SWAs of the last 80M, greedy, 2,000 deals a side, per seat from the JSON:
-   T1 against C, C' against C, A8 against T1 (and against C).
+   T1 against C, C' against C, L8 against T1 (and against C).
 2. The references (the old reference, J1's best), every arm, as context.
-3. For T1 and A8, on the CPU: the critic before a roll against the outcomes' exact average (off by 0.029 mean
+3. For T1 and L8, on the CPU: the critic before a roll against the outcomes' exact average (off by 0.029 mean
    absolute on the baseline at 2,010M; it is now that row's training target, so it should fall), and the
    critic's AUC and Brier against results beside C's.
 4. Health throughout: entropy, clip fraction, the size of a policy update, explained variance, the self-play
@@ -189,17 +189,17 @@ lines named), 800M each, two at a time.
 
 * **T1, by what it is:** not under C. The two-standard-error floor of its head to head at 49% or over, the
   references not under C's by more than C' differs from C, health level. A gain is welcome and not required.
-* **A8 (and A5), a trade:** 52% or over against T1 on 4,000 games, and by more than C' differs from C; the
+* **L8 (and L5), a trade:** 52% or over against T1 on 4,000 games, and by more than C' differs from C; the
   references not under T1's; health level.
-* **S** is read only against A8: level with it, the gain was the reach, and a flag gives it; under it, the split
+* **S** is read only against L8: level with it, the gain was the reach, and a flag gives it; under it, the split
   at the afterstate is what gained.
 
 **Stop early** only on a clear problem inside 100M: entropy rising or falling steadily, explained variance
 falling, one seat running away.
 
-**Prediction.** T1 level to +2 against C; C' within 1.5 points of C; A8 level to +2 against T1. Held loosely.
+**Prediction.** T1 level to +2 against C; C' within 1.5 points of C; L8 level to +2 against T1. Held loosely.
 
-**Then.** T1 not under C: the baseline takes it. A8 over the bar: the baseline takes 0.8 and pair 3 says whether
+**Then.** T1 not under C: the baseline takes it. L8 over the bar: the baseline takes 0.8 and pair 3 says whether
 to go lower and why.
 
 ## The first version's screen (superseded by the approved plan above)
@@ -210,10 +210,10 @@ the baseline's (`launch_flags.py --diff`), 300M each, in pairs in the two slots.
 | pair | arm | what it is | what it answers |
 |:---|:---|:---|:---|
 | 1 | **C** | the baseline continued | the control of every arm |
-| 1 | **A5** | per-player chain, lambda 0.96, `lambda_opp` 0.5 | is there anything here |
-| 2 | **A8** | the same, `lambda_opp` 0.8 | the cautious setting |
-| 2 | **S** | per-player chain, lambda 0.69, no split (flags only) | A5's reach without the afterstate: is it the reach or the split |
-| 3 | **A0** | `lambda_opp` 0 | the critic's opinion alone (dropped if the CPU match says under 40%) |
+| 1 | **L5** | per-player chain, lambda 0.96, `lambda_opp` 0.5 | is there anything here |
+| 2 | **L8** | the same, `lambda_opp` 0.8 | the cautious setting |
+| 2 | **S** | per-player chain, lambda 0.69, no split (flags only) | L5's reach without the afterstate: is it the reach or the split |
+| 3 | **L0** | `lambda_opp` 0 | the critic's opinion alone (dropped if the CPU match says under 40%) |
 | 3 | **P** | per-player chain, lambda 0.96 | P50's form on this base: the chain without the decay |
 
 Pair 1 decides whether pairs 2 and 3 are run. About 85 minutes a pair. The best arm and C then continue to
@@ -237,7 +237,7 @@ only order the arms.
 
 **Stop early** on entropy falling steadily, read 4's share passing 75%, or one seat running away.
 
-**Prediction.** A8 level to +2; A5 either way; A0 a loss; S close to A5. I hold none of these firmly: no network
+**Prediction.** L8 level to +2; L5 either way; L0 a loss; S close to L5. I hold none of these firmly: no network
 here has been trained at a reach this short.
 
 **Not in this plan.** The dice's step as an exact average over the roll instead of a sample; the advantage

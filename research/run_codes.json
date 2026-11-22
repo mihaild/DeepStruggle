@@ -3453,7 +3453,7 @@
    }
   },
   "R171": {
-   "description": "P56 A8 (owner, 2026-11-21): T1 (R170) with the decay at the afterstate node 0.8 (--afterstate-lambda-opp 0.8): a shorter reach past the opponent's reply in the policy's advantage only, value targets unchanged; 800M from R169 at 2,010M against T1 and C -- must gain",
+   "description": "P56 L8 (owner, 2026-11-21): T1 (R170) with the decay at the afterstate node 0.8 (--afterstate-lambda-opp 0.8): a shorter reach past the opponent's reply in the policy's advantage only, value targets unchanged; 800M from R169 at 2,010M against T1 and C -- must gain",
    "first": "E8.1-A8-R169-S45@2010M+R171_20261122_071540",
    "flags": {
     "reward_scheme": "terminal",

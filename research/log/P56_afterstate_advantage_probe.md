@@ -179,8 +179,8 @@ mean absolute (signed mean -0.0048). Section 4's 0.052 is an SD at 1,200M by 30 
 was 0.0285, so the two agree and the gap has not closed by itself between 1,200M and 2,010M.
 
 **The plain per-player chain's spread over lambda** (the same rollout): 0.50: 0.0805, 0.62: 0.0881, 0.70: 0.0961,
-0.78: 0.1088, 0.82: 0.1185, 0.86: 0.1321, 0.90: 0.1532, 0.94: 0.1916, 0.96: 0.2275, 0.98: 0.2969. A8
-(`lambda_opp` 0.8, luck dropped) has SD 0.1318, the plain chain's at 0.86; A5 0.0839, the plain chain's at 0.56;
+0.78: 0.1088, 0.82: 0.1185, 0.86: 0.1321, 0.90: 0.1532, 0.94: 0.1916, 0.96: 0.2275, 0.98: 0.2969. L8
+(`lambda_opp` 0.8, luck dropped) has SD 0.1318, the plain chain's at 0.86; L5 0.0839, the plain chain's at 0.56;
 T1 0.2185, between 0.95 and 0.96. Section 2's 0.88 and 0.69 were matched on return error on a network at 1,200M;
 these are matched on spread on the baseline itself and are the ones the arms use.
 
