@@ -129,6 +129,12 @@ league uses a random stream of its own). Metrics: `opp_league_m<id>_games_learne
 before this change seated members 50/50 and changed opponent every 128 steps; their metadata has no
 `league_seating`.
 
+**The opponent pool is unmaintained since the pure self-play recipes (audit T-17, `TODO(pool)` in the code).**
+A mixed game that starts and ends inside one rollout without `--seat-balance` reaches no member's record:
+counted in `opp_unattributed_games` (must be 0) and warned once. A resume that cannot find a recorded member
+(the step-0 seed member always) warns with the dropped steps. A pool rebuilt from a run directory's
+snapshots (no recorded pool, or `--reset-opponent-pool`) refuses snapshots newer than the resume state.
+
 `tools/scripts/league_seats.py` drives P45's generations beside a running main (adopted by PID): every
 `--every` main steps the main's newest 80M SWA is the target, the US exploiter trains `--gen-steps` against it,
 then the USSR exploiter, each continued from its own previous generation (restarted from the main's state

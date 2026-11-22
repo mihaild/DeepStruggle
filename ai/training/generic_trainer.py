@@ -125,6 +125,7 @@ TB_TAGS: Dict[str, str] = {
     "opp_pfsp_max_prob": "opponent/pfsp_max_prob",
     "opp_pool_span_m": "opponent/pool_span_msteps",
     "opp_frac_mixed": "opponent/frac_mixed",
+    "opp_unattributed_games": "opponent/unattributed_games",
     "adv_frac_near_zero": "internal/adv_frac_near_zero",
     # Auxiliary heads. Emitted only when the corresponding option is on, so an absent series
     # here means "not enabled for this run", not "broken".
@@ -1424,6 +1425,20 @@ def locate_pool_members(saved_pool: Dict[str, Any],
             steps.append(w)
             paths.append(run_snapshots[w])
     return steps, paths
+
+
+def refuse_future_pool_snapshots(snapshot_steps: Sequence[int], resume_step: int, run_dir: str) -> None:
+    """Audit T-17: a pool rebuilt from a run directory's snapshots on a branch from <run_dir>:<steps> (no recorded
+    pool, or --reset-opponent-pool) would take snapshots written after the branch point -- opponents from its own
+    future. Refused.
+
+    TODO(pool): rebuild from the snapshots at or before the resume step only, before the opponent pool is used
+    again."""
+    future = sorted(n for n in snapshot_steps if n > resume_step)
+    if future:
+        raise ValueError(f"rebuilding the opponent pool from {run_dir} would include {len(future)} snapshot(s) written "
+                         f"after the resume state's {resume_step:,} steps (first {future[0]:,}); unsupported until "
+                         f"the rebuild filters them (TODO(pool) in generic_trainer.py)")
 
 
 def _env_game_rng_state(trainer: Any) -> Optional[Dict[str, Any]]:
@@ -3263,14 +3278,15 @@ def train_pipeline(
                 # looks similar -- and it zeroes the win/game record, which a PFSP draw needs.
                 # Losing the recorded pool is a change to the experiment that has to be asked for
                 # (--reset-opponent-pool), so a state that cannot be read here is an error.
+                _b = torch.load(_src_file, map_location="cpu", weights_only=False)
+                _resume_step = int(_b.get("total_env_steps", 0))
                 if not reset_opponent_pool:
-                    _b = torch.load(_src_file, map_location="cpu", weights_only=False)
                     _saved_pool = _b.get("opponent_pool")
                     if _saved_pool is not None and "seed_pool" in seed_changes(_b, _src_file, _launch_seeds,
                                                                                bool(in_place)):
                         # A new --seed-pool: the members and their record are restored, the draw is not.
                         _saved_pool = {k: v for k, v in _saved_pool.items() if k != "rng_state"}
-                    del _b
+                del _b
 
                 _have = {n: q for n, q in _snaps}
                 _want = [int(x) for x in (_saved_pool or {}).get("steps", [])]
@@ -3278,11 +3294,21 @@ def train_pipeline(
                     _seed_steps, _seed_paths = locate_pool_members(_saved_pool or {}, _have)
                     _missing = len(_want) - len(_seed_steps)
                     if _missing:
-                        print(f"[opponent pool] {_missing} of {len(_want)} recorded members have "
-                              f"no snapshot on disk and are dropped.", flush=True)
+                        # Audit T-17: the step-0 member (the frozen initial policy the pool was seeded with) is
+                        # recorded without a path, and snapshot_0s.pt is not matched by step -- in a branched run
+                        # it holds the branch point's weights, not step 0's -- so it is dropped on every resume
+                        # whose record still holds it. A warning, not an error: raising would block nearly every
+                        # pooled resume (spread eviction keeps step 0).
+                        # TODO(pool): record the seed member's file when the pool is seeded, before the opponent
+                        # pool is used again.
+                        _lost = sorted(set(_want) - set(_seed_steps))
+                        print(f"[opponent pool] WARNING: {_missing} of {len(_want)} recorded members have no "
+                              f"snapshot on disk and are DROPPED (steps {_lost}); the resumed pool is not the "
+                              f"pool the run held.", flush=True)
                 if not _seed_paths:
                     # No record, or none of it survives: spread evenly over the run's history,
                     # which is what the pool's own eviction rule aims for.
+                    refuse_future_pool_snapshots([n for n, _ in _snaps], _resume_step, _run_dir)
                     if len(_snaps) > opponent_pool_size:
                         _idx = np.linspace(0, len(_snaps) - 1,
                                            opponent_pool_size).round().astype(int)

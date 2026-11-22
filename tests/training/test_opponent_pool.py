@@ -350,3 +350,15 @@ def test_critic_tracker_only_resolves_selfplay_envs() -> None:
 
     mixed = set(np.flatnonzero(tr.opponent_pool.is_mixed).tolist())
     assert not (set(seen) & mixed), f"critic resolved pool games: {set(seen) & mixed}"
+
+
+def test_a_game_with_no_recorded_exposure_is_counted_and_warned(capsys: pytest.CaptureFixture[str]) -> None:
+    """Audit T-17: without seat balance, a mixed game that starts and ends inside one rollout has no exposure, so its
+    result reaches no member. Not silent: counted in stats and warned once."""
+    pool = OpponentPool([create_coldwar_net_v2()], num_envs=8, frac=1.0, seed=1)
+    pool.start_iteration()
+    pool.on_episode_end(0, victory_points=5.0)      # recorded: exposure from the iteration start
+    assert pool.stats()["opp_unattributed_games"] == 0.0
+    pool.on_episode_end(0, victory_points=5.0)      # the next game ended before any iteration started
+    assert pool.stats()["opp_unattributed_games"] == 1.0
+    assert "WARNING" in capsys.readouterr().out

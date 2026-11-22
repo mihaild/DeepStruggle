@@ -14,9 +14,11 @@ from __future__ import annotations
 
 from typing import Any, List
 
+import pytest
 import torch
 import torch.nn as nn
 
+from ai.training.generic_trainer import refuse_future_pool_snapshots
 from ai.training.opponent_pool import OpponentPool
 
 
@@ -283,3 +285,10 @@ def test_members_of_an_earlier_leg_are_found_by_their_recorded_path() -> None:
         steps, paths = locate_pool_members({"steps": [80_000_000, 120_000_000]},
                                            {120_000_000: new})
         assert steps == [120_000_000] and paths == [new]
+
+
+def test_a_pool_rebuild_refuses_snapshots_from_after_the_branch_point() -> None:
+    """Audit T-17: a branch from <run_dir>:<steps> rebuilding its pool must not take its own future's snapshots."""
+    refuse_future_pool_snapshots([0, 1000, 2000], 2000, "run")
+    with pytest.raises(ValueError, match="after the resume state"):
+        refuse_future_pool_snapshots([0, 1000, 2000, 3000], 2000, "run")

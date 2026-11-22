@@ -236,6 +236,9 @@ class OpponentPool:
         self.league_seat_games: Dict[tuple, int] = {}
         self.league_wrong_seat_games = 0
         self.league_orphaned_games = 0
+        #: Mixed games whose result reached no member (audit T-17): started and ended inside one rollout without
+        #: seat balance, so no iteration start ever recorded their exposure. Must stay 0.
+        self.unattributed_games = 0
         for n in self.nets:
             n.eval()
             for p in n.parameters():
@@ -721,7 +724,18 @@ class OpponentPool:
         if victory_points is not None and self.is_mixed[env_index]:
             exposure = self._exposure[env_index]
             total = sum(exposure.values())
-            if total > 0.0:
+            if total <= 0.0:
+                # Audit T-17: without seat balance a mixed env's exposure is recorded only at an iteration's start,
+                # so a game that starts and ends inside one rollout (an early DEFCON loss) reaches neither PFSP nor the
+                # league statistics. Warned (and counted in stats), not raised: raising would stop every pooled run.
+                # TODO(pool): seed the exposure at the episode's start (as seat balance does) before the opponent
+                # pool is used again.
+                self.unattributed_games += 1
+                if self.unattributed_games == 1:
+                    print("[opponent pool] WARNING: a mixed game ended with no recorded exposure (it started and "
+                          "ended inside one rollout); its result is NOT credited to any member, which biases PFSP "
+                          "and the league rates. Counted in opp_unattributed_games.", flush=True)
+            else:
                 side = int(self.learner_side[env_index])
                 vp = float(victory_points)
                 score = 0.5 if vp == 0.0 else (1.0 if (vp > 0) == (side == 1) else 0.0)
@@ -894,6 +908,7 @@ class OpponentPool:
             "opp_pool_size": float(len(self.nets)),
             "opp_pool_span_m": float((max(own_steps) - min(own_steps)) / 1e6)
             if own_steps else 0.0,
+            "opp_unattributed_games": float(self.unattributed_games),
         }
         league = [self.ids[i] for i in self._members("league")]
         if league:
