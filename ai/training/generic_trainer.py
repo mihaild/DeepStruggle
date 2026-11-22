@@ -1976,7 +1976,6 @@ def train_pipeline(
     inject_weight: float = 1.0,
     bc_epochs: int = 5,
     train_steps: int = 80_000_000,
-    decisiveness_turns: float = 0.0,
     vp_potential: float = 0.0,
     max_snapshot_opponents: int = 4,
     snapshot_every_steps: int = 10_000_000,
@@ -2001,7 +2000,6 @@ def train_pipeline(
     value_dist_coef: float = 0.02,
     categorical_value: bool = False,
     adv_filter_quantile: float = 0.0,
-    window_provoked_defcon: bool = False,
     identity_dim: int = 0,
     self_transform: bool = False,
     attn_readout: int = 0,
@@ -2458,7 +2456,7 @@ def train_pipeline(
         "per_player_gae": per_player_gae,
         "resume_every_snapshot": bool(resume_every_snapshot),
         "resume_every_steps": int(resume_every_steps),
-        "decisiveness_turns": decisiveness_turns,
+        "decisiveness_turns": 0.0,   # retired 2026-11-22; recorded at the value every run had, for run codes
         "vp_potential": float(vp_potential),
         "train_steps": int(train_steps),
         "snapshot_every_steps": int(snapshot_every_steps),
@@ -2545,7 +2543,7 @@ def train_pipeline(
         "value_dist_coef": value_dist_coef,
         "categorical_value": bool(categorical_value),
         "adv_filter_quantile": adv_filter_quantile,
-        "window_provoked_defcon": bool(window_provoked_defcon),
+        "window_provoked_defcon": False,   # retired 2026-11-22, recorded as every run had it
         "identity_dim": int(identity_dim),
         "self_transform": bool(self_transform),
         "attn_readout": int(attn_readout),
@@ -2818,14 +2816,8 @@ def train_pipeline(
     if target_endings and reward_scheme != "terminal":
         raise ValueError(f"--target-endings replaces the terminal scheme's payoff; --reward-scheme {reward_scheme} would "
                          "ignore it")
-    if decisiveness_turns and (reward_scheme not in ("terminal", "useful_actions", "curriculum")
-                               or target_region or target_endings):
-        raise ValueError(f"--decisiveness-turns {decisiveness_turns:g} scales the zero-sum terminal reward, which "
-                         f"--reward-scheme {reward_scheme}" + (" with a target" if reward_scheme == "terminal" else "")
-                         + " does not use; it applies to terminal (without --target-endings / --target-region), "
-                         "useful_actions and curriculum")
     if is_curriculum or reward_scheme == "useful_actions":
-        reward_calc = UsefulActionsReward(decisiveness_turns=decisiveness_turns)
+        reward_calc = UsefulActionsReward()
     elif reward_scheme == "shaped":
         reward_calc = ShapedZeroSumReward()
     elif target_region:
@@ -2847,7 +2839,7 @@ def train_pipeline(
         print(f"[reward] ending-targeted: +1 for the {opponent_lock_side or 'exploiter (both seats, drawn per game)'} seat's wins by {sorted(target_endings)}, "
               f"-1 for any loss, 0 for any other win or a draw", flush=True)
     else:
-        reward_calc = ZeroSumTerminalReward(decisiveness_turns=decisiveness_turns)
+        reward_calc = ZeroSumTerminalReward()
     if vp_potential:
         if is_curriculum:
             raise ValueError("--vp-potential does not combine with the curriculum scheme")
@@ -2876,8 +2868,7 @@ def train_pipeline(
 
         env = TsVectorizedEnv(num_envs=num_envs, base_seed=env_base_seed, game_seed=env_base_seed,
                               reward_calculator=reward_calc,
-                              start_provider=_opening_provider,
-                              window_provoked_defcon=window_provoked_defcon)
+                              start_provider=_opening_provider)
         _opening_env.append(env)
         print(f"[forced opening] every game starts after the '{forced_opening}' setup: "
               f"USSR {OPENINGS[forced_opening]['USSR']}, US {OPENINGS[forced_opening]['US']}",
@@ -2896,8 +2887,7 @@ def train_pipeline(
             critic_weight=restart_critic_weight, seed=env_base_seed + 7919)
         env = TsVectorizedEnv(num_envs=num_envs, base_seed=env_base_seed, game_seed=env_base_seed,
                               reward_calculator=reward_calc,
-                              start_provider=restart_pool.provide,
-                              window_provoked_defcon=window_provoked_defcon)
+                              start_provider=restart_pool.provide)
         print(f"[restart pool] {int(restart_pool.restart_env.sum())}/{num_envs} envs restart from the pool; turns "
               f"{restart_pool.turn_weights}, capacity {sum(restart_pool.capacity.values())}, at most "
               f"{restart_max_continuations} continuations a position, {restart_max_age_steps / 1e6:.0f}M steps "
@@ -2916,12 +2906,10 @@ def train_pipeline(
 
         env = TsVectorizedEnv(num_envs=num_envs, base_seed=env_base_seed, game_seed=env_base_seed,
                               reward_calculator=reward_calc,
-                              start_provider=_start_provider,
-                              window_provoked_defcon=window_provoked_defcon)
+                              start_provider=_start_provider)
     else:
         env = TsVectorizedEnv(num_envs=num_envs, base_seed=env_base_seed, game_seed=env_base_seed,
-                              reward_calculator=reward_calc,
-                              window_provoked_defcon=window_provoked_defcon)
+                              reward_calculator=reward_calc)
     if isinstance(reward_calc, RegionTargetedReward):
         reward_calc.attach(env.runner)   # it reads the runner's per-step Event VP record
 
@@ -3824,7 +3812,7 @@ def train_pipeline(
         if (is_curriculum and not curriculum_switched
                 and trainer.total_env_steps >= curriculum_switch_at):
             curriculum_switched = True
-            trainer.set_reward_calculator(ZeroSumTerminalReward(decisiveness_turns=decisiveness_turns))
+            trainer.set_reward_calculator(ZeroSumTerminalReward())
             trainer.set_slice_turn_boundaries(False if slice_turn_boundaries is None else slice_turn_boundaries)
             print(f"\n{'=' * 80}", flush=True)
             print(f"[CURRICULUM] STAGE 2 SWITCH: Replaced UsefulActionsReward with "

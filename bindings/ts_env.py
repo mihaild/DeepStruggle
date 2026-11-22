@@ -240,7 +240,7 @@ def legal_mask(state: "ts.GameState", merged_influence: bool, features: Optional
                       dtype=np.uint8)
 
 
-def credits_defcon_blunder(state: "ts.GameState", window_provoked: bool) -> bool:
+def credits_defcon_blunder(state: "ts.GameState") -> bool:
     """Should this DEFCON-1 terminal be credited to the phasing player as a blunder?
 
     Split out of the step loop so it can be tested on a constructed state: a provoked ending is
@@ -249,7 +249,9 @@ def credits_defcon_blunder(state: "ts.GameState", window_provoked: bool) -> bool
     """
     if int(state.defcon) > 1:
         return False
-    return window_provoked or not state.has_flag(ts.EffectBits.DEFCON_SUICIDE_PROVOKED)
+    # A provoked suicide is not the phasing player's blunder (--window-provoked-defcon, which credited it, was retired
+    # 2026-11-22). The ending itself stays split by reason in game_ending_reason.
+    return not state.has_flag(ts.EffectBits.DEFCON_SUICIDE_PROVOKED)
 
 
 class TsVectorizedEnv:
@@ -268,7 +270,6 @@ class TsVectorizedEnv:
         auto_reset: bool = True,
         start_provider: Optional[Callable[[int], Optional["ts.GameState"]]] = None,
         reward_calculator: Optional[RewardCalculator] = None,
-        window_provoked_defcon: bool = False,
         settle: SettleMode = SettleMode.FORCED,
         game_seed: Optional[int] = None,
     ):
@@ -294,13 +295,6 @@ class TsVectorizedEnv:
         # be split by start turn: with half the envs resuming mid-game, a pooled mean turn
         # or explained variance describes neither the real game nor the resumed one.
         self.env_start_turn = np.ones(num_envs, dtype=np.int16)
-        # Credit a *provoked* DEFCON-1 to the player who played the card, the same way an
-        # unprovoked one is credited. Off by default, because it changes the returns and so a
-        # run's numbers with it on are on a different footing from those without.
-        # Why it is worth trying: the critic barely moves when the fatal card is chosen, so the
-        # -1 has nothing to attach to unless it is windowed, and the window's advantage
-        # (-1 - v_t) never consults the critic.
-        self.window_provoked_defcon = bool(window_provoked_defcon)
         # How far past a decision the player has no say in each step advances. FORCED is the
         # default: a decision with one legal action is not a decision, and handing it back costs
         # a Python round trip and a crossing of the binding boundary for nothing. Measured at
@@ -308,8 +302,7 @@ class TsVectorizedEnv:
         # engine time.
         #
         # It is a flag rather than a constant because it moves the decision stream, so a run with
-        # it is not comparable with a run without -- the same footing as window_provoked_defcon
-        # above. The batched and single-state blunder probes must agree on it in particular:
+        # it is not comparable with a run without. The batched and single-state blunder probes must agree on it in particular:
         # ai/eval/blunders.py settles to match, and test_the_two_probes_agree_on_the_same_games
         # is what catches them drifting apart.
         #
@@ -560,11 +553,7 @@ class TsVectorizedEnv:
         _, curr_turns, curr_vp, dones, term_utils = self.runner.get_env_scalars()
 
         # Unprovoked DEFCON-1 suicide: the player who chose the losing action, else 0 -- the
-        # DEFCON-risk head's label (RolloutBuffer.defcon_risk_target). A provoked suicide stays 0
-        # unless `window_provoked_defcon` is set. The argument for leaving it at 0 was that the
-        # mistake lies in earlier card management rather than the final move. Measured, that
-        # premise does not hold: the fatal card play sits a handful of micro-actions from the loss
-        # and inside the same turn, and the critic barely moves at the deciding choice.
+        # DEFCON-risk head's label (RolloutBuffer.defcon_risk_target). A provoked suicide stays 0.
         defcon_blunder = np.zeros(self.num_envs, dtype=np.int8)
         ending_reasons: List[str] = [""] * self.num_envs
         # Terminal length in plies. The turn alone cannot express it: a game abandoned at
@@ -587,7 +576,7 @@ class TsVectorizedEnv:
                 if ts.Engine.is_held_scoring_game_over(st):
                     held_scoring = bool(ts.Engine.is_held_scoring_loss(st, ts.Player.US)
                                         or ts.Engine.is_held_scoring_loss(st, ts.Player.USSR))
-                elif credits_defcon_blunder(st, self.window_provoked_defcon):
+                elif credits_defcon_blunder(st):
                     # phasing_player is the side that played the card even when the opponent
                     # is the one acting -- verified against self-play games that ended this way.
                     defcon_blunder[i] = int(st.phasing_player)

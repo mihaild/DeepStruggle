@@ -41,9 +41,10 @@ def test_the_reward_is_in_the_movers_frame() -> None:
 
 
 def test_it_wraps_the_base_calculator() -> None:
-    base = ZeroSumTerminalReward(decisiveness_turns=40.0)
+    base = ZeroSumTerminalReward()
+    base.marker = 7                                       # type: ignore[attr-defined]
     calc = VPPotentialShaping(base, 0.01)
-    assert calc.decisiveness_turns == 40.0                # attributes reach the base
+    assert calc.marker == 7                               # attributes reach the base
     assert not hasattr(calc, "on_env_reset")              # absent on the base, absent here
     # a terminal step with no state is the base's ordinary win plus the shaping
     assert abs(_step(calc, 1, 5, 5, done=True, util=1.0) - (1.0 - 0.05)) < 1e-6

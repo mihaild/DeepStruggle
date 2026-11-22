@@ -529,25 +529,10 @@ def build_parser() -> argparse.ArgumentParser:
                              "constant, so the optimal policy is unchanged; it only pays VP "
                              "gains when they happen and takes them back at the end. Refused with "
                              "--target-region / --target-endings (the wrapper hides those rewards' hooks).")
+    # Retired 2026-11-22 (owner): no surviving run used it (only E1-era ablations). Accepted at its default for launch
+    # commands derived from runs that record it; any other value is refused in main().
     parser.add_argument("--decisiveness-turns", type=float, default=0.0,
-                        help="Scale the terminal reward by (1 - turn/K), so a result on turn T is "
-                             "worth 1 - T/K instead of 1 (0 = off). With gamma=1 and terminal-only "
-                             "rewards the objective is indifferent to *when* you win: taking a forced "
-                             "win now and winning three turns later both return +1, so nothing in the "
-                             "gradient prefers the former, and trained policies duly leave "
-                             "engine-verified forced wins on the table. The scale applies to "
-                             "losses too, so a self-inflicted defeat on turn 3 costs more than on "
-                             "turn 9, which is the intended 'prolong a lost game' incentive. K is "
-                             "a slope: at 40, turn 3 is worth 0.925 and turn 10 is 0.75. Too steep "
-                             "biases against build-to-final-scoring play, so watch the ending mix. "
-                             "Applies to --reward-scheme terminal (not with --target-endings or "
-                             "--target-region), useful_actions and curriculum (both stages); refused "
-                             "with shaped. (Before 2026-11-22 it applied to the blunder_aware "
-                             "scheme, since removed, instead of terminal.)")
-    # A step budget is not a controlled comparison across engine versions: a rebuilt engine plays
-    # a different game, so two runs with matched step counts are only broadly comparable. The
-    # comparison that holds is a head-to-head tournament on the current engine, which does not
-    # need matched steps at all.
+                        help="Retired (2026-11-22): the terminal reward is never scaled by game length. Only 0 is accepted.")
     parser.add_argument("--resume", type=str, default=None,
                         help="Resume a run from a resume state. Pass the file, the run\n"
                              "directory (its newest state), or '<run_dir>:<steps>' to branch\n"
@@ -725,12 +710,11 @@ def build_parser() -> argparse.ArgumentParser:
                              "every sample. 0 disables it. Reported at 2.5x wall-clock in\n"
                              "Ataraxos. It changes the effective batch size, so screen it as its\n"
                              "own factor rather than folding it in with --categorical-value.")
+    # Retired 2026-11-22 (owner): it only changed the DEFCON-risk head's label, trained in no run (--defcon-coef 0). The
+    # DEFCON-1 ending stays split by reason (own decision / opponent's provocation) from the engine's own flag.
     parser.add_argument("--window-provoked-defcon", action="store_true", default=False,
-                        help="Credit a *provoked* DEFCON-1 loss to the player who played the\n"
-                             "card, the same way an unprovoked one is credited, in the\n"
-                             "DEFCON-risk head's label (defcon_risk_target). Before 2026-11-22\n"
-                             "it also opened the blunder window on such a loss; the window is\n"
-                             "gone, so the label is all it changes now.")
+                        help="Retired (2026-11-22): refused if given. A provoked DEFCON-1 loss is never credited to the "
+                             "card's player in the DEFCON-risk label.")
     parser.add_argument("--drop-static", action="store_true", default=False,
                         help="With --arch mlp, drop the per-entity observation slots that never\n"
                              "change: stability, battleground, region, Ops, era, one-time,\n"
@@ -1470,6 +1454,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main():
     parser = build_parser()
     args = parser.parse_args()
+    if args.decisiveness_turns or args.window_provoked_defcon:
+        parser.error("--decisiveness-turns and --window-provoked-defcon are retired (owner, 2026-11-22): only their "
+                     "defaults (0 / off) are accepted")
     if getattr(args, "ladder_token_layers", 0) and not args.no_cuda_graphs:
         # The token path runs in bf16 under autocast, whose GEMMs take a cuBLASLt workspace; inside the first graph
         # capture it lands in that graph's private pool and later captures reuse its address, so the pool's first
@@ -1506,7 +1493,6 @@ def main():
             value_dist_coef=args.value_dist_coef,
             categorical_value=args.categorical_value,
             adv_filter_quantile=args.adv_filter_quantile,
-            window_provoked_defcon=args.window_provoked_defcon,
             identity_dim=args.identity_dim,
             drop_static=args.drop_static,
             ladder_config=_ladder_config(args),
@@ -1530,7 +1516,6 @@ def main():
             setup_block_lambda=args.setup_block_lambda,
             block_lambda=(args.block_lambda if args.block_lambda is not None
                           else ("setup" if args.setup_block_lambda else "off")),
-            decisiveness_turns=args.decisiveness_turns,
             vp_potential=args.vp_potential,
             max_snapshot_opponents=args.eval_max_snapshot_opponents,
             opponent_checkpoints=args.opponent_checkpoints,

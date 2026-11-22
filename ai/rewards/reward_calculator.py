@@ -38,26 +38,7 @@ class ZeroSumTerminalReward:
       (+1.0 if acting player won, -1.0 if acting player lost, 0.0 for draw), whatever the ending.
     - Zero-sum transition sign: sign = curr_player * next_player.
 
-    Optionally scales the terminal magnitude by how late the game ended, via `decisiveness_turns`
-    (K): a result on turn T is worth `max(0.05, 1 - T/K)` instead of 1 (0, the default, leaves it at 1).
-
-    This exists because with gamma = 1 and a terminal-only reward the objective is *indifferent* to
-    when you win: taking a forced win now returns +1, and so does declining it and winning three
-    turns later. The scale applies to losses as well, so a self-inflicted defeat on turn 3 costs
-    more than the same defeat on turn 9 -- a losing player should prolong the game. K is a slope,
-    not a threshold: at K = 40 a turn-3 result is worth 0.925 and a turn-10 result 0.75. (Until
-    2026-11-22 the scale lived on the blunder-aware scheme, which was removed: owner, "we tested
-    that it is not needed".)
     """
-
-    def __init__(self, decisiveness_turns: float = 0.0) -> None:
-        self.decisiveness_turns = float(decisiveness_turns)
-
-    def terminal_scale(self, state: Optional[ts.GameState]) -> float:
-        """Multiplier on the terminal magnitude; 1.0 when disabled or the turn is unknown."""
-        if self.decisiveness_turns <= 0.0 or state is None:
-            return 1.0
-        return max(0.05, 1.0 - float(state.turn) / self.decisiveness_turns)
 
     def compute_step_rewards(
         self,
@@ -68,12 +49,7 @@ class ZeroSumTerminalReward:
         curr_victory_points: np.ndarray,
         states: Optional[List[Optional[ts.GameState]]] = None,
     ) -> np.ndarray:
-        rewards = np.where(dones, terminal_utilities * acting_players, 0.0).astype(np.float32)
-        if self.decisiveness_turns > 0.0 and states is not None:
-            for i in np.flatnonzero(dones):
-                st = states[i] if i < len(states) else None
-                rewards[i] *= self.terminal_scale(st)
-        return rewards
+        return np.where(dones, terminal_utilities * acting_players, 0.0).astype(np.float32)
 
     def compute_zero_sum_sign(
         self,
@@ -237,8 +213,8 @@ class VPPotentialShaping:
 class UsefulActionsReward(ZeroSumTerminalReward):
     """Reward calculator encouraging usually useful actions via strategic potential shaping.
 
-    Terminal steps take ZeroSumTerminalReward's payoff (winner +1, loser -1, scaled by
-    `decisiveness_turns`; the blunder shielding it inherited before 2026-11-22 was removed),
+    Terminal steps take ZeroSumTerminalReward's payoff (winner +1, loser -1; the blunder shielding and the
+    game-length scale it had before 2026-11-22 were removed),
     and intermediate steps the potential difference Delta Phi defined strictly from the US
     perspective:
         Phi(s) in [-1.0, 1.0] from US perspective
@@ -248,8 +224,8 @@ class UsefulActionsReward(ZeroSumTerminalReward):
 
     needs_all_states: bool = True
 
-    def __init__(self, potential_scale: float = 1.0, decisiveness_turns: float = 0.0) -> None:
-        super().__init__(decisiveness_turns=decisiveness_turns)
+    def __init__(self, potential_scale: float = 1.0) -> None:
+        super().__init__()
         self.potential_scale: float = potential_scale
         self.prev_potentials: Optional[np.ndarray] = None
 
