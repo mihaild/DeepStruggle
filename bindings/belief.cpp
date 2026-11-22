@@ -154,7 +154,8 @@ std::vector<bool> Tracker::prepare(const std::vector<size_t>& games, const std::
             sd.cached_record = SIZE_MAX;
             size_t w = 0;
             for (size_t r = 0; r < job.decisions.size(); ++r) {
-                if (sd.spent[job.decisions[r]]) continue;
+                const uint32_t i = job.decisions[r];
+                if (i < sd.spent.size() && sd.spent[i]) continue;
                 job.decisions[w] = job.decisions[r];
                 job.lefts[w] = job.lefts[r];
                 ++w;
