@@ -37,6 +37,7 @@ import ts_engine as ts
 from ai.models.coldwar_net_v2 import (STATIC_BOARD_SLOTS, STATIC_CARD_SLOTS,
                                       ColdWarNetV2, static_input_mask)
 from ai.models.token_transformer import TokenTransformer
+from ai.models.head_registry import NORM_HEADS
 from ai.models.hyperspherical import SphereTrunk
 from bindings.action_encoder import ActionEncoder
 
@@ -698,7 +699,7 @@ class LadderNet(ColdWarNetV2):
         self.head_norms: nn.ModuleDict | None = None
         if head_norm:
             norms: Dict[str, nn.Module] = {}
-            for name in ("pe_country", "pe_card", "branch_head_net", "play_mode_head_net"):
+            for name in NORM_HEADS:                    # the head registry's, P42's macro head last
                 head = getattr(self, name, None)
                 if isinstance(head, nn.Sequential) and isinstance(head[0], nn.Linear):
                     norms[name] = nn.LayerNorm(head[0].out_features)
@@ -1048,7 +1049,7 @@ class LadderNet(ColdWarNetV2):
         parts = [card_corr, gap_mid, country_corr, gap_end]
         if base.shape[-1] > _A.BASE_ACTION_SIZE:      # P42's until-control slots
             macro_block = base[:, _A.BASE_ACTION_SIZE:]
-            parts.append(self._entity_out(self.pe_macro, country_in, ctx, None)
+            parts.append(self._entity_out(self.pe_macro, country_in, ctx, self._head_norm("pe_macro"))
                          if self.pe_macro is not None else macro_block * 0.0)
         return base + torch.cat(parts, dim=-1)
 

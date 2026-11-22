@@ -37,7 +37,7 @@ def test_the_head_is_fresh_and_the_rest_is_kept() -> None:
     torch.manual_seed(123)
     done = reset_policy_head(net, opt, seed=7)
     assert torch.equal(torch.rand(4), expected_stream)                     # the random stream is untouched
-    assert set(done) == set(POLICY_HEAD_MODULES)
+    assert set(done) == {m for m in POLICY_HEAD_MODULES if getattr(net, m, None) is not None}
     for name, p in net.named_parameters():
         top = name.split(".")[0]
         if top in POLICY_HEAD_MODULES:

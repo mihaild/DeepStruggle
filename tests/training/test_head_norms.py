@@ -18,7 +18,9 @@ def test_every_head_module_is_measured_and_a_fresh_network_reads_about_one() -> 
     torch.manual_seed(5)
     net = create_ladder_net("cpu", **CFG)
     norms = policy_head_norms(net)
-    assert set(norms) == set(POLICY_HEAD_MODULES)
+    # Every registered policy head the network has (this one has no card, macro or region-attention head).
+    assert set(norms) == {m for m in POLICY_HEAD_MODULES if getattr(net, m, None) is not None}
+    assert set(norms) == {"policy_head", "pe_trunk", "pe_country", "branch_head_net", "play_mode_head_net"}
     fresh = fresh_policy_head_norms(net)
     for k, v in norms.items():
         if k not in ("branch_head_net", "play_mode_head_net"):      # zero-initialised last layers make these small

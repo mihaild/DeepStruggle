@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import ts_engine as ts
+from ai.models.head_registry import POLICY_HEADS
 from bindings.action_encoder import ActionEncoder
 
 
@@ -912,10 +913,10 @@ def create_coldwar_net_mlp(device: torch.device | str,
                          drop_static=drop_static).to(dev)
 
 
-#: The policy head's modules (those a network has): the base head, the per-entity heads and their trunk context,
-#: and the card-conditioned branch and play-mode heads. P37a found the plateau's plasticity loss here.
-POLICY_HEAD_MODULES: tuple[str, ...] = ("policy_head", "pe_trunk", "pe_country", "branch_head_net",
-                                        "play_mode_head_net")
+#: The policy head's modules (those a network has): the base head, the per-entity heads (country, card, P42's macro)
+#: and their trunk context, Cell A's region attention, and the card-conditioned branch and play-mode heads -- the head
+#: registry's policy heads (ai/models/head_registry.py). P37a found the plateau's plasticity loss here.
+POLICY_HEAD_MODULES: tuple[str, ...] = POLICY_HEADS
 
 
 def policy_head_norms(model: nn.Module) -> dict[str, float]:

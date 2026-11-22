@@ -107,7 +107,9 @@ graph TD
 ├── ai/
 │   ├── models/                 # ladder_net.py (LadderNet, --arch ladder: the current lineage);
 │   │                           # coldwar_net_v2.py (V2 + ColdWarNetMLP), coldwar_net.py (V1),
-│   │                           # kept so older checkpoints load; grow.py (in-place widening)
+│   │                           # kept so older checkpoints load; grow.py (in-place widening);
+│   │                           # head_registry.py (the one list of policy / value heads that muP,
+│   │                           # head L2, the head reset, head norms and grow all read)
 │   ├── training/               # train.py (CLI behind tools/train.py), nash_pg.py, rollout_buffer.py,
 │   │                           # opponent_pool.py, behavioral_cloning.py, warmup_dataset_loader.py,
 │   │                           # human_corpus_dataset.py, search_workers.py, start_pool.py,

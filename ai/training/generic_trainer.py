@@ -25,6 +25,7 @@ import torch.nn.functional as F
 
 import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
+from ai.models.head_registry import HEAD_NORMS
 from ai.models.coldwar_net_v2 import (POLICY_HEAD_MODULES, ColdWarNetV2, create_coldwar_net_v2, create_like,
                                       fresh_policy_head_norms, policy_head_norms)
 from ai.models.grow import (MACRO_START_BIAS, POLICY_OUT, grow_macro_optimizer_state, grow_macro_state_dict,
@@ -1661,15 +1662,16 @@ def check_state_obs_features(model: nn.Module, state_dict: Mapping[str, Any], so
 
 
 def reset_policy_head(model: nn.Module, optimizer: torch.optim.Optimizer, seed: int = 0) -> List[str]:
-    """Re-initialise the policy head's modules (`POLICY_HEAD_MODULES`) from a fresh network of the model's shape and
-    drop their optimiser moments, keeping the trunk and the value heads -- P37's last-layer reset, aimed where P37a
-    measured the plateau's plasticity loss (the head's weights 20-50x a fresh head's, 13.5% dormant units). The fresh
-    weights come from a forked, fixed-seed RNG, so the run's random stream is untouched. Returns the modules reset."""
+    """Re-initialise the policy head's modules (`POLICY_HEAD_MODULES`, the head registry's policy heads) and their
+    --ladder-head-norm LayerNorms from a fresh network of the model's shape and drop their optimiser moments, keeping
+    the trunk and the value heads -- P37's last-layer reset, aimed where P37a measured the plateau's plasticity loss
+    (the head's weights 20-50x a fresh head's, 13.5% dormant units). The fresh weights come from a forked, fixed-seed
+    RNG, so the run's random stream is untouched. Returns the modules reset."""
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(int(seed))
         fresh = create_like(model)
     done: List[str] = []
-    for top in POLICY_HEAD_MODULES:
+    for top in POLICY_HEAD_MODULES + (HEAD_NORMS,):
         mod, new = getattr(model, top, None), getattr(fresh, top, None)
         if not (isinstance(mod, nn.Module) and isinstance(new, nn.Module)):
             continue

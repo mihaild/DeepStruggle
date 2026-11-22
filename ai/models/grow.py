@@ -20,9 +20,11 @@ and keeps its moments.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Mapping, Optional, Sequence
+from typing import Any, Dict, Mapping, Optional, Sequence, Tuple
 
 import torch
+
+from ai.models.head_registry import ENTITY_HEADS as ENTITY_HEAD_MODULES
 
 #: The grouped projections, in the order the fusion layer reads them (board, then cards).
 PROJECTIONS = ("lad_board", "lad_card")
@@ -99,9 +101,10 @@ def widen_optimizer_state(saved: Dict[str, Any], names: Sequence[str], p: int, k
 
 # ---- token layers grown at identity (P35 item 1's grown read) ---------------------------------------
 
-#: The per-entity heads' first layers: their input is (identity, token, raw slots, trunk context), so a
-#: grown token path widens them at [identity_dim, identity_dim + token_dim).
-ENTITY_HEADS = ("pe_country.0.weight", "pe_card.0.weight")
+#: The per-entity heads' first layers (the head registry's entity heads: country, card, P42's macro): their input is
+#: (identity, token, raw slots, trunk context), so a grown token path widens them at
+#: [identity_dim, identity_dim + token_dim).
+ENTITY_HEADS: Tuple[str, ...] = tuple(f"{h}.0.weight" for h in ENTITY_HEAD_MODULES)
 
 
 def _insert_zero_cols(w: torch.Tensor, at: int, n: int) -> torch.Tensor:
@@ -169,7 +172,7 @@ def grow_tokens_optimizer_state(saved: Dict[str, Any], names: Sequence[str], tok
 #: P42: the dense policy output, which grows from the base flat width to the macro view's.
 POLICY_OUT = ("policy_head.3.weight", "policy_head.3.bias")
 #: The macro view's per-country head, absent from a base network.
-MACRO_HEAD = "pe_macro."
+MACRO_HEAD: Tuple[str, ...] = ("pe_macro.", "head_norms.pe_macro.")   # the macro head, and its --ladder-head-norm
 #: The grown until-control rows' bias: on J5's 700M positions -10 left up to 1.8e-4 of probability on them, past the
 #: identity bar of 1e-4; -12 is ~e^-2 of that.
 MACRO_START_BIAS = -12.0

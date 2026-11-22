@@ -23,13 +23,15 @@ from typing import Callable, Dict, Iterable, List, Mapping, Optional
 import torch
 import torch.nn as nn
 
-#: The policy heads, by top-level module: what `--policy-head-lr-mult` scales (P39 arm 5: the heads saturate first).
-POLICY_HEAD_PREFIXES = ("policy_head.", "pe_trunk.", "pe_country.", "pe_card.", "branch_head_net.",
-                        "play_mode_head_net.", "head_norms.")
+from ai.models.head_registry import HEAD_NORMS, POLICY_HEADS, READOUTS
 
-#: The readouts muP starts at zero: the last linear layer of each head that emits logits or values. The branch and
-#: play-mode heads' readouts are already zero-initialised by LadderNet.
-OUTPUT_LAYERS = ("policy_head.3", "pe_country.2", "pe_card.2", "val_win_head.3", "val_vp_head.3")
+#: The policy heads, by top-level module, and their head norms: what `--policy-head-lr-mult` scales (P39 arm 5: the
+#: heads saturate first). From the head registry (ai/models/head_registry.py).
+POLICY_HEAD_PREFIXES: tuple[str, ...] = tuple(f"{n}." for n in POLICY_HEADS) + (f"{HEAD_NORMS}.",)
+
+#: The readouts muP starts at zero: the output layer of each policy and value head (the head registry's). The branch,
+#: play-mode, macro and region-attention heads' are already zero-initialised by LadderNet, so zeroing them is a no-op.
+OUTPUT_LAYERS: tuple[str, ...] = READOUTS
 
 
 def fan_in(p: torch.Tensor) -> int:

@@ -14,12 +14,13 @@ from typing import Dict, List, Mapping, Tuple
 import torch
 import torch.nn as nn
 
-from ai.models.coldwar_net_v2 import POLICY_HEAD_MODULES
+from ai.models.head_registry import HEAD_NORMS, POLICY_HEADS, VALUE_HEADS
 
 #: The modules the term pulls toward their initial weights: the policy heads (the base head, the per-entity heads
-#: and their trunk context, the branch and play-mode heads), --ladder-head-norm's LayerNorms in them, and the two
-#: value heads. The trunk is left free.
-HEAD_L2_MODULES: Tuple[str, ...] = POLICY_HEAD_MODULES + ("head_norms", "val_win_head", "val_vp_head")
+#: and their trunk context, region attention, the branch and play-mode heads), --ladder-head-norm's LayerNorms in
+#: them, and the value heads (the categorical one included) -- the head registry's (ai/models/head_registry.py).
+#: The trunk is left free.
+HEAD_L2_MODULES: Tuple[str, ...] = POLICY_HEADS + (HEAD_NORMS,) + VALUE_HEADS
 
 
 def head_init_params(net: nn.Module) -> Dict[str, torch.Tensor]:
