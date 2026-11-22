@@ -1425,9 +1425,66 @@ def _env_game_rng_state(trainer: Any) -> Optional[Dict[str, Any]]:
     return env.game_rng_state() if isinstance(env, TsVectorizedEnv) else None
 
 
+#: The seeds a run records (metadata.json, and each resume state): `seed` and the three streams it defaults to.
+#: `seed_init` is not among them: a resume restores the weights, so the initialisation stream is spent.
+SEED_COMPONENTS: Tuple[str, ...] = ("seed", "seed_sampling", "seed_env", "seed_pool")
+
+
+def resolved_seeds(seed: Optional[int], seed_sampling: Optional[int] = None, seed_env: Optional[int] = None,
+                   seed_pool: Optional[int] = None) -> Dict[str, Optional[int]]:
+    """Each stream's seed as a launch uses it: an override, or `seed`."""
+    return {"seed": seed,
+            "seed_sampling": seed if seed_sampling is None else int(seed_sampling),
+            "seed_env": seed if seed_env is None else int(seed_env),
+            "seed_pool": seed if seed_pool is None else int(seed_pool)}
+
+
+def recorded_seeds(blob: Dict[str, Any], path: str, skip_current_leg: bool = False) -> Dict[str, Optional[int]]:
+    """The seeds the run that wrote a resume state used, per component.
+
+    A state written since 2026-11-22 records them (`seeds`). An older one records only `seed`; its streams are then
+    read from the run's metadata.json beside it -- the latest leg launched under that seed, skipping the current
+    launch's own leg when it continues the run in place (its metadata was rewritten before the state is read) --
+    and, without metadata, taken to be the default decomposition (every stream at `seed`)."""
+    saved = blob.get("seeds")
+    if isinstance(saved, dict):
+        return {k: (None if saved.get(k) is None else int(saved[k])) for k in SEED_COMPONENTS}
+    seed = blob.get("seed")
+    out: Dict[str, Optional[int]] = resolved_seeds(None if seed is None else int(seed))
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(path)), "metadata.json"), encoding="utf-8") as f:
+            meta = json.load(f)
+    except (OSError, ValueError):
+        return out
+    legs = list(meta.get("legs") or [meta])
+    if skip_current_leg and len(legs) > 1:
+        legs = legs[:-1]
+    for leg in reversed(legs):
+        if seed is not None and leg.get("seed") is not None and int(leg["seed"]) == int(seed):
+            for k in SEED_COMPONENTS[1:]:
+                if leg.get(k) is not None:
+                    out[k] = int(leg[k])
+            break
+    return out
+
+
+def seed_changes(blob: Dict[str, Any], path: str, seeds: Dict[str, Optional[int]],
+                 skip_current_leg: bool = False) -> Dict[str, Tuple[Optional[int], int]]:
+    """The components a resume reseeds: {component: (recorded, given)} for each one the launch gives (not None) and
+    the state was not written under. An empty dict is a continuation, which restores every stream."""
+    rec = recorded_seeds(blob, path, skip_current_leg)
+    out: Dict[str, Tuple[Optional[int], int]] = {}
+    for k in SEED_COMPONENTS:
+        given, was = seeds.get(k), rec.get(k)
+        if given is not None and (was is None or int(was) != int(given)):
+            out[k] = (was, int(given))
+    return out
+
+
 def save_resume_state(path: str, model: nn.Module, trainer: Any, iteration: int,
                       total_env_steps: int, elapsed_seconds: float,
-                      seed: Optional[int] = None, ema: Any = None) -> None:
+                      seed: Optional[int] = None, ema: Any = None,
+                      seeds: Optional[Dict[str, Optional[int]]] = None) -> None:
     """Everything needed to pick a run back up, except the environment.
 
     The environment is deliberately not saved: `VectorizedBatchRunner` holds 512 live games and
@@ -1460,6 +1517,9 @@ def save_resume_state(path: str, model: nn.Module, trainer: Any, iteration: int,
         # Recorded so a later resume can tell "continue this run" from "branch it": restoring the
         # RNG is right for the first and wrong for the second.
         "seed": None if seed is None else int(seed),
+        # Every stream's seed (SEED_COMPONENTS), so a resume that overrides one of them alone (--seed-env, ...) is
+        # seen as the branch it is; without `seeds` each defaults to `seed`.
+        "seeds": dict(seeds) if seeds is not None else resolved_seeds(None if seed is None else int(seed)),
         # Which snapshots the opponent pool held and how each has fared, but not their weights --
         # those are the snapshot files already beside this state. Carrying it makes a resumed pool
         # the pool the run actually had, rather than a plausible reconstruction of one. Losing it
@@ -1538,6 +1598,11 @@ def _load_optimizer_state(optimizer: torch.optim.Optimizer, saved: Dict[str, Any
                 elif key != "lr":
                     changed.append(f"{key} {group.get(key)} -> {value}")
                 group[key] = value
+        # A key the saved group has and this launch's does not -- `lr_mult` from a --mup or --policy-head-lr-mult
+        # state resumed without it -- would keep scaling the schedule's rate (audit T-18).
+        for key in [k for k in group if k != "params" and k not in configured]:
+            changed.append(f"{key} {group[key]} dropped")
+            del group[key]
     if changed:
         print(f"[resume] optimizer hyperparameters from this launch, not the saved state: {', '.join(changed)}",
               flush=True)
@@ -1624,16 +1689,21 @@ def _is_macro(net: Any) -> bool:
 def load_resume_state(path: str, model: nn.Module, trainer: Any,
                       seed: Optional[int] = None, widen: bool = False, grow_tokens: bool = False,
                       reset_head: bool = False, fresh_optimizer: bool = False, grow_sphere: bool = False,
-                      grow_macro: bool = False, add_rules: int = 0) -> Dict[str, Any]:
+                      grow_macro: bool = False, add_rules: int = 0,
+                      seeds: Optional[Dict[str, Optional[int]]] = None,
+                      skip_current_leg: bool = False) -> Dict[str, Any]:
     """Restore a run in place and return where it left off.
 
-    `seed` is the seed the *resuming* run was given. Where it differs from the one the state was
-    written under, the restored RNG is replaced by it: the caller asked for a different stream, and
-    a restore would otherwise hand back the original run's action sampling and minibatch order,
-    leaving only the environment deals to differ. Where it matches, or where neither is given, the
-    RNG is restored and the continuation is the run it would have been.
+    `seeds` are the *resuming* launch's seeds per stream (SEED_COMPONENTS, resolved: an override or `seed`); without
+    it every stream takes `seed`. Each stream whose seed differs from the one the state was written under is
+    reseeded by it, and only that stream: the sampling stream (torch, CUDA, numpy and Python's `random`) by
+    `seed_sampling`, the env's game-seed generator by `seed_env` (returned as `env_game_rng_state` None, so the
+    caller rekeys it), the opponent pool's draw by `seed_pool` (`pool_reseeded`; the pool itself is restored before
+    this, by `seed_changes` on the same state). A stream whose seed matches, or that no seed is given for, is
+    restored, so a resume that changes nothing is the run it would have been. Before 2026-11-22 only `seed` was
+    compared, so `--seed-sampling/--seed-env/--seed-pool` without a new `--seed` were silently ignored (audit T-18).
 
-    A state written before the seed was recorded has none, and an explicit `seed` then wins --
+    A state written before the seed was recorded has none, and an explicit seed then wins --
     honouring the flag is less surprising than silently ignoring it.
     """
     blob = torch.load(path, map_location=trainer.device, weights_only=False)
@@ -1787,14 +1857,17 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
         trainer.ent_coef_seat = {int(k): float(v) for k, v in blob["ent_coef_seat"].items()}
     if hasattr(trainer, "setup_ent_coef"):
         trainer.setup_ent_coef = float(blob.get("setup_ent_coef", 0.0))
-    recorded_seed = blob.get("seed", None)
-    reseed = seed is not None and (recorded_seed is None or int(recorded_seed) != int(seed))
-    if reseed:
-        torch.manual_seed(int(seed))
-        np.random.seed(int(seed) & 0xFFFFFFFF)
-        print(f"Reseeded to {seed} (state was written under {recorded_seed}); the RNG in the "
-              f"resume file is deliberately not restored, so this continuation diverges.",
-              flush=True)
+    changes = seed_changes(blob, path, seeds if seeds is not None else resolved_seeds(seed), skip_current_leg)
+    if changes:
+        print("[seed] resume reseeds " + ", ".join(f"{k} {a} -> {b}" for k, (a, b) in changes.items())
+              + "; restored: " + (", ".join(name for k, name in (("seed_sampling", "sampling"), ("seed_env", "env"),
+                                                                ("seed_pool", "pool")) if k not in changes) or "none")
+              + " -- the changed streams are deliberately not restored, so this continuation diverges.", flush=True)
+    if "seed_sampling" in changes:
+        _s = changes["seed_sampling"][1]
+        torch.manual_seed(int(_s))
+        np.random.seed(int(_s) & 0xFFFFFFFF)
+        random.seed(int(_s))
     else:
         # A continuation restores every stream it saved; a failure here means the file is not the
         # state it claims to be, and continuing on another stream would silently fork the run.
@@ -1820,7 +1893,9 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
         "active_search": blob.get("active_search"),
         "searched_opponent": blob.get("searched_opponent"),
         # None for a state written before the env had its own game-seed generator, or a branch under another seed.
-        "env_game_rng_state": None if reseed else blob.get("env_game_rng_state"),
+        "env_game_rng_state": None if "seed_env" in changes else blob.get("env_game_rng_state"),
+        # The opponent pool's draw was reseeded by --seed-pool, not restored from the state.
+        "pool_reseeded": "seed_pool" in changes,
     }
 
 
@@ -2194,6 +2269,7 @@ def train_pipeline(
     _seed_sampling = seed if seed_sampling is None else int(seed_sampling)
     _seed_env = seed if seed_env is None else int(seed_env)
     _seed_pool = seed if seed_pool is None else int(seed_pool)
+    _launch_seeds = resolved_seeds(seed, seed_sampling, seed_env, seed_pool)
     if _seed_init is not None:
         torch.manual_seed(int(_seed_init))
         np.random.seed(int(_seed_init) & 0xFFFFFFFF)
@@ -3155,6 +3231,10 @@ def train_pipeline(
                 if not reset_opponent_pool:
                     _b = torch.load(_src_file, map_location="cpu", weights_only=False)
                     _saved_pool = _b.get("opponent_pool")
+                    if _saved_pool is not None and "seed_pool" in seed_changes(_b, _src_file, _launch_seeds,
+                                                                               bool(in_place)):
+                        # A new --seed-pool: the members and their record are restored, the draw is not.
+                        _saved_pool = {k: v for k, v in _saved_pool.items() if k != "rng_state"}
                     del _b
 
                 _have = {n: q for n, q in _snaps}
@@ -3476,7 +3556,8 @@ def train_pipeline(
         raise ValueError("--resume-reset-policy-head re-initialises a resumed network's policy head; give --resume")
     if resume:
         src = resolve_resume(resume)
-        state = load_resume_state(src, model, trainer, seed=seed, widen=resume_widen,
+        state = load_resume_state(src, model, trainer, seed=seed, seeds=_launch_seeds,
+                                  skip_current_leg=bool(in_place), widen=resume_widen,
                                   grow_tokens=resume_grow_tokens, reset_head=resume_reset_policy_head,
                                   fresh_optimizer=resume_fresh_optimizer,
                                   grow_sphere=resume_grow_sphere, grow_macro=grow_macro,
@@ -3929,7 +4010,7 @@ def train_pipeline(
             # Beside the snapshot, not inside it: snapshot_*.pt stays a bare state dict because
             # load_agent, the tournament runner and every eval module read it as one.
             save_resume_state(resume_path, model, trainer, it, total_env_steps, elapsed,
-                              seed=seed, ema=ema)
+                              seed=seed, ema=ema, seeds=_launch_seeds)
             # A step-tagged copy, so this point stays branchable after the next snapshot
             # overwrites resume_state.pt. Gated on its own interval rather than written at
             # every snapshot: a resume file is 48 MB against a snapshot's 13 MB, so at a 5M
@@ -3942,7 +4023,7 @@ def train_pipeline(
                     or total_env_steps - last_tagged_resume >= resume_every_steps):
                 save_resume_state(
                     os.path.join(out_dir, RESUME_AT_STEPS.format(steps=total_env_steps)),
-                    model, trainer, it, total_env_steps, elapsed, seed=seed, ema=ema)
+                    model, trainer, it, total_env_steps, elapsed, seed=seed, ema=ema, seeds=_launch_seeds)
                 last_tagged_resume = total_env_steps
             decisive = evaluate_and_log_snapshot(
                 model=rated,
@@ -3988,7 +4069,7 @@ def train_pipeline(
     # that ends between them leaves a resume point up to one interval behind its own final
     # weights, and picking it back up would silently repeat those steps.
     save_resume_state(resume_path, model, trainer, it, trainer.total_env_steps,
-                      time.time() - t_start - overhead_seconds, seed=seed, ema=ema)
+                      time.time() - t_start - overhead_seconds, seed=seed, ema=ema, seeds=_launch_seeds)
     evaluate_and_log_snapshot(
         model=rated,
         merged_influence=merged_influence,

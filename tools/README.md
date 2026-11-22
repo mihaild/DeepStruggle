@@ -229,6 +229,15 @@ recorded resolved in `metadata.json`:
 | `--seed-env` | the engine's per-game streams: deals and dice -- each env's first game and, through the env's own generator saved with the resume state, every game after it (since 2026-10-27; before, later games followed numpy's global stream, i.e. `--seed-init`) |
 | `--seed-pool` | opponent-pool draws and which side the learner takes |
 
+On `--resume`, each stream whose resolved seed differs from the one the state was written under is reseeded by it,
+and only that one (the resume state records all four since 2026-11-22; an older one is read against the run's
+`metadata.json`): `--seed-sampling` reseeds torch, CUDA, numpy and Python's `random`, `--seed-env` rekeys the env's
+game-seed generator, `--seed-pool` the pool's draw (its members and record are still restored). The startup line
+`[seed] resume reseeds ...` names them; a resume that changes no seed restores every stream. Before 2026-11-22 only
+`--seed` was compared, so the three overrides were ignored on a resume that kept `--seed` (audit T-18) -- the seed
+branches `E8.1-A8-R132-S45@11160M+S46/S47` and the E7 `@4390M+S45/S46` branches restored the parent's sampling,
+game-seed and pool streams and differed only in each env's first game.
+
 ### Online distillation (`--mode online-distill`, P39 arm 2)
 
 A fresh network of the `--ladder-*` shape trained to a teacher's policy (KL to its policy at temperature 1) and value

@@ -5,15 +5,18 @@ distinction was silently absent: --seed set torch's RNG at startup and load_resu
 it, so a "new seed" continuation replayed the original sampling and differed only in its deals.
 """
 
+import json
 import os
+import random
 import tempfile
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import numpy as np
 import torch
 import torch.nn as nn
 
-from ai.training.generic_trainer import load_resume_state, save_resume_state
+from ai.training.generic_trainer import (load_resume_state, recorded_seeds, resolved_seeds, save_resume_state,
+                                         seed_changes)
 
 
 class _Net(nn.Module):
@@ -91,3 +94,85 @@ class TestReseedOnResume:
             p = os.path.join(d, "resume_state.pt")
             _write(p, seed=20260916)
             assert torch.load(p, map_location="cpu", weights_only=False)["seed"] == 20260916
+
+
+def _write_streams(path: str, seeds: Dict[str, Optional[int]]) -> None:
+    torch.manual_seed(1234)
+    np.random.seed(1234)
+    random.seed(1234)
+    save_resume_state(path, _Net(), _Trainer(), iteration=7, total_env_steps=1000, elapsed_seconds=12.0,
+                      seed=seeds["seed"], seeds=seeds)
+    blob = torch.load(path, map_location="cpu", weights_only=False)
+    blob["env_game_rng_state"] = {"marker": 1}    # what an env with a game-seed generator saves
+    torch.save(blob, path)
+
+
+def _resume(path: str, seeds: Dict[str, Optional[int]]) -> tuple[tuple[float, float, float], Dict[str, Any]]:
+    torch.manual_seed(999)
+    np.random.seed(999)
+    random.seed(999)
+    state = load_resume_state(path, _Net(), _Trainer(), seed=seeds["seed"], seeds=seeds)
+    return (float(torch.rand(1).item()), float(np.random.rand()), random.random()), state
+
+
+class TestEachSeedComponentOnResume:
+    """Audit T-18: with --seed unchanged, --seed-sampling / --seed-env / --seed-pool were ignored on resume -- every
+    stream was restored. Each component now reseeds its own stream, and only it."""
+
+    def test_an_unchanged_resume_restores_every_stream(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "resume_state.pt")
+            run = resolved_seeds(45)
+            _write_streams(p, run)
+            a, sa = _resume(p, run)
+            b, _ = _resume(p, run)
+        assert a == b, "an unchanged continuation must restore torch, numpy and Python's random"
+        assert sa["env_game_rng_state"] == {"marker": 1} and not sa["pool_reseeded"]
+
+    def test_seed_sampling_alone_reseeds_only_the_sampling_stream(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "resume_state.pt")
+            _write_streams(p, resolved_seeds(45))
+            same, _ = _resume(p, resolved_seeds(45))
+            new, st = _resume(p, resolved_seeds(45, seed_sampling=46))
+            again, _ = _resume(p, resolved_seeds(45, seed_sampling=46))
+        assert all(x != y for x, y in zip(same, new)), "torch, numpy and Python's random all take the new seed"
+        assert new == again, "reseeding is deterministic"
+        assert st["env_game_rng_state"] == {"marker": 1} and not st["pool_reseeded"], "env and pool restored"
+
+    def test_seed_env_and_seed_pool_reseed_their_own_streams(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "resume_state.pt")
+            _write_streams(p, resolved_seeds(45))
+            same, _ = _resume(p, resolved_seeds(45))
+            env_draws, env_state = _resume(p, resolved_seeds(45, seed_env=46))
+            pool_draws, pool_state = _resume(p, resolved_seeds(45, seed_pool=46))
+        assert env_draws == same and env_state["env_game_rng_state"] is None and not env_state["pool_reseeded"]
+        assert pool_draws == same and pool_state["pool_reseeded"]
+        assert pool_state["env_game_rng_state"] == {"marker": 1}
+
+    def test_a_branch_launched_with_overrides_continues_unchanged_under_them(self) -> None:
+        """A run written under --seed 45 --seed-sampling 46 ... resumed with the same flags is a continuation."""
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "resume_state.pt")
+            run = resolved_seeds(45, 46, 46, 46)
+            _write_streams(p, run)
+            blob = torch.load(p, map_location="cpu", weights_only=False)
+            assert seed_changes(blob, p, run) == {}
+            assert set(seed_changes(blob, p, resolved_seeds(45))) == {"seed_sampling", "seed_env", "seed_pool"}
+
+    def test_an_older_state_reads_its_streams_from_the_runs_metadata(self) -> None:
+        """A state written before `seeds` was saved: the run's metadata.json says which streams it used, skipping the
+        leg an in-place continuation has just written for itself."""
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "resume_state.pt")
+            _write_streams(p, resolved_seeds(45, 46, 46, 46))
+            blob = torch.load(p, map_location="cpu", weights_only=False)
+            del blob["seeds"]
+            assert recorded_seeds(blob, p) == resolved_seeds(45), "no metadata: the default decomposition"
+            legs = [{"seed": 45, "seed_sampling": 46, "seed_env": 46, "seed_pool": 46},
+                    {"seed": 45, "seed_sampling": 47, "seed_env": 47, "seed_pool": 47}]
+            with open(os.path.join(d, "metadata.json"), "w", encoding="utf-8") as f:
+                json.dump({**legs[-1], "legs": legs}, f)
+            assert recorded_seeds(blob, p) == resolved_seeds(45, 47, 47, 47)
+            assert recorded_seeds(blob, p, skip_current_leg=True) == resolved_seeds(45, 46, 46, 46)

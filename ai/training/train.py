@@ -21,7 +21,7 @@ from tools.lib.openings import FORCED_OPENINGS_US, FORCED_OPENINGS_USSR
 from tools.lib.player_agent import load_agent
 from tools.lib.batch_tournament import BatchMatchRunner
 from ai.models.coldwar_net import create_coldwar_net
-from ai.models.coldwar_net_v2 import create_coldwar_net_v2
+from ai.models.coldwar_net_v2 import create_coldwar_net_mlp, create_coldwar_net_v2
 from ai.models.ladder_net import create_ladder_net
 from ai.models.mup import (base_shapes_for, combine_lr_mults, mup_lr_mults, policy_head_lr_mults,
                            zero_output_layers)
@@ -1772,6 +1772,8 @@ def main():
                 "only; see research/plans/P21_architecture_ladder.md.")
         if args.arch == "v2":
             model = create_coldwar_net_v2(dev)
+        elif args.arch == "mlp":
+            model = create_coldwar_net_mlp(dev)
         else:
             model = create_coldwar_net(dev)
         out_save = args.output_dir or f"data/checkpoints/coldwar_net_{args.arch}_warmup.pt"

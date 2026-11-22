@@ -169,3 +169,16 @@ def test_a_resume_trains_at_the_launch_learning_rate_not_the_saved_one() -> None
     _load_optimizer_state(new, old.state_dict())
     assert new.param_groups[0]["lr"] == 3e-5, "the launch's lr, not the saved 3e-4"
     assert new.state, "the Adam moments come from the saved state"
+
+
+def test_a_resume_without_lr_mults_drops_the_saved_groups_multiplier() -> None:
+    """Audit T-18: a --mup (or --policy-head-lr-mult) state resumed without it kept each saved group's `lr_mult`,
+    which the schedule reads, so the branch trained at the parent's per-layer rates."""
+    net = torch.nn.Linear(4, 2)
+    old = torch.optim.AdamW([{"params": [net.weight, net.bias], "lr": 3e-4 * 0.5, "lr_mult": 0.5}], lr=3e-4)
+    net(torch.ones(1, 4)).sum().backward()
+    old.step()
+    new = torch.optim.AdamW(net.parameters(), lr=3e-4)
+    _load_optimizer_state(new, old.state_dict())
+    assert "lr_mult" not in new.param_groups[0] and new.param_groups[0]["lr"] == 3e-4
+    assert new.state, "the Adam moments come from the saved state"
