@@ -22,6 +22,14 @@ step, across all of that step's micro-steps (``set_capture_tracks`` / ``get_step
 bindings change 2026-11-19), so a headline scoring, one played by a forced move, and either side's are all seen with
 the VP the engine actually gave. Final scoring's share is read on the finished game's state (final scoring adds VP;
 the board is the one it scored).
+
+Europe Control (E9) reads ``EUROPE_CONTROL_VP`` = 100 wherever it is decided, an amount that clips to the cap or the floor
+at every scale in use: in game the engine books it as the Europe scoring card's Event VP (``CardHandlers::recorded``);
+at final scoring it goes through no Event, so ``final_scoring_vp_us`` books it here (audit V-8, 2026-11-22: it read 0, a
+Europe Control win at final scoring paying ``control_win`` instead of the cap). Final scoring stops at Europe Control, so
+no other region has a final share in that game. So on E9 a Europe exploiter's win by Europe Control pays
+``win_bonus + weight * cap`` (1.8 at the defaults) and its loss by it ``-1 + loss_share * weight * floor`` (-1.16);
+``control_win`` (1) binds only below a cap of 1.
 """
 
 from __future__ import annotations
@@ -40,13 +48,40 @@ REGIONS: Dict[str, "ts.Region"] = {
     "africa": ts.Region.AFRICA, "central_america": ts.Region.CENTRAL_AMERICA, "south_america": ts.Region.SOUTH_AMERICA}
 
 
+#: Europe Control's VP as every engine record of it reads (``effect_bits::EUROPE_CONTROL_VP``, E9; not exported by the
+#: bindings): the in-game record books it for the Europe scoring card, and final scoring's is booked here. A test holds it
+#: to the engine's own in-game record (tests/training/test_region_reward.py).
+EUROPE_CONTROL_VP = 100
+
+
 def final_share_us(state: "ts.GameState", region: str) -> float:
-    """The region's part of final scoring (+ US) on a finished game's board."""
+    """The region's part of final scoring (+ US) on a finished game's board, when final scoring counted the regions."""
     return float(ts.Scoring.evaluate_region(state, REGIONS[region], True).net_delta)
 
 
 def reached_final_scoring(state: "ts.GameState") -> bool:
+    """Final scoring counted the regions (it ran and nobody controlled Europe)."""
     return str(ts.game_ending_reason(state)) == "final scoring"
+
+
+def europe_control_at_final_scoring(state: "ts.GameState") -> bool:
+    """The game was won by Europe Control at final scoring, not in game: final scoring runs only after the last turn's
+    end incremented the turn past 10 (``finish_end_turn``), and a Europe scoring card's Event ends the game in its own
+    turn, at most 10."""
+    return str(ts.game_ending_reason(state)) == "Europe Control" and int(state.turn) > 10
+
+
+def final_scoring_vp_us(state: "ts.GameState", region: str) -> float:
+    """The region's VP (+ US) from final scoring on a finished game: its share when final scoring counted the regions,
+    +/-``EUROPE_CONTROL_VP`` for Europe when final scoring ended at Europe Control (0 for every other region, which it
+    never scored), 0 when the game ended before final scoring."""
+    if europe_control_at_final_scoring(state):
+        if region != "europe":
+            return 0.0
+        return float(EUROPE_CONTROL_VP if int(state.victory_points) > 0 else -EUROPE_CONTROL_VP)
+    if reached_final_scoring(state):
+        return final_share_us(state, region)
+    return 0.0
 
 
 class RegionTargetedReward:
@@ -147,8 +182,9 @@ class RegionTargetedReward:
             side = int(sides[e])
             u = float(terminal_utilities[e])
             winner = 1 if u > 0 else -1 if u < 0 else 0
-            if reached_final_scoring(st):
-                u_learner[e] += self._add(int(e), final_share_us(st, self.region), side)
+            final_us = final_scoring_vp_us(st, self.region)
+            if final_us != 0.0:
+                u_learner[e] += self._add(int(e), final_us, side)
             if winner == side:
                 x = self._x(float(self.scored_vp[e]), side)
                 pay = self.win_bonus + self.weight * x
