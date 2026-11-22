@@ -112,7 +112,20 @@ listed first.
 
 A second pass by the same model, [`fix_verification.md`](../gemini_findings/fix_verification.md), checked the fix
 commits on `main` through `7b8671b` against every finding above (regressions V-1 to V-3, incomplete fixes V-4 to V-9,
-leftovers V-10). Checked TRUE and fixed on the `fix-misc` branch (2026-11-22, owner's go):
+leftovers V-10). Our verdicts, one line each (fixes on the branches named, 2026-11-22, owner's go):
+
+| ID | verdict | note / where fixed |
+|:---|:---|:---|
+| V-1, V-2 | TRUE | Missile Envy hidden by `pending_op_card` after an Event play; the headline discard. A real case: corpus game 161 was mis-converted. Fixed on `fix-engine`. |
+| V-3 | mostly FALSE | not a regression; fresh optimizer + grow could crash loudly in a transform whose result is then cleared. Cleaned up on `fix-train`. T-15 TRUE, fails loudly, not worsened. |
+| V-4 | TRUE | ~1% of die rolls (back-to-back rolls) kept their luck in the advantage. Fixed on `fix-engine`. |
+| V-5 (1)-(3) | TRUE, no run affected | terminal reward and gamma 1 make all three inert; refusals on `fix-train`. T-5 TRUE: refusals on `fix-train`. T-9 TRUE, the start pool is off: fixed on `fix-train`. |
+| V-6 | TRUE | 6.1 in code but dormant (no dropout in R169's LadderNet; the pre-pass only under `--update-bf16`); 6.2 the deleted tests restored; 6.3 / 6.4 offline or unused combinations. |
+| V-7 | TRUE | 7.1-7.3 offline tools. 7.4 touched past outputs: the E8 sphere runs' SWAs (A27 / A28 / A30 / A32) were averaged without re-projection, rows 5-20% off the unit sphere; no sphere network is on the leaderboard. Fixed on `fix-train`. M-3.3 PARTLY: no checkpoint affected, none in future. |
+| V-9 | TRUE, belief only | 9.1-9.3; the belief root is not used on E9. S-1's triggers: Quagmire / Bear Trap exhaustion plausible, the Missile Envy gift FALSE, MERGED / MACRO opponents FALSE in practice. Belief work on `fix-belief`: exact zero weight for inconsistent hands, consistent sampling, a logged uniform fallback on the site, strict in tests. |
+| S-9.6 | TRUE | none on a used path. |
+
+Checked TRUE and fixed on the `fix-misc` branch:
 
 | ID | what it is | fix |
 |:---|:---|:---|
