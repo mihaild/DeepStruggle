@@ -300,7 +300,6 @@ class RolloutBuffer:
                 "next_values_own was passed to add(). Silently falling back to the negated "
                 "bootstrap would make the arm measure nothing.")
 
-        mode = self.block_mode()
         if self.uses_hold and per_player_gae:
             raise ValueError("held rows pass through the interleaved GAE recursion; per_player_gae has no "
                              "pass-through for them")
@@ -318,7 +317,8 @@ class RolloutBuffer:
         if per_player_gae or afterstate_node is not None:
             # One pass gives the plain per-player chain and, with P56's node, the node chain beside it.
             pp_adv, pp_ret, node_adv = self._gae_per_player_both(gamma, gae_lambda, last_v_win, last_players,
-                                                                 afterstate_node, last_side_values)
+                                                                 afterstate_node, last_side_values,
+                                                                 slice_turn_boundaries=slice_turn_boundaries)
             if per_player_gae:
                 self.advantages = pp_adv
                 self.returns_win = pp_ret
@@ -537,13 +537,18 @@ class RolloutBuffer:
             # exactly when it most needs one, and the entropy bonus is left acting almost alone.
             flat = self.advantages.view(-1)
             fp = self.players.view(-1)
-            normed = torch.empty_like(flat)
+            # Audit T-3: every row is written. A seat with fewer than two rows to take statistics from
+            # (e.g. the frozen opponent's seat under --adv-norm-learner-only with a locked learner side) is
+            # normalised by the batch-wide statistics instead of being left uninitialised.
+            normed = torch.zeros_like(flat)
             for code in (1, -1):
                 sel = fp == code
                 st_sel = sel if own is None else (sel & own)
                 if int(st_sel.sum()) > 1:
                     s = flat[st_sel]
                     normed[sel] = (flat[sel] - s.mean()) / (s.std() + 1e-8)
+                elif bool(sel.any()):
+                    normed[sel] = (flat[sel] - mean_adv) / std_adv
             other = (fp != 1) & (fp != -1)
             if bool(other.any()):
                 normed[other] = (flat[other] - mean_adv) / std_adv
@@ -606,15 +611,28 @@ class RolloutBuffer:
         last_players: torch.Tensor,
         node: Optional[Tuple[torch.Tensor, ...]] = None,
         last_side_values: Optional[torch.Tensor] = None,
+        slice_turn_boundaries: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """_gae_per_player's one backward pass: the plain chain's advantages and returns, and the node chain's
         advantages (the plain ones when `node` is None), each carried separately. On the host in numpy: the loop is
         ~20 tiny operations a step over a (num_envs,) vector, which on the GPU is bound by launches and syncs (12%
-        of a rollout); the inputs come over once and the three results go back once."""
+        of a rollout); the inputs come over once and the three results go back once.
+
+        ``slice_turn_boundaries`` (audit T-4): the interleaved pass cuts a transition t -> t+1 whose game turn
+        changes by zeroing its ``non_terminal``, which for the advantage and the return is exactly what a done at
+        row t does. The per-player pass reads dones only as that cut (both sides' carried state is dropped before
+        row t, row t's own reward is kept), so the same rows are marked done for it: every side's chain stops at the
+        last row of each turn and bootstraps nothing past it. The buffer's last row is not cut, as in the
+        interleaved pass (its successor's turn is not in the buffer)."""
         T, N = self.buffer_size, self.num_envs
         dev = self.device
         players = np.ascontiguousarray(self.players[:T].cpu().numpy().astype(np.int8))
-        dones = np.ascontiguousarray((self.dones[:T].cpu().numpy() > 0.5).astype(np.uint8))
+        done_mask = self.dones[:T].cpu().numpy() > 0.5
+        if slice_turn_boundaries and T > 1:
+            turns = self.turns[:T].cpu().numpy()
+            done_mask = done_mask.copy()
+            done_mask[:-1] |= turns[:-1] != turns[1:]
+        dones = np.ascontiguousarray(done_mask.astype(np.uint8))
         rewards = np.ascontiguousarray(self.rewards[:T].cpu().numpy().astype(np.float32))
         values = np.ascontiguousarray(self.values_win[:T].cpu().numpy().astype(np.float32))
         last_v = (last_v_win.float() * last_players.float()).cpu().numpy().astype(np.float32)   # US frame

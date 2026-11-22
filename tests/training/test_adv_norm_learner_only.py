@@ -43,3 +43,31 @@ def test_self_play_is_unchanged_by_the_flag() -> None:
     a.normalise_advantages()
     c.normalise_advantages()
     assert torch.equal(a.advantages, c.advantages)
+
+
+def test_a_seat_with_no_learner_rows_is_normalised_by_the_batch_statistics() -> None:
+    """Audit T-3: under --per-seat-adv-norm with a locked learner seat, the frozen opponent's seat has no learner
+    rows to take statistics from. It was left as torch.empty_like memory (NaN possible); it now takes the
+    batch-wide (learner) statistics, and the learner's seat keeps its own."""
+    b = _buffer(True)
+    b.per_seat_adv_norm = True
+    raw = b.advantages.clone()
+    b.normalise_advantages()
+    own = raw[:, 0]
+    mean, std = own.mean(), own.std() + 1e-8
+    assert torch.isfinite(b.advantages).all()
+    assert torch.allclose(b.advantages[:, 0], (own - mean) / std, atol=1e-6)
+    assert torch.allclose(b.advantages[:, 1], (raw[:, 1] - mean) / std, atol=1e-6)
+
+
+def test_a_seat_with_one_learner_row_is_normalised_by_the_batch_statistics() -> None:
+    b = _buffer(True)
+    b.per_seat_adv_norm = True
+    b.learner = torch.tensor([[1.0, 1.0], [1.0, 0.0], [1.0, 0.0], [1.0, 0.0]])   # one USSR learner row
+    raw = b.advantages.clone()
+    b.normalise_advantages()
+    stat = raw[b.learner > 0.5]
+    mean, std = stat.mean(), stat.std() + 1e-8
+    us = raw[:, 0]
+    assert torch.allclose(b.advantages[:, 0], (us - us.mean()) / (us.std() + 1e-8), atol=1e-6)
+    assert torch.allclose(b.advantages[:, 1], (raw[:, 1] - mean) / std, atol=1e-6)
