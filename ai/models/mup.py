@@ -8,10 +8,12 @@ the observation) keeps the base rate; vectors (biases, LayerNorm gains) keep it 
 (muP's readout at init variance 1/fan_in^2 taken to its limit, a common choice), so a wider network does not start
 with larger logits.
 
-The base is the A8 control (entity projections 256, fusion 480): every rate is relative to the shape the same
-parameter has there, so at the base widths every multiplier is 1 and `--mup` changes nothing but the zeroed readouts.
-A parameter the base network does not have (a sphere block, a residual block) is scaled by its fan-in against the
-base fusion width.
+The base is the same network at the A8 control's widths (entity projections 256, fusion 480), its depth and every
+other setting kept: every rate is relative to the shape the same parameter has there, so at the base widths every
+multiplier is 1 and `--mup` changes nothing but the zeroed readouts. Before 2026-11-22 the base dropped the sphere
+and residual blocks and scaled them against the base fusion width, which read a sphere block's expansion factor as
+width: its w2 (fan-in 4 x hidden) got 1/4 of w1's rate at every width (audit M-1; the A30/A32 sphere runs under
+--mup). A parameter the base still lacks is scaled by its fan-in against the base fusion width.
 """
 
 from __future__ import annotations
@@ -53,15 +55,14 @@ def mup_lr_mults(model: nn.Module, base_shapes: Mapping[str, torch.Size], base_w
 
 def base_shapes_for(config: Mapping[str, object], base_proj_dim: int, base_hidden_dim: int,
                     build: Callable[..., nn.Module]) -> Dict[str, torch.Size]:
-    """The parameter shapes of the same network at the base widths, without its extra depth (no sphere or residual
-    blocks): `build(**config)` makes a LadderNet on the CPU."""
+    """The parameter shapes of the same network at the base widths: only the true widths (the entity projection and
+    the fusion width) change; depth (sphere and residual blocks), a sphere block's expansion factor and every other
+    setting are the network's own, so a matrix whose fan-in is a multiple of the width (a sphere block's w2) keeps
+    that multiple in the base and gets the same multiplier as its width's other matrices. `build(**config)` makes a
+    LadderNet on the CPU."""
     cfg = dict(config)
     # A token-main network has no grouped projections to set a base width for (P41 J5).
-    cfg.update(entity_proj_dim=0 if cfg.get("token_main") else int(base_proj_dim), hidden_dim=int(base_hidden_dim),
-               num_res_blocks=0)
-    for k in ("sphere_blocks", "sphere_expansion", "sphere_out_scale", "sphere_carry_norm", "trunk_norm",
-              "res_post_norm"):
-        cfg.pop(k, None)
+    cfg.update(entity_proj_dim=0 if cfg.get("token_main") else int(base_proj_dim), hidden_dim=int(base_hidden_dim))
     base = build(**cfg)
     return {n: p.shape for n, p in base.named_parameters()}
 

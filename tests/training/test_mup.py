@@ -77,10 +77,17 @@ def test_mup_is_the_identity_at_the_base_widths_and_scales_wider_layers() -> Non
     assert "lad_board.0.weight" not in m                          # an input projection: its fan-in did not grow
 
 
-def test_mup_scales_blocks_the_base_lacks_against_the_base_width() -> None:
-    m = _mults(_net(entity_proj_dim=512, hidden_dim=768, sphere_blocks=2))
-    assert m["sphere.blocks.0.w1.weight"] == pytest.approx(480 / 768)
-    assert m["sphere.blocks.0.w2.weight"] == pytest.approx(480 / (4 * 768))
+def test_mup_reads_a_sphere_blocks_expansion_as_depth_not_width() -> None:
+    """Audit M-1: the base dropped the sphere blocks, so w2 (fan-in expansion x hidden) was scaled against the base
+    fusion width -- 1/4 of w1's rate at every width, even at the base widths. The base keeps the blocks now."""
+    assert _mults(_net(sphere_blocks=2, sphere_expansion=4)) == {}, "at the base widths every multiplier is 1"
+    m = _mults(_net(entity_proj_dim=512, hidden_dim=768, sphere_blocks=2, sphere_expansion=4))
+    for k in range(2):
+        assert m[f"sphere.blocks.{k}.w1.weight"] == pytest.approx(480 / 768)
+        assert m[f"sphere.blocks.{k}.w2.weight"] == pytest.approx(m[f"sphere.blocks.{k}.w1.weight"])
+    # Residual blocks at a wider width: the same rule as the base width's own matrices.
+    r = _mults(_net(entity_proj_dim=512, hidden_dim=768, num_res_blocks=2))
+    assert r["res_blocks.0.fc1.weight"] == pytest.approx(480 / 768) == r["res_blocks.1.fc2.weight"]
 
 
 def test_readouts_are_zeroed_and_multipliers_combine() -> None:
