@@ -47,6 +47,7 @@ are cited from elsewhere; keep them.
     `merged_influence` on the same calls, `ActionMask.is_macro_action`, `FLAT_BASE_SIZE` (220) and `FLAT_MACRO_NODE`.
     Every mask is **304** wide (`ActionEncoder.FLAT_ACTION_SIZE`; `BASE_ACTION_SIZE` is 220); a base network still
     outputs 220 logits and `pad_to_mask` fills the rest with the mask's fill, so base checkpoints run unchanged.
+    The other way round, a 220-wide mask given to a macro network is padded with False (`pad_mask`, audit M-7).
     Stored dataset masks stay 220 bits. The runner's per-env, per-side view is an int (0 E4, 1 merged, 2 macro):
     `set_action_views(us, ussr)` / `set_action_views_env(i, us, ussr)`; `set_merged_influence*` remain as wrappers.
   - **Game seeds** (`TsVectorizedEnv`): `base_seed` seeds each env's first game; every later game's seed comes

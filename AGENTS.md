@@ -342,7 +342,9 @@ Numbered as in `CLAUDE.md`.
     `research/log/E4_pool_starvation_recurrence.md`); P47 found the E3 spread pool biased at 11-14B steps, and B6
     (R132, `--opponent-frac 0` from scratch) trained cleanly and ahead of the pooled control
     (`research/plans/P47_pool_composition.md`). Since 2026-11-15 the owner's flagship line (R132, R139, R155,
-    R164-R171) is pure self-play; dropping the pool from a recipe that has one is the owner's call.
+    R164-R171) is pure self-play; dropping the pool from a recipe that has one is the owner's call. The pool,
+    the restart pool and the start pool are unmaintained since: the combinations the 2026-11-22 audit found
+    corrupting silently refuse or warn, and `TODO(pool)` marks what must be fixed before one is used again.
 15. **Derive a launch command from a healthy run** with `tools/scripts/launch_flags.py <reference>
     --diff <yours>`, before and after launching; four lineage-critical flags drifted when copied
     from templates (`research/findings/training/e4_architecture_discontinuity.md`).
