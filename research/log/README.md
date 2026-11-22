@@ -207,7 +207,20 @@ per-seat control ratings, setup placement and temperature self-play.
 | [`star_wars_event_vs_ops_E7-02-44.md`](star_wars_event_vs_ops_E7-02-44.md) | Star Wars ahead in space: mostly for Ops |
 | [`marshall_plan_E7_line.md`](marshall_plan_E7_line.md) | the US stopped headlining Marshall Plan at ~3,300M |
 | [`E7_five_year_plan_timing.md`](E7_five_year_plan_timing.md) | early Five Year Plan plays are not a leak |
+| [`P36a_issue_bank_candidates.md`](P36a_issue_bank_candidates.md) | P36a: candidate positions for the issues bank, mined from 2,000 greedy self-play games of A13+R48, each with its proposed label source; nothing labelled yet (the owner chooses) |
 | [`per_checkpoint/`](per_checkpoint/README.md) | generated behaviour reports, one per rated checkpoint (`tools/scripts/checkpoint_report.py`) |
 
 The subdirectories `E7_blunder_bank/`, `E7_leak_by_kind_*/`, `E7_rollout_root_tuning_R39/`,
 `E7_searched_leak_*/` and `E8_J1_census_and_leak/` hold the generated tables their notes link to.
+
+## E8 / E9: placement order, throughput, the critics and the audit
+
+| file | what it records |
+|:---|:---|
+| [`placement_order_redundancy.md`](placement_order_redundancy.md) | the problem behind P43: a run of placements reaches one board in many orders, the per-step gradient never picks one and the entropy bonus rewards spreading over them; three remedies |
+| [`canonical_order_literature.md`](canonical_order_literature.md) | P43's literature review: how known systems order permutation-invariant multi-part actions |
+| [`P51_P52_rollout_halves_and_bf16.md`](P51_P52_rollout_halves_and_bf16.md) | two throughput levers: the rollout in two halves is slower (reverted); the update in bf16 is faster |
+| [`P53_compile_bf16.md`](P53_compile_bf16.md) | both extra critics on the fast update (compile + bf16): level with their control, both trail B6 at matched steps |
+| [`P54_compile_alone.md`](P54_compile_alone.md) | compile alone costs nothing measurable (adopted for new launches); bf16 is what cost P53's arms |
+| [`P55_critic_everywhere.md`](P55_critic_everywhere.md) | both extra critics on the compiled update (R169) are not weaker than compile alone or B6: the baseline since |
+| [`audit_2026-11-22_verification.md`](audit_2026-11-22_verification.md) | the 2026-11-22 external audit checked finding by finding (what is true, what touches current runs, the proposed fixes), and the second external pass over the fixes ([`fix_verification.md`](../gemini_findings/fix_verification.md)) |

@@ -107,3 +107,18 @@ listed first.
 | R-2 | TRUE | `runs.md` stops at R123 (16 rows still "Running"); `checkpoints.md` has no E8/E8.1 standings; `plans/README.md` still shows P45-P48 as proposed or queued; P51-P55 have no write-up (results only in commits, `run_codes.json` and `data/reports`). |
 | R-3 | PARTLY | the single-seed (S45) chain is true; "R169 never read against B6 at matched steps" is false -- P55 read it every 400M (52.7 / 47.5 / 47.6 / 53.8 / 50.3%, `data/reports/p55_critics_vs_b6_*`), unwritten in `research/`. |
 | R-4 | follows the code verdicts | P48b (T-6) and the region / ending exploiters (T-10, T-13) are affected; the P38-P41 token-transformer claim rests on M-1/M-5, of which the cache claim is false and the muP one moot; P35's overconfidence cause is not shown (S-2); online distill (T-16) true. |
+
+## The second external pass: the fixes checked (`fix_verification.md`)
+
+A second pass by the same model, [`fix_verification.md`](../gemini_findings/fix_verification.md), checked the fix
+commits on `main` through `7b8671b` against every finding above (regressions V-1 to V-3, incomplete fixes V-4 to V-9,
+leftovers V-10). Checked TRUE and fixed on the `fix-misc` branch (2026-11-22, owner's go):
+
+| ID | what it is | fix |
+|:---|:---|:---|
+| V-8 | Europe Control decided at final scoring goes through no Event, so the region reward booked 0 for it (and the ending reads "Europe Control", so final scoring's share was skipped too): a Europe exploiter's win there paid `control_win` instead of the cap | `ai/rewards/region_reward.py` books +/-100 itself (`final_scoring_vp_us`); real-game tests to every ending |
+| V-10 schema | `headline_first_owner` (E9) missing from `GameStateDict`; the golden schema is generated from the TypedDicts, so it could not notice -- nor the older drift in `die_roll`, `decision_context`, `legal_actions`, `hands` | the TypedDicts carry every engine key (save dicts too); a test holds engine keys to typed keys, at run time and in the source |
+| V-10 S-7 | the guard's fixes (CMC at any DEFCON, Che / Ortega target choices, keyed probe dice) had no tests | `tests/bindings/test_rollout_batch.py`, one per case, the dice under keyed, keyed2 and keyedsym |
+| V-10 R-2 / R-4 | log index, two commit references, `runs.md` notes (T-10 / T-13 on the region and ending exploiters, M-1 on the sphere muP runs), the training diagram's pool | this record |
+
+The log's in-game Europe Control line also read "US +100 VP" beside the score's move to 20; it now says the win.

@@ -23,7 +23,7 @@
 Probed first (25M steps each from scratch): alone 166.7k / 129.1k steps/s, together 95.4k / 78.8k; the logged
 medians while sharing the GPU from 140M on were ~108k / ~87k. The extra critics' coefficients are total weights
 relative to the main value loss, each a mean over its own rows: at 1.0 an afterstate row weighs ~2.7x a decision
-row and a pre-deal row ~31x (audit T-2, documented in `a18694c`).
+row and a pre-deal row ~31x (audit T-2, documented in `0e9221e`).
 
 **Instrument.** `tools/tournament.py`, greedy, SWAs of each run's last 80M (`@<step-80M>..<step>M`). Head to
 head with B6 (`E8.1-A8-R132-S45`) at the same step, 1,000 deals a side; arm against control 2,000 a side; the old

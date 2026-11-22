@@ -200,13 +200,13 @@ graph TD
     subgraph Phase1 ["RL: vectorized NashPG (tools/train.py)"]
         VecEnv["C++ VectorizedBatchRunner (--num-envs 512)"]
         ActiveNet["Active policy π_θ"]
-        Pool["Opponent pool: 30% of games vs own snapshots (invariant 14)"]
+        Pool["Optional opponent pool (off in the flagship pure self-play, --opponent-frac 0; when used, the full 30% pool -- invariant 14)"]
         RefNet["Frozen reference π_ref (KL anchor)"]
         Rollout["RolloutBuffer (envs × 128 steps)"]
         GAE["Alternating zero-sum GAE (λ=0.98, γ=1.0)"]
         NashLoss["PPO loss + η·D_KL(π_θ || π_ref) - c_ent·H(π_θ)"]
         ActiveNet <--> VecEnv
-        Pool <--> VecEnv
+        Pool -.->|optional| VecEnv
         VecEnv --> Rollout --> GAE --> NashLoss --> ActiveNet
         ActiveNet -.->|periodic snapshot| RefNet
     end

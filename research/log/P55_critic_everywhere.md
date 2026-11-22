@@ -14,7 +14,7 @@
   its own rows, scaled by its coefficient relative to the main value loss, so at 1.0 an afterstate row weighs ~2.7x
   a decision row and a pre-deal row ~31x, and the value terms together carry ~3x `vf_coef`. The flag's help text
   said "rows weighted by this x --vf-coef"; the owner chose to document the total-weight meaning, and the help
-  text now says so (`a18694c`). R169 was
+  text now says so (`0e9221e`). R169 was
   judged with the weights as they were.
 * **Everything here, and the whole chain since B6, is one seed (S45).** The replicate that was to measure one
   recipe's seed noise, P56's C' (`E8.1-A8-R169-S45@2010M+S46`: R169 continued from 2,010M with seed 46), was stopped
