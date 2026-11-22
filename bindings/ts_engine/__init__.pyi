@@ -575,9 +575,6 @@ class GameState:
     @property
     def ctx_stack_depth(self) -> int: ...
 
-    @ctx_stack_depth.setter
-    def ctx_stack_depth(self, arg: int, /) -> None: ...
-
     @property
     def rng_state(self) -> int: ...
 
@@ -1298,7 +1295,7 @@ class BatchedSearch:
 
     def set_buffers(self, obs: Annotated[NDArray[numpy.float32], dict(shape=(None, None), order='C', device='cpu')], masks: Annotated[NDArray[numpy.uint8], dict(shape=(None, None), order='C', device='cpu')]) -> None:
         """
-        Write leaves into these caller-owned arrays (e.g. page-locked) instead of this object's own. The caller keeps them alive.
+        Write leaves into these caller-owned arrays (e.g. page-locked) instead of this object's own. This object keeps them alive (audit S-10: it used to hold bare pointers).
         """
 
     def group_offset(self, group: int) -> int: ...

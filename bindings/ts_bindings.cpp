@@ -202,6 +202,31 @@ int checked_encode(const ts::GameState& state, const ts::MicroAction& action) {
     return flat;
 }
 
+// A runner buffer that numpy views share (audit S-10): a view owns a reference to the storage it was
+// made of, so a buffer the runner reallocates -- set_obs_features widening the rows, set_capture_* --
+// leaves an older view reading its old storage (stale, no longer written) instead of freed memory.
+// Writes in place go to the current storage, which every view made since sees.
+template <class T>
+class SharedBuffer {
+public:
+    void assign(size_t n, T x) { v_ = std::make_shared<std::vector<T>>(n, x); }
+    void resize(size_t n) {
+        auto next = std::make_shared<std::vector<T>>(*v_);
+        next->resize(n);
+        v_ = std::move(next);
+    }
+    T* data() noexcept { return v_->data(); }
+    T& operator[](size_t i) noexcept { return (*v_)[i]; }
+    // The owner a numpy view of data() holds.
+    nb::capsule owner() const {
+        auto* keep = new std::shared_ptr<std::vector<T>>(v_);
+        return nb::capsule(keep, [](void* p) noexcept { delete static_cast<std::shared_ptr<std::vector<T>>*>(p); });
+    }
+
+private:
+    std::shared_ptr<std::vector<T>> v_ = std::make_shared<std::vector<T>>();
+};
+
 // A NaN from the network has no order: the masked argmax would quietly take the lowest legal
 // index and the playouts would run on garbage. Refused where the floats come in. -inf is allowed
 // (a masked logit).
@@ -526,7 +551,9 @@ NB_MODULE(ts_engine, m) {
         .def_rw("china_card_holder", &ts::GameState::china_card_holder)
         .def_rw("china_card_playable", &ts::GameState::china_card_playable)
         .def_rw("persistent_effects", &ts::GameState::persistent_effects)
-        .def_rw("ctx_stack_depth", &ts::GameState::ctx_stack_depth)
+        // Read-only (audit S-12): ctx() indexes the 6-frame stack with it, so a write outside 0..5 was an
+        // out-of-bounds access, and no caller writes it. A save restores the stack whole, checked.
+        .def_ro("ctx_stack_depth", &ts::GameState::ctx_stack_depth)
         .def_rw("rng_state", &ts::GameState::rng_state)
         // The rule bits each seat plays (obs_features::RULES; GameState::seat_rules). A harness
         // seats the model it lets decide at `player`; a seat no one seated plays feature set 0's.
@@ -1758,8 +1785,8 @@ NB_MODULE(ts_engine, m) {
         // written only through the slot's own calls, each of which invalidates the mask.
         std::vector<ts::CachedState> slots;
         const ts::GameState& st(size_t i) const { return slots[i].state(); }
-        std::vector<float> obs_buffer;
-        std::vector<uint8_t> mask_buffer;
+        SharedBuffer<float> obs_buffer;
+        SharedBuffer<uint8_t> mask_buffer;
         // P23 / E4.1: which action view each side of each env decides in. Per side, not per env,
         // because a tournament puts an E4 agent and an E4.1 agent in the same game. The cached mask
         // is built for whoever decides next, and a step is applied in the view of whoever made it.
@@ -1803,8 +1830,8 @@ NB_MODULE(ts_engine, m) {
         // from both sides, each in its side's feature set, zero-padded to obs_width. The decision stream
         // is unchanged: the drain runs one chance node at a time and stops where it always stopped.
         bool capture_predeal = false;
-        std::vector<uint8_t> predeal_flag;
-        std::vector<float> predeal_us, predeal_ussr;
+        SharedBuffer<uint8_t> predeal_flag;
+        SharedBuffer<float> predeal_us, predeal_ussr;
         void alloc_predeal() {
             predeal_flag.assign(num_envs, 0);
             predeal_us.assign(capture_predeal ? num_envs * obs_width : 0, 0.0f);
@@ -1819,7 +1846,7 @@ NB_MODULE(ts_engine, m) {
         // the predeal capture does, and stops where it always stopped. Not seen: the inside of one
         // composed MACRO / merged-influence action (two engine steps in one call).
         bool capture_tracks = false;
-        std::vector<int16_t> track_vp;
+        SharedBuffer<int16_t> track_vp;
         void set_capture_tracks(bool on) {
             capture_tracks = on;
             track_vp.assign(on ? num_envs * kTrackCards : 0, 0);
@@ -2135,12 +2162,12 @@ NB_MODULE(ts_engine, m) {
 
         nb::ndarray<nb::numpy, float, nb::ndim<2>> get_observations() {
             size_t shape[2] = { num_envs, obs_width };
-            return nb::ndarray<nb::numpy, float, nb::ndim<2>>(obs_buffer.data(), 2, shape);
+            return nb::ndarray<nb::numpy, float, nb::ndim<2>>(obs_buffer.data(), 2, shape, obs_buffer.owner());
         }
 
         nb::ndarray<nb::numpy, uint8_t, nb::ndim<2>> get_action_masks() {
             size_t shape[2] = { num_envs, ts::FLAT_ACTION_SPACE_SIZE };
-            return nb::ndarray<nb::numpy, uint8_t, nb::ndim<2>>(mask_buffer.data(), 2, shape);
+            return nb::ndarray<nb::numpy, uint8_t, nb::ndim<2>>(mask_buffer.data(), 2, shape, mask_buffer.owner());
         }
 
         // P43 V3: which envs' pending decisions open a CANONICAL_LEARNED run whose order has not been given.
@@ -2266,9 +2293,9 @@ NB_MODULE(ts_engine, m) {
                  if (masks.shape(0) != self.capacity() || masks.shape(1) != ts::FLAT_ACTION_SPACE_SIZE)
                      throw std::invalid_argument("set_buffers: masks must be (capacity, action space)");
                  self.set_buffers(obs.data(), masks.data());
-             }, nb::arg("obs"), nb::arg("masks"),
+             }, nb::arg("obs"), nb::arg("masks"), nb::keep_alive<1, 2>(), nb::keep_alive<1, 3>(),
              "Write leaves into these caller-owned arrays (e.g. page-locked) instead of this "
-             "object's own. The caller keeps them alive.")
+             "object's own. This object keeps them alive (audit S-10: it used to hold bare pointers).")
         .def("group_offset", &BatchedSearch::group_offset, nb::arg("group"))
         .def("group_has_budget", &BatchedSearch::group_has_budget, nb::arg("group"))
         .def("mt_state", &BatchedSearch::mt_state,
@@ -2292,11 +2319,13 @@ NB_MODULE(ts_engine, m) {
              "leaf mover's side. Fills the leaves in and backs their values up.")
         .def("observations",
              [](BatchedSearch& self) {
+                 self.note_view();
                  size_t shape[2] = { self.capacity(), self.obs_width() };
                  return nb::ndarray<nb::numpy, float, nb::ndim<2>>(self.obs_data(), 2, shape);
              }, nb::rv_policy::reference_internal)
         .def("masks",
              [](BatchedSearch& self) {
+                 self.note_view();
                  size_t shape[2] = { self.capacity(), ts::FLAT_ACTION_SPACE_SIZE };
                  return nb::ndarray<nb::numpy, uint8_t, nb::ndim<2>>(self.mask_data(), 2, shape);
              }, nb::rv_policy::reference_internal)
@@ -2578,8 +2607,7 @@ NB_MODULE(ts_engine, m) {
         .def("get_step_track_vp", [](VectorizedBatchRunner& self) {
                  if (!self.capture_tracks) throw std::runtime_error("get_step_track_vp: capture is off (set_capture_tracks)");
                  size_t shape[2] = { self.num_envs, kTrackCards };
-                 nb::handle owner = nb::find(&self);
-                 return nb::ndarray<nb::numpy, int16_t, nb::ndim<2>>(self.track_vp.data(), 2, shape, owner);
+                 return nb::ndarray<nb::numpy, int16_t, nb::ndim<2>>(self.track_vp.data(), 2, shape, self.track_vp.owner());
              },
              "(num_envs, 111) int16 view: row i, column c is the VP (+ US) card c's Event moved in env i during "
              "the last step_flat_all; overwritten by the next one, so copy it to keep it.")
@@ -2587,18 +2615,17 @@ NB_MODULE(ts_engine, m) {
                  if (!self.capture_predeal) throw std::runtime_error("get_predeal: capture is off (set_capture_predeal)");
                  size_t shape[2] = { self.num_envs, self.obs_width };
                  size_t fshape[1] = { self.num_envs };
-                 // The runner owns the buffers, so the views hold a reference to it: dropping the
-                 // runner while a view lives would otherwise leave it reading freed memory.
-                 nb::handle owner = nb::find(&self);
+                 // Each view holds its storage (SharedBuffer), so neither dropping the runner nor
+                 // reallocating the buffers leaves it reading freed memory.
                  return nb::make_tuple(
-                     nb::ndarray<nb::numpy, uint8_t, nb::ndim<1>>(self.predeal_flag.data(), 1, fshape, owner).cast(),
-                     nb::ndarray<nb::numpy, float, nb::ndim<2>>(self.predeal_us.data(), 2, shape, owner).cast(),
-                     nb::ndarray<nb::numpy, float, nb::ndim<2>>(self.predeal_ussr.data(), 2, shape, owner).cast());
+                     nb::ndarray<nb::numpy, uint8_t, nb::ndim<1>>(self.predeal_flag.data(), 1, fshape, self.predeal_flag.owner()).cast(),
+                     nb::ndarray<nb::numpy, float, nb::ndim<2>>(self.predeal_us.data(), 2, shape, self.predeal_us.owner()).cast(),
+                     nb::ndarray<nb::numpy, float, nb::ndim<2>>(self.predeal_ussr.data(), 2, shape, self.predeal_ussr.owner()).cast());
              },
              "(flags, obs_us, obs_ussr) of the last step: per env, whether it passed its turn-end park, and "
              "that position's observation from each side. Views into the runner: copy before the next step.")
-        .def("get_observations", &VectorizedBatchRunner::get_observations, nb::rv_policy::reference_internal)
-        .def("get_action_masks", &VectorizedBatchRunner::get_action_masks, nb::rv_policy::reference_internal)
+        .def("get_observations", &VectorizedBatchRunner::get_observations)
+        .def("get_action_masks", &VectorizedBatchRunner::get_action_masks)
         .def("get_decision_players", &VectorizedBatchRunner::get_decision_players)
         .def("get_env_scalars", [](const VectorizedBatchRunner& self) {
                  const size_t n = self.num_envs;

@@ -29,7 +29,12 @@ are cited from elsewhere; keep them.
     which is the turn's cleanup after a US eighth round, not a round); the rollout entry points
     (`RolloutBatch.step/set_leaf_values`, the playout labeller's `step`, `rollout_candidates`,
     `rollout_decide`) refuse NaN; `VectorizedBatchRunner.reset_game` raises on a bad index;
-    `get_predeal`'s views hold a reference to the runner. A `BatchedSearch` node expanded with an
+    the runner's views (`get_observations`, `get_action_masks`, `get_predeal`, `get_step_track_vp`) own
+    their storage, so neither dropping the runner nor a reallocation (`set_obs_features` widening the
+    rows, `set_capture_*`) leaves one reading freed memory -- an old view goes stale instead (audit
+    S-10, 2026-11-22); `BatchedSearch.set_buffers` keeps the arrays it is given alive, and keeps its
+    own buffers when a view of them was handed out; `GameState.ctx_stack_depth` is read-only (ctx()
+    indexes the 6-frame stack with it; S-12). A `BatchedSearch` node expanded with an
     empty mask is reported as an anomaly before being valued 0.
   - **The merged-influence view** (P23 / E4.1, [`engine/AGENTS.md`](../engine/AGENTS.md) §4):
     `merged_influence=False` on `get_flat_action_mask`, `ActionMask.generate_flat_mask`,

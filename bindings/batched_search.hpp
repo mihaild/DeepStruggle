@@ -162,13 +162,19 @@ public:
     // Write leaves into caller-owned buffers instead of this object's own -- page-locked memory, so
     // the copy to the GPU runs asynchronously. The caller keeps them alive while this object uses
     // them; capacity x obs_width floats and capacity x FLAT_ACTION_SPACE_SIZE bytes.
-    // This object's own buffers are freed then: at capacity 8,192 they are half a gigabyte.
+    // This object's own buffers are freed then: at capacity 8,192 they are half a gigabyte -- unless a
+    // view of them was handed out (note_view), which would be left reading freed memory (audit S-10);
+    // they are kept, no longer written, instead.
     void set_buffers(float* obs, uint8_t* masks) {
         obs_ = obs;
         masks_ = masks;
-        std::vector<float>().swap(own_obs_);
-        std::vector<uint8_t>().swap(own_masks_);
+        if (!own_viewed_) {
+            std::vector<float>().swap(own_obs_);
+            std::vector<uint8_t>().swap(own_masks_);
+        }
     }
+    // A view of obs_data() / mask_data() is about to be handed out.
+    void note_view() noexcept { if (obs_ == own_obs_.data()) own_viewed_ = true; }
 
     // Start one search per root, the trees split into `num_groups` contiguous groups of (nearly)
     // equal size. Each group's leaves are handed out and evaluated on their own, so one group's
@@ -567,6 +573,7 @@ private:
     size_t obs_width_;
     std::vector<float> own_obs_;
     std::vector<uint8_t> own_masks_;
+    bool own_viewed_ = false;  // a view of own_obs_ / own_masks_ was handed out (note_view)
     float* obs_;              // own_obs_, or the caller's page-locked buffer (set_buffers)
     uint8_t* masks_;
     std::vector<Tree> trees_;
