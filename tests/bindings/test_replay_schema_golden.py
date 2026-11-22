@@ -50,6 +50,9 @@ REPLAY_TYPES = (
     "DecisionContextDict",
     "LegalActionsDict",
     "DieRollDict",
+    "EventTrackDict",
+    "HandsDict",
+    "HandCardDict",
     "ChinaCardDict",
     "ActionLogEntryDict",
 )

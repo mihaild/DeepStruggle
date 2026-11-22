@@ -24,27 +24,55 @@
     "ussr_influence": "int"
   },
   "DecisionContextDict": {
+    "allow_early_stop": "bool",
     "card_id": "int",
     "decision_player": "str",
     "decision_type": "int",
     "decision_type_name": "str",
     "flags": "int",
+    "max_per_country": "int",
+    "op_mode": "int",
+    "op_mode_name": "str",
     "ops": "int",
+    "pending_op_card": "int",
+    "pending_op_card_name": "str",
+    "pending_ops_value": "int",
+    "remaining_steps": "int",
+    "resolving_card": "int",
+    "resolving_card_name": "str",
+    "stack_depth": "int",
     "target_id": "int"
   },
   "DieRollDict": {
     "card_id": "int",
+    "card_name": "str",
+    "country_id": "int",
+    "country_name": "str",
+    "mod1": "int",
+    "mod2": "int",
     "modified_roll": "int",
+    "net_delta": "int",
+    "roll1": "int",
+    "roll2": "int",
     "roller": "str",
     "success": "bool",
     "target_country": "int",
+    "total1": "int",
+    "total2": "int",
     "type": "str",
     "type_id": "int"
+  },
+  "EventTrackDict": {
+    "card_id": "int",
+    "card_name": "str",
+    "defcon_delta": "int",
+    "vp_delta": "int"
   },
   "GameStateDict": {
     "action_logs": "list[ActionLogEntryDict]",
     "action_round": "int",
     "card_locations": "dict[int | str, str]",
+    "chernobyl_region": "int",
     "china_card": "ChinaCardDict",
     "countries": "dict[str, CountryStateDict]",
     "current_phase": "int",
@@ -58,8 +86,9 @@
     "flags": "list[str]",
     "forced_card_id": "int",
     "forced_card_player": "str",
-    "hands": "dict[str, list[int]]",
+    "hands": "HandsDict",
     "headline_first_card": "int",
+    "headline_first_owner": "str",
     "headline_second_card": "int",
     "headline_stage": "int",
     "headline_us_card": "int",
@@ -81,13 +110,30 @@
     "unavailable_cards": "list[int]",
     "victory_points": "int"
   },
+  "HandCardDict": {
+    "event_ready": "bool",
+    "id": "int",
+    "name": "str",
+    "ops": "int"
+  },
+  "HandsDict": {
+    "US": "list[int]",
+    "USSR": "list[int]",
+    "USSR_cards": "list[HandCardDict]",
+    "US_cards": "list[HandCardDict]"
+  },
   "LegalActionsDict": {
+    "allow_early_stop": "bool",
+    "can_decline": "bool",
     "decision_player": "str",
     "decision_type": "int",
     "decision_type_name": "str",
     "legal_cards": "list[int]",
     "legal_countries": "list[int]",
-    "legal_space": "bool"
+    "legal_space": "bool",
+    "un_intervention": "bool",
+    "valid_action_labels": "dict[str, str]",
+    "valid_ids": "list[int]"
   },
   "PolicyChoiceDict": {
     "idx": "int",

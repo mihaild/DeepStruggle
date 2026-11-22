@@ -67,7 +67,12 @@ the old Python session, the readout against `read_policy` / `read_critic`).
 - [`replay_types.py`](replay_types.py):
   - Strongly typed `TypedDict` definitions for all serialized game states, action logs, replays
     and audit structures. `GameStateDict` is what `GameState.to_dict()` returns -- the display
-    state written once in `bindings/state_json.cpp` and shared with the page's engine.
+    state written once in `bindings/state_json.cpp` and shared with the page's engine -- and
+    `SaveStateDict` what `GameState.to_save_dict()` returns. Every key either writes must be
+    declared: `tests/bindings/test_state_dict_keys_are_typed.py` walks real positions' dicts and
+    the source's literal keys (`replay_schema.golden.json`, generated from the TypedDicts, cannot
+    see an engine key they lack). A new engine key goes into its TypedDict, then the golden is
+    regenerated.
 
 ---
 

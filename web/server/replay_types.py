@@ -16,14 +16,25 @@ class CountryStateDict(TypedDict, total=False):
 
 
 class DieRollDict(TypedDict, total=False):
-    """Serialization format for die roll outcome."""
+    """Serialization format for die roll outcome (`state_json::display_state`'s `die_roll`). `target_country` and
+    `modified_roll` are no longer written; kept for replays recorded before."""
     type: str
     type_id: int
     roller: str
     card_id: int
+    card_name: str
+    country_id: int
+    country_name: str
+    roll1: int
+    mod1: int
+    total1: int
+    roll2: int
+    mod2: int
+    total2: int
+    success: bool
+    net_delta: int
     target_country: int
     modified_roll: int
-    success: bool
 
 
 class EventTrackDict(TypedDict):
@@ -41,10 +52,22 @@ class ChinaCardDict(TypedDict, total=False):
 
 
 class DecisionContextDict(TypedDict, total=False):
-    """Serialization format for active decision context."""
+    """Serialization format for active decision context (`state_json::display_state`'s `decision_context`).
+    `card_id`, `target_id`, `ops` and `flags` are no longer written; kept for replays recorded before."""
     decision_player: str
     decision_type: int
     decision_type_name: str
+    op_mode: int
+    op_mode_name: str
+    pending_op_card: int
+    pending_op_card_name: str
+    pending_ops_value: int
+    remaining_steps: int
+    max_per_country: int
+    allow_early_stop: bool
+    resolving_card: int
+    resolving_card_name: str
+    stack_depth: int
     card_id: int
     target_id: int
     ops: int
@@ -52,13 +75,37 @@ class DecisionContextDict(TypedDict, total=False):
 
 
 class LegalActionsDict(TypedDict, total=False):
-    """Serialization format for legal actions representation."""
+    """Serialization format for legal actions representation (`state_json::display_state`'s `legal_actions`).
+    `legal_cards`, `legal_countries` and `legal_space` are no longer written; kept for replays recorded before."""
     decision_type: int
     decision_type_name: str
     decision_player: str
+    valid_ids: List[int]
+    valid_action_labels: Dict[str, str]
+    allow_early_stop: bool
+    can_decline: bool
+    # Only at Grain Sales' play-mode choice: whether UN Intervention may be played on the drawn card.
+    un_intervention: bool
     legal_cards: List[int]
     legal_countries: List[int]
     legal_space: bool
+
+
+class HandCardDict(TypedDict):
+    """A card in a hand, as the display state lists it (`hands.US_cards` / `hands.USSR_cards`)."""
+    id: int
+    name: str
+    ops: int
+    event_ready: bool
+
+
+class HandsDict(TypedDict, total=False):
+    """Both hands: the card ids (`US`, `USSR`) and the same cards with their names, Ops and whether their Event would
+    happen now (`US_cards`, `USSR_cards`)."""
+    US: List[int]
+    USSR: List[int]
+    US_cards: List[HandCardDict]
+    USSR_cards: List[HandCardDict]
 
 
 class ActionLogEntryDict(TypedDict, total=False):
@@ -93,6 +140,8 @@ class GameStateDict(TypedDict, total=False):
     headline_ussr_card: int
     headline_first_card: int
     headline_second_card: int
+    # Who resolves first: kept after the headline, when the card ids are cleared (E9, audit E-7).
+    headline_first_owner: str
     headline_stage: int
     forced_card_player: str
     forced_card_id: int
@@ -104,8 +153,10 @@ class GameStateDict(TypedDict, total=False):
     china_card: ChinaCardDict
     flags: List[str]
     persistent_effects: int
+    # Chernobyl's region (engine Region order), only while it is in effect.
+    chernobyl_region: int
     countries: Dict[str, CountryStateDict]
-    hands: Dict[str, List[int]]
+    hands: HandsDict
     discard_pile: List[int]
     removed_pile: List[int]
     unavailable_cards: List[int]
@@ -116,6 +167,97 @@ class GameStateDict(TypedDict, total=False):
     is_terminal: bool
     terminal_utility: float
     action_logs: List[ActionLogEntryDict]
+
+
+class SaveRollDict(TypedDict):
+    """The last die roll in a save (`state_json::save`'s `last_roll`), enums as their integers."""
+    type: int
+    roller: int
+    card_id: int
+    country_id: int
+    roll1: int
+    mod1: int
+    roll2: int
+    mod2: int
+    success: bool
+    net_delta: int
+
+
+class SaveEventTrackDict(TypedDict):
+    """One Event's VP and DEFCON change in a save (`last_event_tracks`)."""
+    card_id: int
+    vp_delta: int
+    defcon_delta: int
+
+
+class SaveDecisionFrameDict(TypedDict, total=False):
+    """One frame of the decision stack in a save (`ctx_stack`), enums as their integers; the `canon_*` fields only when
+    a canonical-order rule set them (P43)."""
+    decision_player: int
+    decision_type: int
+    op_mode: int
+    pending_op_card: int
+    pending_ops_value: int
+    remaining_steps: int
+    max_per_country: int
+    allow_early_stop: int
+    resolving_card: int
+    timing_branch: int
+    suppress_op_card_event: int
+    event_granted_ops: int
+    pending_roll: int
+    roll_target: int
+    roll_actor: int
+    event_stage: int
+    ops_plain: int
+    canon_floor: int
+    canon_left: int
+    canon_tag: int
+    start_influence_nodes: List[int]
+    visited_nodes: List[int]
+    node_count_bits: List[int]
+
+
+class SaveStateDict(TypedDict, total=False):
+    """A whole position as `GameState.to_save_dict` writes it (`state_json::save`, format "ts_save_v2"): what
+    `state_from_save_dict` restores exactly. Enums are their integers; `canon_prio` / `canon_prio_tag` only when P43 V3
+    gave a priority."""
+    format: str
+    canon_prio: List[int]
+    canon_prio_tag: int
+    victory_points: int
+    defcon: int
+    turn: int
+    action_round: int
+    us_mil_ops: int
+    ussr_mil_ops: int
+    us_space_track: int
+    ussr_space_track: int
+    phasing_player: int
+    current_phase: int
+    headline_us_card: int
+    headline_ussr_card: int
+    headline_first_card: int
+    headline_second_card: int
+    headline_stage: int
+    forced_card_player: int
+    forced_card_id: int
+    defcon_dropped_to_2: int
+    china_card_holder: int
+    china_card_playable: int
+    persistent_effects: int
+    rng_state: int
+    headline_first_owner: int
+    headline_second_owner: int
+    last_die_roll: int
+    last_opp_die_roll: int
+    last_roll: SaveRollDict
+    last_event_tracks: List[SaveEventTrackDict]
+    ctx_stack: List[SaveDecisionFrameDict]
+    ctx_stack_depth: int
+    card_locations: List[int]
+    us_influence: List[int]
+    ussr_influence: List[int]
 
 
 class ReplayActionDict(TypedDict, total=False):
