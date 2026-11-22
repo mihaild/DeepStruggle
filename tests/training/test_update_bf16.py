@@ -1,41 +1,39 @@
-"""P52 (--update-bf16, --bf16-fp32-heads): the heads-in-fp32 switch changes nothing without autocast, and the flag
-refuses to run without --update-bf16. (The autocast path itself needs CUDA; its numerics were measured on the GPU.)"""
+"""Audit M-7: under --update-bf16 the PPO ratio's old log-probs are taken once, before the epochs, from the update's
+own forward of the not-yet-updated network on the learner's rows -- not from the fp32 rollout. bf16 autocast runs only
+on CUDA, so on the CPU the recomputed log-probs are the rollout's own: a stored learner log-prob shifted after the
+rollout is ignored with the flag and changes the update without it."""
 
 from __future__ import annotations
 
-import pytest
+import copy
+from typing import Any, Dict
+
+import numpy as np
 import torch
 
-from ai.models.ladder_net import LadderNet, create_ladder_net
-from ai.training.nash_pg import NashPGTrainer
+from ai.models.ladder_net import create_ladder_net
+from ai.training import NashPGTrainer
 from bindings.ts_env import TsVectorizedEnv
+from tests.training.test_token_main import CFG
 
 
-def _net() -> LadderNet:
+def _step(update_bf16: bool, shift: float) -> Dict[str, Any]:
     torch.manual_seed(0)
-    return create_ladder_net(torch.device("cpu"), input_mode="grouped", aggregation="flatten", entity_dim=16,
-                             entity_proj_dim=64, card_self_attention=False, cross_attention=False,
-                             per_entity_heads=16, head_context=True, head_static=True, head_entities="country",
-                             head_center=True, identity_dim=0, drop_static=True, hidden_dim=64, num_res_blocks=0,
-                             num_attn_heads=4, card_lookup=False, card_lookup_heads=0, card_lookup_dim=0,
-                             card_lookup_identity_dim=0, categorical_value=False).eval()
+    dev = torch.device("cpu")
+    t: Any = NashPGTrainer(active_net=create_ladder_net(dev, **CFG), env=TsVectorizedEnv(num_envs=4, base_seed=11),
+                           num_envs=4, buffer_size=16, batch_size=32, lr=3e-4, eta=0.1, ref_update_freq=500,
+                           cuda_graphs=False, device=dev, update_bf16=update_bf16)
+    t.collect_rollouts()
+    t.buffer.log_probs.add_(shift * (t.buffer.learner > 0.5).float())
+    torch.manual_seed(1)
+    m = t.train_step()
+    return {"m": m, "w": copy.deepcopy(t.active_net.state_dict())}
 
 
-def test_fp32_heads_change_nothing_without_autocast() -> None:
-    net = _net()
-    env = TsVectorizedEnv(num_envs=8, base_seed=3)
-    obs, masks, _ = env.reset_all()
-    o, m = torch.from_numpy(obs).float(), torch.from_numpy(masks)
-    with torch.no_grad():
-        plain = net(o, m), net.forward_value(o), net.forward_with_risk(o, m)
-        setattr(net, "fp32_heads", True)
-        heads = net(o, m), net.forward_value(o), net.forward_with_risk(o, m)
-    for a, b in zip(plain[0] + (plain[1],) + plain[2], heads[0] + (heads[1],) + heads[2]):
-        assert torch.equal(a, b)
-
-
-def test_fp32_heads_need_bf16() -> None:
-    with pytest.raises(ValueError, match="needs --update-bf16"):
-        NashPGTrainer(active_net=_net(), env=TsVectorizedEnv(num_envs=4, base_seed=7), num_envs=4, buffer_size=4,
-                      lr=3e-4, eta=0.1, ref_update_freq=500, cuda_graphs=False, device=torch.device("cpu"),
-                      bf16_fp32_heads=True)
+def test_the_learners_old_log_probs_come_from_the_update_forward_under_the_flag() -> None:
+    clean, shifted = _step(True, 0.0), _step(True, 0.3)
+    for k, v in clean["w"].items():
+        assert torch.allclose(v, shifted["w"][k], atol=1e-6), k
+    plain_shifted = _step(False, 0.3)
+    assert np.isfinite(plain_shifted["m"]["loss"])
+    assert any(not torch.allclose(v, plain_shifted["w"][k], atol=1e-6) for k, v in clean["w"].items())

@@ -3165,6 +3165,22 @@ class NashPGTrainer(BaseNashPGTrainer):
                                                  _all_masks[i:i + self.batch_size])[0].float(), dim=-1)
                 for i in range(0, _n_all, self.batch_size)])
 
+        # Audit M-7: under --update-bf16 the new log-probs come from a bf16 forward, so the old ones are taken from the
+        # same forward of the same (not yet updated) network, once, rather than from the fp32 rollout: otherwise the
+        # precision gap alone moves the ratio before any step. The learner's stored log-prob is the active network's
+        # own at temperature 1 (the floor stores log pi too), so it is replaced on learner rows only; other rows keep
+        # theirs (an opponent's, never in the policy loss). Off by default, which leaves the stored log-probs as they
+        # are.
+        old_lp_amp_all: Optional[torch.Tensor] = None
+        if self.update_bf16:
+            _all_acts = self.buffer.actions.view(_n_all)
+            with torch.no_grad(), self._amp():
+                old_lp_amp_all = torch.cat([
+                    F.log_softmax(_act_fwd(_all_obs[i:i + self.batch_size],
+                                           _all_masks[i:i + self.batch_size])[0].float(), dim=-1)
+                    .gather(1, _all_acts[i:i + self.batch_size].unsqueeze(1)).squeeze(1)
+                    for i in range(0, _n_all, self.batch_size)])
+
         teacher_log_p_all: Optional[torch.Tensor] = None
         if self.teacher_net is not None:
             _teach_fwd = self._update_net(self.teacher_net)
@@ -3204,6 +3220,9 @@ class NashPGTrainer(BaseNashPGTrainer):
                  b_defcon_risk, b_learner, b_search_pi, b_has_search,
                  b_players, b_idx) in self.buffer.get_batches(
                      self.batch_size, self.priority_alpha):
+                if old_lp_amp_all is not None:
+                    b_old_lp = torch.where(b_learner > 0.5, old_lp_amp_all.index_select(0, b_idx).to(b_old_lp.dtype),
+                                           b_old_lp)
                 use_risk = self.defcon_coef > 0.0
                 cur_value_logits = None
                 with self._amp():
@@ -3236,7 +3255,10 @@ class NashPGTrainer(BaseNashPGTrainer):
                     _gi = torch.nonzero(_has).squeeze(-1)
                     if _gi.numel():
                         # the head on the rows with a prior only: an extra pass of the trunk, with gradient
-                        _g = _g.index_add(0, _gi, self._gain_head(b_obs.index_select(0, _gi)).to(_g.dtype))
+                        # Under the update's autocast like the trunk pass it corrects (audit M-7).
+                        with self._amp():
+                            _gh = self._gain_head(b_obs.index_select(0, _gi))
+                        _g = _g.index_add(0, _gi, _gh.to(_g.dtype))
                     cur_v_win = prior_apply(cur_v_win, _g * _b, _has)
                 elif self.critic_prior and self._prior_rows is not None:
                     cur_v_win = prior_apply(cur_v_win, self._prior_rows.view(-1).index_select(0, b_idx))
@@ -3526,7 +3548,8 @@ class NashPGTrainer(BaseNashPGTrainer):
                 _mb += 1
                 if self._sg_size and self._sg_obs is not None and self._sg_tgt is not None:
                     _si = torch.randint(self._sg_size, (self.searched_value_batch,))
-                    _sv = self.active_net(self._sg_obs[_si].to(self.device, torch.float32), None)[1].squeeze(-1)
+                    with self._amp():   # the update's precision, as the other value passes (audit M-7)
+                        _sv = self.active_net(self._sg_obs[_si].to(self.device, torch.float32), None)[1].squeeze(-1)
                     _sl = F.mse_loss(_sv.float(), self._sg_tgt[_si].to(self.device))
                     loss = loss + self.vf_coef * self.searched_value_coef * _sl
                     sg_loss_t += _sl.detach()

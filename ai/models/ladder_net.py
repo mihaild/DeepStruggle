@@ -35,7 +35,7 @@ from torch.utils.checkpoint import checkpoint
 import ts_engine as ts
 
 from ai.models.coldwar_net_v2 import (STATIC_BOARD_SLOTS, STATIC_CARD_SLOTS,
-                                      ColdWarNetV2, static_input_mask)
+                                      ColdWarNetV2, pad_mask, static_input_mask)
 from ai.models.token_transformer import TokenTransformer
 from ai.models.head_registry import NORM_HEADS
 from ai.models.hyperspherical import SphereTrunk
@@ -986,7 +986,7 @@ class LadderNet(ColdWarNetV2):
             return logits
         z = logits.float()
         if mask is not None:
-            legal = mask.bool() if mask.dtype != torch.bool else mask
+            legal = pad_mask(mask, z.shape[-1])
             top = z.masked_fill(~legal, float("-inf")).amax(dim=-1, keepdim=True)
             top = torch.where(torch.isfinite(top), top, torch.zeros_like(top))   # no legal move
         else:

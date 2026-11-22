@@ -32,7 +32,8 @@ def mask_logits(logits: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor
 
     A mask wider than the logits (P42: the flat space is 304 wide, a base model outputs its 220 base
     slots) pads the logits with -1e9 first: the slots a model has no output for are slots its view
-    never offers, so the distribution is unchanged and every consumer sees the mask's width.
+    never offers, so the distribution is unchanged and every consumer sees the mask's width. A mask
+    narrower than the logits is padded with False: the slots it does not cover are not in its view.
 
     masked_fill, not torch.where against torch.tensor(-1e9, device=...): building that scalar is a
     blocking host-to-device copy, which stalled the CPU on the GPU at every forward pass -- 14.4 s
@@ -41,8 +42,17 @@ def mask_logits(logits: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor
     if mask is None:
         return logits
     logits = pad_to_mask(logits, mask)
+    return logits.masked_fill(~pad_mask(mask, logits.shape[-1]), -1e9)
+
+
+def pad_mask(mask: torch.Tensor, width: int) -> torch.Tensor:
+    """`mask` as booleans, padded with False to `width` when narrower (audit M-7: a macro model's 304 slots given a
+    base 220-slot mask, as the human injector and the agreement / plasticity probes do -- the slots the mask does not
+    cover are not offered in its view, so they are illegal); unchanged in width otherwise."""
     mask_bool = mask if mask.dtype == torch.bool else mask.bool()
-    return logits.masked_fill(~mask_bool, -1e9)
+    if mask_bool.shape[-1] < width:
+        mask_bool = F.pad(mask_bool, (0, width - mask_bool.shape[-1]), value=False)
+    return mask_bool
 
 
 def build_normalized_adjacency_matrix() -> torch.Tensor:

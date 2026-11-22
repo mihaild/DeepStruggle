@@ -187,3 +187,20 @@ def test_the_export_writes_each_network_at_its_own_width(tmp_path: Path) -> None
     obs, masks = _macro_positions(n_envs=2, steps=4)
     logits = OnnxAgent(str(tmp_path / "base.onnx")).logits(obs.astype(np.float32), masks)
     assert logits.shape[1] == FULL and bool((logits[:, BASE:] < -1e8).all())
+
+
+def test_a_macro_network_given_a_base_mask_offers_none_of_the_until_control_slots() -> None:
+    """Audit M-7: a 220-slot mask on a 304-slot network (the human injector, the agreement and plasticity probes)
+    pads the mask with False instead of crashing; with the logit cap too."""
+    _, macro = _grown()
+    obs = torch.randn(4, 3824) * 0.5
+    mask = torch.ones(4, BASE, dtype=torch.bool)
+    mask[:, 5] = False
+    wide = torch.cat([mask, torch.zeros(4, FULL - BASE, dtype=torch.bool)], dim=1)
+    with torch.no_grad():
+        got = macro(obs, mask)[0]
+        want = macro(obs, wide)[0]
+        assert got.shape[-1] == FULL and torch.equal(got, want)
+        assert bool((got[:, BASE:] <= -1e8).all()) and float(got[0, 5]) <= -1e8
+        macro.logit_cap_value = 5.0
+        assert torch.equal(macro(obs, mask)[0], macro(obs, wide)[0])
