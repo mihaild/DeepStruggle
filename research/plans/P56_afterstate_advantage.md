@@ -148,6 +148,12 @@ below it.
 > roll on trained play. S's policy lambda is **0.86** (A8's spread on the baseline), which needs a knob for the
 > policy's chain apart from the value targets', not built. The baseline for read 3 is 0.029 mean absolute.
 
+> **Pair 1 (2026-11-22; the log's section 6): T1 meets its rule.** 53.7% ± 0.8 against C at +800M (as US 50.3, as
+> USSR 56.0), above C on both references (+1.7 and +2.6), health level. Whether that is more than one recipe's own
+> noise waits for C'. Read 3's first line is withdrawn: the critic before a roll did not move (0.028 against
+> C's 0.028) because the observation there does not show which roll is pending (identical for every roll move at
+> 75% of decisions); the advantage never reads it, taking the outcomes' average of the values after the roll.
+
 ### The arms
 
 All from R169's state at 2,000M, every other flag the baseline's (`launch_flags.py --diff` showing only the

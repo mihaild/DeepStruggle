@@ -187,3 +187,58 @@ these are matched on spread on the baseline itself and are the ones the arms use
 **What the dice removal is worth.** 4% of the advantage's spread overall, 15% on wars: the dice are a small part
 of what a side does not control (section 1: 0.040 against the opponent's 0.097). Step 1's case is that it is
 exact and that the before-roll value gets a correct target, not the size of this number.
+
+## 6. Pair 1: step 1 (T1) against the baseline continued (C), +800M (2026-11-22)
+
+**Verdict: T1 meets its rule with room to spare (53.7% ± 0.8 against C, the references above C's); whether the
+margin is more than one recipe's own noise waits for C'.** The one read that failed its prediction, the critic
+before a roll, failed for a reason found the same day: the observation does not show which roll is pending.
+
+Both from `E8.1-A8-R169-S45` at 2,010M to 2,810M in the two slots. C: R169 continued in its own directory. T1:
+`E8.1-A8-R169-S45@2010M+R170` (`--per-player-gae --gae-lambda 0.96 --afterstate-advantage`, the only lines
+`launch_flags.py --diff` shows). SWAs 2,720-2,800M, greedy, `tools/tournament.py`, per seat from the JSON. Runs,
+matches and reads 3-4 by the running session.
+
+| read | T1 | C |
+|:---|:---|:---|
+| 1. T1 against C, 2,000 deals a side | **53.7% ± 0.8** (as US 50.3, as USSR 56.0) | |
+| 2. against J1's best, 1,000 deals a side | 43.1 ± 1.1 (42.0 / 43.0) | 41.4 ± 1.1 (40.3 / 41.0) |
+| 2. against A13 | 52.9 ± 1.1 (50.4 / 54.3) | 50.3 ± 1.1 (45.7 / 53.5) |
+| 3. the critic before a roll against its outcomes' exact average, mean absolute (signed) | 0.0282 (-0.0021) | 0.0277 (-0.0016) |
+| 3. the before-roll row's training loss | 0.0088 (target: the average) | 0.0560 (target: the lambda-return) |
+| 3. critic AUC, T1 - C over 161 windows of 5M | +0.0008, 95% CI [-0.0003, +0.0019] | |
+| 3. critic Brier skill, T1 - C | +0.0013, CI [-0.0005, +0.0032] | |
+| 4. entropy / clip fraction / KL / explained variance | 1.126 / 0.0375 / 0.0029 / 0.849 | 1.129 / 0.0369 / 0.0029 / 0.845 |
+| 4. value loss / self-play US win rate / advantage SD | 0.0438 / 0.466 / 0.201 | 0.0440 / 0.469 / 0.211 |
+
+Health was level at +20M, +100M and +400M as well. The commonest opening setup's share was not measured.
+T1 differs from C by per-player GAE (P50: 51.5% ± 0.8 on the earlier base) and by step 1 together; the run does
+not say how the 3.7 points divide.
+
+### Why the critic before a roll did not move: the observation cannot tell which roll is pending
+
+The plan predicted that training the before-roll row on its outcomes' exact average would close its 0.029 gap.
+It did not. On R169's SWA at 2,000M (40 self-play games, a quarter of the decisions sampled, CPU; a session
+probe), at 447 decisions with two or more legal moves each followed at once by a roll, the mover's observation of
+the before-roll moment was compared between those moves:
+
+| | |
+|:---|---:|
+| decisions where the before-roll observation is identical for every such move | 74.9% |
+| the same, target choices (`point`, 408 decisions) | 82.1% |
+| pairs of such moves with identical observations | 84.8% |
+| SD of the network's before-roll value over a decision's roll moves | 0.0037 |
+
+A coup or a realignment in one country and in another are the same observation before the die: the pending
+target is not in it. So the critic there can learn only the average over the targets the policy picks, which is
+close to the decision's own value -- the slope of 0.17 in section 4, and the low training loss beside an unmoved
+gap in the table above.
+
+**What follows.**
+
+* **For the advantage, nothing is lost:** T1 does not read the network before a roll; the node's value is the
+  outcomes' average of the values *after* the roll, where the board shows what happened.
+* **Read 3's first line is withdrawn as a criterion.** It cannot move without the observation showing the pending
+  target, which is a change of the observation and the owner's alone; nothing here asks for it.
+* **Anything that reads the critic at a before-roll moment is reading a blind value:** the critic's-best-move
+  player and a search leaf that stops there should take the outcomes' average too.
