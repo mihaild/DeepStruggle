@@ -145,8 +145,15 @@ def grow_tokens_optimizer_state(saved: Dict[str, Any], names: Sequence[str], tok
                                 identity_dim: int) -> Dict[str, Any]:
     """Adam's state for the grown network: `names` are its parameter names in `named_parameters()` order.
     The saved state indexed the same names less the token modules; a widened weight's moments get zero
-    columns where its weights did, the token modules start without state (Adam initialises it)."""
+    columns where its weights did, the token modules start without state (Adam initialises it). The groups
+    come back as one in model order, which the trainer maps onto its own (per-rate) groups, as
+    grow_macro_optimizer_state's (audit T-15, 2026-11-22: rewriting only the first of several saved groups gave
+    duplicate parameter indices, so a --mup / --policy-head-lr-mult / --no-decay-norms-biases state crashed)."""
     old = [n for n in names if not n.startswith("tok_")]
+    flat = [int(i) for g in saved["param_groups"] for i in g["params"]]
+    if flat != list(range(len(old))):
+        raise ValueError(f"the saved optimizer does not index the {len(old)} parameters of the network less its token "
+                         f"modules in model order")
     state: Dict[Any, Any] = {}
     for i, name in enumerate(names):
         if name.startswith("tok_"):
@@ -164,9 +171,9 @@ def grow_tokens_optimizer_state(saved: Dict[str, Any], names: Sequence[str], tok
             elif name in ENTITY_HEADS:
                 new_st[key] = _insert_zero_cols(m, identity_dim, token_dim)
         state[i] = new_st
-    groups = [dict(g) for g in saved["param_groups"]]
-    groups[0]["params"] = list(range(len(names)))
-    return {"state": state, "param_groups": groups}
+    group = dict(saved["param_groups"][0])
+    group["params"] = list(range(len(names)))
+    return {"state": state, "param_groups": [group]}
 
 
 #: P42: the dense policy output, which grows from the base flat width to the macro view's.

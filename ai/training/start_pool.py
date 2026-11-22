@@ -33,6 +33,7 @@ import numpy as np
 import torch
 
 from ai.eval.position_diagnostics import is_salvageable, region_score_sums
+from ai.training.training_rng import preserves_training_rng
 from bindings.ts_env import TsVectorizedEnv, model_obs_features
 
 # Share of environments started from each turn. Turn 1 keeps the majority: start sampling
@@ -163,6 +164,9 @@ class StartPositionPool:
 
     # -- harvesting ----------------------------------------------------------------------
 
+    # Audit T-9 / fix verification V-10 (2026-11-22): the harvest samples its games' actions from torch's global
+    # generator, the stream the rollout samples from; restored afterwards, a refresh leaves the run's trajectory alone.
+    @preserves_training_rng
     def harvest(
         self,
         model: Any,

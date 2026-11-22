@@ -759,7 +759,9 @@ class LadderNet(ColdWarNetV2):
         if not self.card_aux:
             raise RuntimeError("this network was built without the card-event head (--aux-card-events)")
         h, _attn, _tokens = self._encode(obs)
-        return self.card_aux_head(h).view(-1, 110, CARD_AUX_DIM)
+        ctx, h, _tokens = self._heads_in(h, None)      # fix verification V-6.4: every head honours --bf16-fp32-heads
+        with ctx:
+            return self.card_aux_head(h).view(-1, 110, CARD_AUX_DIM)
 
     def forward_opp_legal(self, obs: torch.Tensor) -> torch.Tensor:
         """The opponent-legality logits, (B, 84, 2): per country, may the opponent place influence
@@ -767,14 +769,18 @@ class LadderNet(ColdWarNetV2):
         if not self.opp_legal_aux:
             raise RuntimeError("this network was built without the opponent-legality head (--aux-opp-legality)")
         h, _attn, _tokens = self._encode(obs)
-        return self.opp_legal_head(h).view(-1, 84, 2)
+        ctx, h, _tokens = self._heads_in(h, None)
+        with ctx:
+            return self.opp_legal_head(h).view(-1, 84, 2)
 
     def forward_prior_gain(self, obs: torch.Tensor) -> torch.Tensor:
         """P46c: the learned part of the prior's gain, (B, 1), read off the trunk."""
         if not self.prior_gain:
             raise RuntimeError("this network was built without the prior-gain head (--critic-prior-gain learned)")
         h, _attn, _tokens = self._encode(obs)
-        return self.prior_gain_head(h)
+        ctx, h, _tokens = self._heads_in(h, None)
+        with ctx:
+            return self.prior_gain_head(h)
 
     def forward_aux(self, obs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """The auxiliary predictions: ownership logits (B, 84, 3) -- mine / opponent's / neither --
@@ -782,8 +788,10 @@ class LadderNet(ColdWarNetV2):
         if not self.aux_heads:
             raise RuntimeError("this network was built without aux heads (--aux-ownership / --aux-vp-margin)")
         h, _attn, _tokens = self._encode(obs)
-        own = self.aux_own_head(h).view(-1, AUX_OWN_COUNTRIES, 3)
-        return own, self.aux_vp_head(h)
+        ctx, h, _tokens = self._heads_in(h, None)
+        with ctx:
+            own = self.aux_own_head(h).view(-1, AUX_OWN_COUNTRIES, 3)
+            return own, self.aux_vp_head(h)
 
 
     def _card_lookup(self, card_raw: torch.Tensor, pre: torch.Tensor,

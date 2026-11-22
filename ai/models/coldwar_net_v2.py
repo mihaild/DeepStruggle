@@ -47,8 +47,9 @@ def mask_logits(logits: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor
 
 def pad_mask(mask: torch.Tensor, width: int) -> torch.Tensor:
     """`mask` as booleans, padded with False to `width` when narrower (audit M-7: a macro model's 304 slots given a
-    base 220-slot mask, as the human injector and the agreement / plasticity probes do -- the slots the mask does not
-    cover are not offered in its view, so they are illegal); unchanged in width otherwise."""
+    base 220-slot mask, as the human injector and the agreement probe do -- the slots the mask does not cover are not
+    offered in its view, so they are illegal); unchanged in width otherwise. (The probes that load through
+    ai/eval/loading.py, plasticity and departure among them, refuse a macro network instead: fix verification V-6.3.)"""
     mask_bool = mask if mask.dtype == torch.bool else mask.bool()
     if mask_bool.shape[-1] < width:
         mask_bool = F.pad(mask_bool, (0, width - mask_bool.shape[-1]), value=False)
@@ -740,7 +741,10 @@ class ColdWarNetV2(nn.Module):
     @torch.no_grad()
     def defcon_risk(self, obs: torch.Tensor) -> torch.Tensor:
         """Probability that the player to move is about to lose to DEFCON 1."""
-        return torch.sigmoid(self.defcon_risk_head(self.extract_features(obs)))
+        h, _attn, _tokens = self._encode(obs)
+        ctx, h, _tokens = self._heads_in(h, None)                          # fix verification V-6.4
+        with ctx:
+            return torch.sigmoid(self.defcon_risk_head(h))
 
     @torch.no_grad()
     def sample_action(

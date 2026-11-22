@@ -603,6 +603,17 @@ class RolloutBuffer:
                                                        last_side_values)
         return (node_adv if node is not None else adv), ret
 
+    def per_player_cuts(self, slice_turn_boundaries: bool = False) -> np.ndarray:
+        """(T, N) bool on the host: the rows the per-player pass drops every side's carried state at -- the dones, plus
+        under ``slice_turn_boundaries`` each turn's last row (the buffer's last row excepted; _gae_per_player_both)."""
+        T = self.buffer_size
+        done_mask = self.dones[:T].cpu().numpy() > 0.5
+        if slice_turn_boundaries and T > 1:
+            turns = self.turns[:T].cpu().numpy()
+            done_mask = done_mask.copy()
+            done_mask[:-1] |= turns[:-1] != turns[1:]
+        return done_mask
+
     def _gae_per_player_both(
         self,
         gamma: float,
@@ -627,12 +638,7 @@ class RolloutBuffer:
         T, N = self.buffer_size, self.num_envs
         dev = self.device
         players = np.ascontiguousarray(self.players[:T].cpu().numpy().astype(np.int8))
-        done_mask = self.dones[:T].cpu().numpy() > 0.5
-        if slice_turn_boundaries and T > 1:
-            turns = self.turns[:T].cpu().numpy()
-            done_mask = done_mask.copy()
-            done_mask[:-1] |= turns[:-1] != turns[1:]
-        dones = np.ascontiguousarray(done_mask.astype(np.uint8))
+        dones = np.ascontiguousarray(self.per_player_cuts(slice_turn_boundaries).astype(np.uint8))
         rewards = np.ascontiguousarray(self.rewards[:T].cpu().numpy().astype(np.float32))
         values = np.ascontiguousarray(self.values_win[:T].cpu().numpy().astype(np.float32))
         last_v = (last_v_win.float() * last_players.float()).cpu().numpy().astype(np.float32)   # US frame

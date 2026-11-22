@@ -7,7 +7,14 @@ import ts_engine as ts
 
 
 class RewardCalculator(Protocol):
-    """Abstract interface for perspective-aligned reward calculation and zero-sum credit assignment."""
+    """Abstract interface for perspective-aligned reward calculation and zero-sum credit assignment.
+
+    ``terminal_only``: True when every non-terminal step's reward is 0 (the payoff arrives only with the game's end).
+    --per-player-gae requires it (fix verification V-5, 2026-11-22): the side not to move at a rollout's end
+    bootstraps from its own last afterstate moment, so intermediate rewards after that moment would be counted twice.
+    """
+
+    terminal_only: bool
 
     def compute_step_rewards(
         self,
@@ -39,6 +46,8 @@ class ZeroSumTerminalReward:
     - Zero-sum transition sign: sign = curr_player * next_player.
 
     """
+
+    terminal_only: bool = True
 
     def compute_step_rewards(
         self,
@@ -78,6 +87,8 @@ class EndingTargetedReward:
     zero-sum from the US's side (the fixed opponent does not train), so GAE's alternating signs hold as in the terminal
     scheme. Needs the learner's seat: an exploiter run, --opponent-lock-side.
     """
+
+    terminal_only: bool = True
 
     def __init__(self, targets: Sequence[str], learner_side: int) -> None:
         bad = [t for t in targets if t not in TARGET_ENDINGS]
@@ -138,6 +149,8 @@ class EndingTargetedReward:
 class ShapedZeroSumReward:
     """Zero-sum terminal reward augmented with dense VP-delta reward shaping."""
 
+    terminal_only: bool = False
+
     def __init__(self, vp_scale: float = 0.02):
         self.vp_scale = vp_scale
 
@@ -174,6 +187,8 @@ class VPPotentialShaping:
     1999). It only moves credit earlier: VP gained now is paid now and given back at the end.
     The critic learns V(s) - Phi(s) in the mover's frame instead of V(s).
     """
+
+    terminal_only: bool = False   # on the wrapper itself, so __getattr__ never hands back the base's True
 
     def __init__(self, base: Any, scale: float) -> None:
         self.base = base
@@ -223,6 +238,7 @@ class UsefulActionsReward(ZeroSumTerminalReward):
     """
 
     needs_all_states: bool = True
+    terminal_only: bool = False
 
     def __init__(self, potential_scale: float = 1.0) -> None:
         super().__init__()

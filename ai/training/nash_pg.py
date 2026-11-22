@@ -33,8 +33,8 @@ from ai.training.card_event_targets import aux_label
 from ai.training.afterstate_critic import KIND_NAMES as AFTERSTATE_KINDS
 from ai.training.afterstate_critic import AfterstateCapture, AfterstateRows
 from ai.training.afterstate_critic import build_targets as build_afterstate_targets
-from ai.training.afterstate_critic import (last_moment_values, next_decision_targets, node_tensors,
-                                           read_all_node_values)
+from ai.training.afterstate_critic import (last_moment_values, missing_last_moments, next_decision_targets,
+                                           node_tensors, read_all_node_values)
 from ai.training.restart_pool import critic_judge
 from ai.rewards.region_reward import RegionTargetedReward
 from tools.lib.openings import FORCED_OPENINGS_US, FORCED_OPENINGS_USSR, NODE_OFFSET as _NODE, OPENINGS
@@ -801,6 +801,8 @@ class BaseNashPGTrainer:
             # The policy's chain and the value targets must be one chain at one reach: without per-player returns the
             # value targets stay interleaved, and --gae-lambda would set two different reaches (P56 plan, T1).
             raise ValueError("--afterstate-advantage needs --per-player-gae (T1: --per-player-gae --gae-lambda 0.96)")
+        if per_player_gae:
+            check_per_player_gae(afterstate_value_coef, afterstate_frac, gamma)
         if not 0.0 <= self.afterstate_lambda_opp <= 1.0:
             raise ValueError(f"--afterstate-lambda-opp must be in [0, 1], got {afterstate_lambda_opp}")
         if self.bf16_fp32_heads and not self.update_bf16:
@@ -1020,6 +1022,8 @@ class BaseNashPGTrainer:
                                         lr_mults=lr_mults)
 
         self.env = env if env is not None else TsVectorizedEnv(num_envs=self.num_envs, base_seed=int(time.time()))
+        if self.per_player_gae:
+            self._require_terminal_only(self.env.reward_calc)
         # Tier-1 critic discrimination. Holds one sample per game per turn until that
         # game's winner is known; costs an integer compare per env per step.
         self.critic_tracker = CriticTracker(num_envs=self.num_envs)
@@ -1384,7 +1388,19 @@ class BaseNashPGTrainer:
             self.head_init[name].copy_(p0.to(self.head_init[name].device))
 
     def set_reward_calculator(self, reward_calc: Any) -> None:
+        if self.per_player_gae:
+            self._require_terminal_only(reward_calc)
         self.env.reward_calc = reward_calc
+
+    @staticmethod
+    def _require_terminal_only(reward_calc: Any) -> None:
+        """Fix verification V-5 (2026-11-22): --per-player-gae's end-of-rollout bootstrap from a side's own last
+        afterstate moment already holds the rewards after that moment, which the pass adds again on top: only a reward
+        paid at the game's end alone (RewardCalculator.terminal_only) leaves nothing to count twice."""
+        if not bool(getattr(reward_calc, "terminal_only", False)):
+            raise ValueError(f"--per-player-gae needs a terminal-only reward (--reward-scheme terminal, no --vp-potential "
+                             f"or --target-region; got {type(reward_calc).__name__}): intermediate rewards after a side's "
+                             "last decision would be counted twice at the rollout's end")
 
     def set_slice_turn_boundaries(self, slice_boundaries: bool) -> None:
         self.slice_turn_boundaries = slice_boundaries
@@ -2262,7 +2278,8 @@ class BaseNashPGTrainer:
                     self.afterstate = AfterstateCapture(self.afterstate_frac, self.obs_features, self.buffer.obs_dim,
                                                         forced=bool(self.env._auto_advance),
                                                         seed=int(np.random.randint(1 << 30)),
-                                                        roll_faces=self.afterstate_advantage)
+                                                        roll_faces=self.afterstate_advantage,
+                                                        every_decider=self.per_player_gae)
                 self.afterstate.before(self.env.runner, np.asarray(learner_np, dtype=bool), np.asarray(_dp))
             if self.restart_pool is not None:
                 self.restart_pool.steps = int(self.total_env_steps + self.buffer.step * self.num_envs)
@@ -2456,12 +2473,24 @@ class BaseNashPGTrainer:
             _lam = torch.from_numpy(np.where(self._selfplay_mask, self.afterstate_lambda_opp, 1.0).astype(np.float32))
             _node = (_u, _post, _lam, _ex, _nt)
         _last_side = None
-        if self.per_player_gae and self._as_rows:
-            # Audit T-4(2): the side not to move at the end bootstraps from its own last captured moment.
-            if self._as_rows[0].values is None:
-                read_all_node_values(self._as_rows, lambda _o: _value_only(self.active_net, _o))
-            _last_side = torch.from_numpy(last_moment_values(
-                self._as_rows, self.buffer.players[:self.buffer.buffer_size].cpu().numpy(), self.num_envs))
+        if self.per_player_gae:
+            # Audit T-4(2): the side not to move at the end bootstraps from its own last captured moment (only those rows
+            # are read when --afterstate-advantage has not read them all).
+            _pl_np = self.buffer.players[:self.buffer.buffer_size].cpu().numpy()
+            _ls = last_moment_values(self._as_rows, _pl_np, self.num_envs,
+                                     lambda _o: _value_only(self.active_net, _o))
+            # Fix verification V-5: never the negated value of the side to move instead (a walk cut at MAX_WALK).
+            _miss = missing_last_moments(_ls, _pl_np, self.buffer.per_player_cuts(self.slice_turn_boundaries),
+                                         np.asarray(_last_info["decision_players"]))
+            if _miss.any():
+                _q, _e = np.nonzero(_miss)
+                raise RuntimeError(
+                    f"--per-player-gae: {int(_miss.sum())} side(s) not to move at the rollout's end have no captured "
+                    f"afterstate moment of their last decision (first: env {int(_e[0])}, "
+                    f"{'US' if int(_q[0]) == 0 else 'USSR'}; walks cut since the last report: "
+                    f"{0 if self.afterstate is None else self.afterstate.mismatched}); refusing the negated "
+                    "bootstrap of the side to move")
+            _last_side = torch.from_numpy(_ls)
         self.buffer.compute_gae(
             last_v_win=last_v_win.squeeze(-1),
             last_v_vp=last_v_vp.squeeze(-1),
@@ -2953,6 +2982,23 @@ def zero_avoid_loss(logits: torch.Tensor, mask: torch.Tensor, own: torch.Tensor,
     return zero_avoid_kl(logits, mask, w) * (w.sum() / own.sum().clamp(min=1.0))
 
 
+def check_per_player_gae(afterstate_value_coef: float, afterstate_frac: float, gamma: float) -> None:
+    """Fix verification V-5 (owner, 2026-11-22): what --per-player-gae needs besides a terminal-only reward
+    (BaseNashPGTrainer._require_terminal_only). The chain of the side NOT to move at a rollout's end bootstraps from that
+    side's own last afterstate moment (audit T-4(2)); there is no other own-view value to take."""
+    if float(afterstate_value_coef) <= 0.0 or float(afterstate_frac) < 1.0:
+        # Without every decision's walk, an uncaptured side fell back silently to the negated value of the side to
+        # move -- the cross-perspective bootstrap per-player GAE exists to remove.
+        raise ValueError("--per-player-gae needs the afterstate critic at every decision (--afterstate-value-coef > 0 "
+                         f"--afterstate-frac 1.0; got {float(afterstate_value_coef):g} and {float(afterstate_frac):g}): "
+                         "the side not to move at a rollout's end bootstraps from its own last afterstate moment")
+    if float(gamma) != 1.0:
+        # That moment sits one step after the side's last decision, but the pass discounts the bootstrap by
+        # gamma^(steps to the buffer's end).
+        raise ValueError(f"--per-player-gae needs --gamma 1.0 (got {float(gamma):g}): the end-of-rollout bootstrap from "
+                         "a side's own last moment would be discounted over the steps after it")
+
+
 class NashPGTrainer(BaseNashPGTrainer):
     """Standard NashPG Trainer for ColdWarNet V1, V2, and V3."""
 
@@ -3174,12 +3220,19 @@ class NashPGTrainer(BaseNashPGTrainer):
         old_lp_amp_all: Optional[torch.Tensor] = None
         if self.update_bf16:
             _all_acts = self.buffer.actions.view(_n_all)
-            with torch.no_grad(), self._amp():
-                old_lp_amp_all = torch.cat([
-                    F.log_softmax(_act_fwd(_all_obs[i:i + self.batch_size],
-                                           _all_masks[i:i + self.batch_size])[0].float(), dim=-1)
-                    .gather(1, _all_acts[i:i + self.batch_size].unsqueeze(1)).squeeze(1)
-                    for i in range(0, _n_all, self.batch_size)])
+            # Fix verification V-6.1 (2026-11-22): in eval mode, as the rollout that sampled the actions ran -- the old
+            # log-probs are the behaviour policy's. In train mode every dropout layer drew a mask of its own here (one
+            # no minibatch shares) and moved torch's global stream, which the rollout samples from.
+            self.active_net.eval()
+            try:
+                with torch.no_grad(), self._amp():
+                    old_lp_amp_all = torch.cat([
+                        F.log_softmax(_act_fwd(_all_obs[i:i + self.batch_size],
+                                               _all_masks[i:i + self.batch_size])[0].float(), dim=-1)
+                        .gather(1, _all_acts[i:i + self.batch_size].unsqueeze(1)).squeeze(1)
+                        for i in range(0, _n_all, self.batch_size)])
+            finally:
+                self.active_net.train()
 
         teacher_log_p_all: Optional[torch.Tensor] = None
         if self.teacher_net is not None:

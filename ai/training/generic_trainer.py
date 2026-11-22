@@ -13,11 +13,9 @@ import collections
 import json
 import re
 import argparse
-import functools
 import random
 from pathlib import Path
-from typing import (Any, Callable, Dict, Final, List, Mapping, Optional, Sequence, Set, Tuple, TypeVar,
-                    Union, cast)
+from typing import Any, Dict, Final, List, Mapping, Optional, Sequence, Set, Tuple, Union
 import numpy as np
 import torch
 import torch.nn as nn
@@ -44,7 +42,8 @@ from ai.training.searched_opponent import SearchedOpponent
 from ai.training.rollout_buffer import RolloutBuffer
 from ai.training.run_name import is_run_name
 from ai.training.schedule import WeightEMA, scheduled_lr, warmup_factor
-from ai.training.nash_pg import (DEFAULT_ROLLOUT_TEMPS, NashPGTrainer, optimizer_param_names,
+from ai.training.training_rng import preserves_training_rng
+from ai.training.nash_pg import (DEFAULT_ROLLOUT_TEMPS, NashPGTrainer, check_per_player_gae, optimizer_param_names,
                                  optimizer_state_in_model_order, regroup_optimizer_state)
 from ai.training.restart_pool import RestartPool, parse_turn_weights
 from ai.training.start_pool import DEFAULT_TURN_MIX, StartPositionPool
@@ -994,36 +993,6 @@ def run_behavioral_cloning_warmup(
     print(f"=== Warm-up Complete in {time.time() - t0:.1f}s. Saved to: {output_checkpoint_path} ===", flush=True)
 
 
-_F = TypeVar("_F", bound=Callable[..., Any])
-
-
-def preserves_training_rng(fn: _F) -> _F:
-    """Run `fn` without moving any global random stream the training loop draws from.
-
-    Snapshot evaluation samples actions with torch's global generators (and may touch numpy's and
-    Python's), and those are the same streams the rollout samples from. Left alone, every
-    evaluation shifts the rest of the run onto a different trajectory -- training is chaotic at
-    1e-9 (research/log/P25_stress_bench.md) -- so how often a run is evaluated would change what it
-    learns. Restoring the streams afterwards makes the evaluation interval a reporting setting
-    only: the same run evaluated every 5M or every 10M trains bit for bit the same.
-    """
-    @functools.wraps(fn)
-    def wrapped(*args: Any, **kwargs: Any) -> Any:
-        cpu = torch.get_rng_state()
-        cuda = torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
-        np_state = np.random.get_state()
-        py_state = random.getstate()
-        try:
-            return fn(*args, **kwargs)
-        finally:
-            torch.set_rng_state(cpu)
-            if cuda is not None:
-                torch.cuda.set_rng_state_all(cuda)
-            np.random.set_state(np_state)
-            random.setstate(py_state)
-    return cast(_F, wrapped)
-
-
 @preserves_training_rng
 def evaluate_and_log_snapshot(
     model: nn.Module,
@@ -1769,7 +1738,8 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
         blob["model_state_dict"] = widen_state_dict(saved_sd, k, generator=torch.Generator().manual_seed(int(seed or 0)))
         blob["reference_state_dict"] = widen_state_dict(blob["reference_state_dict"], k,
                                                         generator=torch.Generator().manual_seed(int(seed or 0)))
-        blob["optimizer_state_dict"] = widen_optimizer_state(blob["optimizer_state_dict"], names, p, k)
+        if not fresh_optimizer:          # fix verification V-3: a fresh optimiser takes none of the saved state
+            blob["optimizer_state_dict"] = widen_optimizer_state(blob["optimizer_state_dict"], names, p, k)
         print(f"[resume widen] grouped projections {p} -> {p * k}: each unit copied {k}x, the fusion layer "
               f"reading each copy at 1/{k}; the network computes what it did", flush=True)
     if grow_tokens:
@@ -1788,7 +1758,8 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
         names = [n for n, _ in model.named_parameters()]
         blob["model_state_dict"] = grow_tokens_state_dict(blob["model_state_dict"], target, t, ident)
         blob["reference_state_dict"] = grow_tokens_state_dict(blob["reference_state_dict"], target, t, ident)
-        blob["optimizer_state_dict"] = grow_tokens_optimizer_state(blob["optimizer_state_dict"], names, t, ident)
+        if not fresh_optimizer:
+            blob["optimizer_state_dict"] = grow_tokens_optimizer_state(blob["optimizer_state_dict"], names, t, ident)
         print(f"[resume grow-tokens] {getattr(model, 'token_layers', 0)} token layer(s) of width {t} added; the fusion "
               f"layer and the per-entity heads read them through zero weights, so the network computes what it did",
               flush=True)
@@ -1818,8 +1789,9 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
         base = ActionEncoder.BASE_ACTION_SIZE
         blob["model_state_dict"] = grow_macro_state_dict(blob["model_state_dict"], target, base)
         blob["reference_state_dict"] = grow_macro_state_dict(blob["reference_state_dict"], target, base)
-        blob["optimizer_state_dict"] = grow_macro_optimizer_state(
-            blob["optimizer_state_dict"], names, {n: int(target[n].shape[0]) for n in POLICY_OUT}, base)
+        if not fresh_optimizer:
+            blob["optimizer_state_dict"] = grow_macro_optimizer_state(
+                blob["optimizer_state_dict"], names, {n: int(target[n].shape[0]) for n in POLICY_OUT}, base)
         print(f"[resume grow-macro] the policy grows {base} -> {int(target[POLICY_OUT[1]].shape[0])} slots: the "
               f"until-control rows start at bias {MACRO_START_BIAS:g} and the macro head at zero, so every base logit "
               f"is unchanged",
@@ -1831,7 +1803,9 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
         # without it: the trunk, policy and value are restored exactly and forward() is unchanged,
         # so the branch starts as the saved network; the new head starts fresh, with fresh Adam
         # moments, and the optimizer keeps every existing parameter's moments.
-        _load_optimizer_state(trainer.optimizer, _optimizer_state_with_added(model, added, blob["optimizer_state_dict"]))
+        if not fresh_optimizer:
+            _load_optimizer_state(trainer.optimizer,
+                                  _optimizer_state_with_added(model, added, blob["optimizer_state_dict"]))
         _load_allowing_added_heads(trainer.reference_net, blob["reference_state_dict"], _grown)
         if grow_sphere:
             for _net in (model, trainer.reference_net):
@@ -1844,7 +1818,8 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
         print(f"[resume] added to the saved network, starting fresh: {heads}; everything else restored",
               flush=True)
     else:
-        _load_optimizer_state(trainer.optimizer, blob["optimizer_state_dict"])
+        if not fresh_optimizer:
+            _load_optimizer_state(trainer.optimizer, blob["optimizer_state_dict"])
         trainer.reference_net.load_state_dict(blob["reference_state_dict"])
     if reset_head:
         heads = reset_policy_head(model, trainer.optimizer)
@@ -1852,7 +1827,9 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
               f"and pi_ref are restored as saved (pi_ref refreshes on its own schedule)", flush=True)
     if fresh_optimizer:
         # P44 0b: the weights, pi_ref, the pool and the clocks as saved, the optimiser as if new -- every Adam moment and
-        # step count dropped -- so a bleed after a restart can be told from one after a distillation.
+        # step count dropped -- so a bleed after a restart can be told from one after a distillation. Fix verification
+        # V-3 (2026-11-22): the saved state is never transformed or loaded either (above), so a state laid out in other
+        # groups cannot crash a resume that discards it; the optimiser keeps the launch's own groups and rates.
         trainer.optimizer.state.clear()
         print("[resume fresh-optimizer] every Adam moment and step count dropped; everything else restored", flush=True)
     if float(getattr(trainer, "head_l2_init_coef", 0.0)) > 0.0:
@@ -2273,6 +2250,34 @@ def train_pipeline(
                          f"has feature set {int(obs_features):#x}, merged influence {bool(merged_influence)}, "
                          f"macro influence {bool(macro_influence)}. Unsupported until the harvest env takes the "
                          f"model's view (TODO(pool) in generic_trainer.py).")
+    if per_player_gae:
+        # Fix verification V-5 (owner, 2026-11-22): checked again by NashPGTrainer, here before anything is built.
+        check_per_player_gae(afterstate_value_coef, afterstate_frac, gamma)
+        if reward_scheme != "terminal" or vp_potential or target_region:
+            raise ValueError("--per-player-gae needs a terminal-only reward (--reward-scheme terminal, no --vp-potential "
+                             "or --target-region): the side not to move at a rollout's end bootstraps from its own last "
+                             "afterstate moment, and the intermediate rewards after it would be counted twice")
+    if critic_prior_window > 0:
+        # Audit T-5 (owner, 2026-11-22). The prior shifts the stored win values of pool games (and the value loss's
+        # current ones) by the opponent's prior; every mechanism below reads or trains the raw, unshifted critic
+        # against those shifted targets, or treats pool games another way.
+        if not opponent_per_game:
+            raise ValueError("--critic-prior-window needs --opponent-per-game: the prior is per opponent, so a game "
+                             "must have one")
+        if float(opponent_frac) <= 0.0:
+            raise ValueError("--critic-prior-window needs an opponent pool (--opponent-frac > 0): the prior is the pool "
+                             "opponent's, so without one it shifts nothing (and a learned gain has no pool to read)")
+        _cp_clash = [n for n, on in (
+            ("--afterstate-value-coef (its rows are read and trained unshifted against shifted returns)",
+             float(afterstate_value_coef) > 0.0),
+            ("--predeal-value-coef (its rows are trained unshifted against shifted returns)",
+             float(predeal_value_coef) > 0.0),
+            ("--same-perspective-bootstrap (its V(s_t+1, p_t) is never shifted)", bool(same_perspective_bootstrap)),
+            ("--value-selfplay-only (an alternative treatment of pool games)", bool(value_selfplay_only)),
+            ("--value-learner-only (an alternative treatment of pool games)", bool(value_learner_only)),
+        ) if on]
+        if _cp_clash:
+            raise ValueError(f"--critic-prior-window cannot be combined with {'; '.join(_cp_clash)}")
     if ladder_config and ladder_config.get("head_center") and merged_influence:
         raise ValueError(
             "--ladder-head-center removes the common shift of the country logits, which is "
@@ -3479,11 +3484,6 @@ def train_pipeline(
     if z_loss_coef > 0.0:
         print(f"[z-loss] coef {z_loss_coef:g} on the policy logits' log-normaliser (--z-loss-coef)",
               flush=True)
-    if critic_prior_window > 0 and not opponent_per_game:
-        raise ValueError("--critic-prior-window needs --opponent-per-game: the prior is per opponent, so a game must "
-                         "have one")
-    if critic_prior_window > 0 and value_selfplay_only:
-        raise ValueError("--critic-prior-window and --value-selfplay-only are alternative treatments of pool games")
     if opponent_per_game:
         print("[opponent per game] own-pool opponents are held for the whole game (--opponent-per-game, P45 L6)", flush=True)
     if critic_prior_window > 0:

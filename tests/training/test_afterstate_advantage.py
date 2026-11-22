@@ -12,8 +12,9 @@ import torch
 import ts_engine as ts
 
 from ai.models.ladder_net import LadderNet, create_ladder_net
-from ai.training.afterstate_critic import (AFTER_ROLL, BEFORE_ROLL, AfterstateCapture, AfterstateRows,
-                                           last_moment_values, node_tensors,
+from ai.rewards.reward_calculator import ShapedZeroSumReward, VPPotentialShaping, ZeroSumTerminalReward
+from ai.training.afterstate_critic import (AFTER_ROLL, BEFORE_ROLL, AfterstateCapture, AfterstateRows, build_targets,
+                                           last_moment_values, missing_last_moments, node_tensors,
                                            read_all_node_values, read_node_values, walk_afterstates)
 from ai.training.nash_pg import NashPGTrainer, _value_only
 from ai.training.rollout_buffer import RolloutBuffer
@@ -418,3 +419,100 @@ def test_the_side_not_to_move_bootstraps_from_its_own_last_moment() -> None:
     assert abs(out[1, 0] - 0.4) < 1e-6          # USSR env 0: step 1
     assert math.isnan(out[0, 1])                 # US env 1: last decision step 2 has no walk
     assert abs(out[1, 1] - 0.3) < 1e-6          # USSR env 1: step 0
+
+
+def test_the_last_moments_read_only_the_rows_they_need() -> None:
+    """Fix verification V-5: without --afterstate-advantage the rows' values are unread; last_moment_values reads the
+    last row of each side's last walk alone (one batch), and gives what reading every row would."""
+    players = np.array([[1, -1], [-1, 1], [1, 1]], dtype=np.int8)
+    def fresh() -> list:
+        out = []
+        for step, envs, sides in ((0, [0, 0, 1], [1, 1, -1]), (1, [0, 1], [-1, 1]), (2, [0], [1])):
+            n = len(envs)
+            obs = torch.arange(n * 4, dtype=torch.float32).reshape(n, 4) + 100.0 * step
+            out.append(AfterstateRows(step, np.asarray(envs, dtype=np.int64), np.asarray(sides, dtype=np.int8),
+                                      np.zeros(n, dtype=np.int8), obs))
+        return out
+    seen: list = []
+    def fn(o: torch.Tensor) -> torch.Tensor:
+        seen.append(int(o.shape[0]))
+        return o[:, 0] / 1000.0
+    lazy = last_moment_values(fresh(), players, 2, fn)
+    assert seen == [3]                             # US env 0 (step 2), USSR env 0 (step 1), USSR env 1 (step 0)
+    rows = fresh()
+    read_all_node_values(rows, fn)
+    full = last_moment_values(rows, players, 2)
+    assert np.allclose(lazy, full, equal_nan=True)
+    assert math.isnan(lazy[0, 1])                  # US env 1: its step-2 decision has no walk
+    with pytest.raises(ValueError, match="value_fn"):
+        last_moment_values(fresh(), players, 2)
+
+
+def test_a_side_without_its_own_last_moment_is_caught() -> None:
+    """Fix verification V-5: a side not to move at the end whose last decision is after the env's last cut and has no
+    moment would fall back to the negated value of the side to move; missing_last_moments flags exactly those."""
+    nan = float("nan")
+    players = np.array([[1, 1, -1], [-1, -1, 1], [1, 1, -1]], dtype=np.int8)     # T=3, N=3
+    cuts = np.zeros((3, 3), dtype=bool)
+    cuts[2, 1] = True                               # env 1's game ended at its last row: nothing carries
+    last_players = np.array([-1, -1, 1])
+    last = np.array([[nan, nan, nan], [0.2, nan, nan]], dtype=np.float32)
+    miss = missing_last_moments(last, players, cuts, last_players)
+    assert miss[0, 0]                              # env 0: the US (not to move) has no moment
+    assert not miss[1, 0]                          # env 0: the USSR moves at the end, no bootstrap of its own
+    assert not miss[0, 1] and not miss[1, 1]       # env 1: cut at its last row
+    assert not miss[0, 2] and miss[1, 2]           # env 2: the US moves; the USSR (step 2) has none
+
+
+def test_only_learner_walks_are_trained_on() -> None:
+    """--per-player-gae captures every decision's walk; build_targets keeps the learner decisions' rows alone (a
+    before-roll row's average target included)."""
+    players = np.array([[1, -1], [-1, 1], [1, -1]], dtype=np.int8)
+    dones = np.zeros((3, 2), dtype=bool)
+    rewards = np.zeros((3, 2), dtype=np.float32)
+    rets = np.full((3, 2), 0.5, dtype=np.float32)
+    learner = np.array([[True, False], [True, True], [True, True]])
+    rows = [_rows(0, [0, 1, 1], [0, 0, BEFORE_ROLL], [0.1, 0.2, 0.3], [float("nan"), float("nan"), 0.4],
+                  sides=[1, -1, -1])]
+    obs, tgt, kinds = build_targets(rows, players, dones, rewards, rets, learner, torch.device("cpu"))
+    assert obs is not None and tgt is not None and int(tgt.shape[0]) == 1   # env 1's step-0 walk is a pool member's
+
+
+def _ppg(**kw) -> NashPGTrainer:
+    args = dict(active_net=_net(), env=TsVectorizedEnv(num_envs=4, base_seed=1), num_envs=4, buffer_size=16, lr=3e-4,
+                eta=0.1, ref_update_freq=500, cuda_graphs=False, device=torch.device("cpu"), per_player_gae=True,
+                afterstate_value_coef=1.0, afterstate_frac=1.0)
+    args.update(kw)
+    return NashPGTrainer(**args)
+
+
+@pytest.mark.parametrize("kw, needle", [
+    (dict(afterstate_value_coef=0.0), "afterstate critic at every decision"),
+    (dict(afterstate_frac=0.5), "afterstate critic at every decision"),
+    (dict(gamma=0.99), "--gamma 1.0"),
+    (dict(env=TsVectorizedEnv(num_envs=4, base_seed=1, reward_calculator=ShapedZeroSumReward())), "terminal-only"),
+    (dict(env=TsVectorizedEnv(num_envs=4, base_seed=1,
+                              reward_calculator=VPPotentialShaping(ZeroSumTerminalReward(), 0.05))), "terminal-only"),
+])
+def test_per_player_gae_refuses_what_its_last_bootstrap_cannot_take(kw, needle: str) -> None:
+    """Fix verification V-5: no own last moment to bootstrap from (no capture at every decision), rewards after that
+    moment counted twice (a dense reward), or the bootstrap discounted over the steps after it (gamma < 1)."""
+    with pytest.raises(ValueError, match=needle):
+        _ppg(**kw)
+
+
+def test_per_player_gae_refuses_a_dense_reward_set_later() -> None:
+    t = _ppg()
+    with pytest.raises(ValueError, match="terminal-only"):
+        t.set_reward_calculator(ShapedZeroSumReward())
+    t.set_reward_calculator(ZeroSumTerminalReward())
+
+
+def test_a_per_player_rollout_bootstraps_every_side_from_its_own_moment() -> None:
+    """--per-player-gae with the afterstate critic and no --afterstate-advantage: every side not to move at the end has
+    its own moment (the rollout would raise otherwise), and the update trains."""
+    t = _ppg(buffer_size=64, env=TsVectorizedEnv(num_envs=8, base_seed=9), num_envs=8)
+    t.collect_rollouts()
+    assert t.afterstate is not None and t.afterstate.every_decider
+    m = t.train_step()
+    assert math.isfinite(m["policy_loss"])

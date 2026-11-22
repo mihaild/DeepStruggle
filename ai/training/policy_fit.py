@@ -38,6 +38,7 @@ from bindings.action_encoder import ActionEncoder
 import torch.nn.functional as F
 
 import ts_engine as ts
+from ai.models.head_registry import HEAD_NORMS, POLICY_HEADS, VALUE_HEADS
 from ai.models.hyperspherical import register_sphere_projection
 from ai.models.ladder_net import create_ladder_net, ladder_config_from_state_dict
 from ai.training.generic_trainer import _resolve_run_dir
@@ -94,10 +95,18 @@ def dense_targets(acts: np.ndarray, probs: np.ndarray) -> np.ndarray:
     return out
 
 
-#: The modules that turn the trunk's features into logits (whichever of them a LadderNet has); `region_attn`
-#: feeds only the per-country head.
-POLICY_MODULES = ("policy_head", "pe_trunk", "pe_card", "pe_country", "play_mode_head_net", "branch_head_net",
-                  "region_attn")
+#: The modules that turn the trunk's features into logits (whichever of them a LadderNet has): the registry's policy
+#: heads (`region_attn` feeds only the per-country head) and --ladder-head-norm's norms (fix verification V-7.1,
+#: 2026-11-22: a list of its own here left out `pe_macro` and `head_norms`).
+POLICY_MODULES: Tuple[str, ...] = POLICY_HEADS + (HEAD_NORMS,)
+
+
+def refuse_macro(lcfg: Dict[str, Any], tool: str) -> None:
+    """The fits' targets and masks are the 220-slot E4 view; a macro-view network's policy covers 304 slots (fix
+    verification V-6.3, 2026-11-22)."""
+    if lcfg.get("macro_influence"):
+        raise SystemExit(f"{tool} reads policies in the 220-slot E4 view; this network acts in the macro view "
+                         "(--macro-influence, 304 slots), which it does not support")
 
 
 def reinit_policy_heads(model: nn.Module, fresh: nn.Module) -> int:
@@ -136,6 +145,7 @@ def run_policy_fit(cfg: PolicyFitConfig, run_name: Optional[str], description: O
     lcfg = ladder_config_from_state_dict(sd)
     if lcfg is None:
         raise SystemExit(f"{cfg.init}: policy fit takes a LadderNet checkpoint")
+    refuse_macro(lcfg, "policy fit")
     if cfg.arch:
         if not cfg.reinit:
             raise SystemExit("a changed architecture (--policy-arch) trains from fresh weights: add --policy-reinit")
@@ -159,7 +169,7 @@ def run_policy_fit(cfg: PolicyFitConfig, run_name: Optional[str], description: O
         print(f"policy heads re-initialised: {n_reset / 1e6:.2f}M parameters", flush=True)
     # The value path frozen: the student is read and trained on its policy only.
     for name, p in model.named_parameters():
-        if name.startswith(("val_win_head", "val_vp_head", "val_logits_head")):
+        if name.startswith(VALUE_HEADS):          # fix verification V-7.2: value_dist_head too
             p.requires_grad_(False)
     head: Optional[nn.Module] = None
     if cfg.head_only:
@@ -363,5 +373,5 @@ def counts(model_cfg: Dict[str, Any]) -> Tuple[int, int]:
     """Parameters of a ladder shape and of the policy path alone (for sizing students)."""
     m = create_ladder_net("cpu", **model_cfg)
     total = sum(p.numel() for p in m.parameters())
-    value = sum(p.numel() for n, p in m.named_parameters() if n.startswith(("val_win_head", "val_vp_head", "val_logits_head")))
+    value = sum(p.numel() for n, p in m.named_parameters() if n.startswith(VALUE_HEADS))
     return total, total - value

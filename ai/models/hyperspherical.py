@@ -21,7 +21,8 @@ scaling (continuous-control return scales).
 from __future__ import annotations
 
 import math
-from typing import Any, TypeVar
+import re
+from typing import Any, Dict, TypeVar
 
 import torch
 import torch.nn as nn
@@ -110,6 +111,22 @@ def project_sphere(net: nn.Module) -> None:
     sphere = getattr(net, "sphere", None)
     if isinstance(sphere, SphereTrunk):
         sphere.project()
+
+
+#: A sphere block's weight matrices in a state dict: `sphere.blocks.<i>.w1.weight` / `.w2.weight`.
+SPHERE_WEIGHT_KEY = re.compile(r"^sphere\.blocks\.\d+\.w[12]\.weight$")
+
+
+def project_sphere_state(state: Dict[str, torch.Tensor]) -> int:
+    """`project_sphere` on a bare state dict, in place: every sphere-block weight row back to unit L2 norm. For a
+    weight average (SWA, soups: tools/scripts/average_weights.py), whose Euclidean mean of unit rows is shorter than
+    unit (fix verification V-7.4, 2026-11-22). Returns the matrices projected (0 for a network without a sphere)."""
+    n = 0
+    for k, v in state.items():
+        if SPHERE_WEIGHT_KEY.match(k) and v.is_floating_point() and v.dim() == 2:
+            state[k] = F.normalize(v.float(), dim=1).to(v.dtype)
+            n += 1
+    return n
 
 
 def register_sphere_projection(opt: OptT, net: nn.Module) -> OptT:

@@ -756,7 +756,10 @@ def build_parser() -> argparse.ArgumentParser:
                              "the interleaved form (half the nodes per stretch of game): its lower return RMSE and "
                              "its higher advantage spread are both that reach -- swept over lambda the two lie on one "
                              "frontier (2026-11-20). Use --gae-lambda 0.96 (0.98 squared) to match the default at 0.98. "
-                             "No extra forward passes.")
+                             "Needs the afterstate critic at every decision (--afterstate-value-coef > 0 --afterstate-frac "
+                             "1.0), a terminal-only reward (--reward-scheme terminal, no --vp-potential / --target-region) "
+                             "and --gamma 1.0: the side not to move at a rollout's end bootstraps from its own last "
+                             "afterstate moment (fix verification V-5, 2026-11-22; refused otherwise).")
     parser.add_argument("--same-perspective-bootstrap", action="store_true", default=False,
                         help="Bootstrap the value target from V(s_{t+1}, p_t) -- the resulting "
                              "state as seen by the player who just moved -- instead of negating "
@@ -1098,7 +1101,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--opponent-per-game", action="store_true", default=False,
                         help="P45 L6 (owner, 2026-11-14): an own-pool opponent is held for the whole game, drawn at the game's start, instead of one opponent per iteration for every mixed env (3-5 snapshots within one game).")
     parser.add_argument("--critic-prior-window", type=int, default=0,
-                        help="P46b (owner, 2026-11-14): > 0 shifts the critic's win probability in pool games by the pool's prior for that opponent and seat, beta = logit(the learner's running score against it) - logit(its self-play score in that seat), weighted by the turn (--critic-prior-turn-weight); the running scores average over this many games. Needs --opponent-per-game. 0 = off.")
+                        help="P46b (owner, 2026-11-14): > 0 shifts the critic's win probability in pool games by the pool's prior for that opponent and seat, beta = logit(the learner's running score against it) - logit(its self-play score in that seat), weighted by the turn (--critic-prior-turn-weight); the running scores average over this many games. Needs --opponent-per-game and an opponent pool (--opponent-frac > 0); refused with --afterstate-value-coef, --predeal-value-coef, --same-perspective-bootstrap, --value-selfplay-only and --value-learner-only, which read or train the unshifted critic against the shifted targets or treat pool games another way (audit T-5). 0 = off.")
     parser.add_argument("--critic-prior-turn-weight", type=float, nargs=2, default=[0.98, 0.46], metavar=("W1", "W10"),
                         help="P46b: the prior's weight at turn 1 and at turn 10, linear between (P46a's pooled fit: 0.98 -> 0.46; 1 1 is the plain log-odds shift).")
     parser.add_argument("--critic-prior-gain", choices=["fixed", "learned"], default="fixed",

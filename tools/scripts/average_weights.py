@@ -14,7 +14,9 @@ Two uses, named differently in the research record:
 The result is a bare state dict, the format of `snapshot_*.pt`, so every tournament and probe loads
 it as it loads a snapshot. Floating-point tensors are averaged; integer buffers (a BatchNorm's
 `num_batches_tracked`) are taken from the last checkpoint given. Checkpoints of different
-architectures refuse to mix: keys and shapes must match exactly.
+architectures refuse to mix: keys and shapes must match exactly. A hyperspherical trunk's weight rows
+(`--ladder-sphere-blocks`) are projected back to unit norm after averaging, as the live weights are
+after every step (the mean of unit rows is shorter than unit).
 
     PYTHONPATH=.:build/release python tools/scripts/average_weights.py \\
         --snapshots <run>/snapshot_480..steps.pt <run>/snapshot_490..steps.pt ... \\
@@ -29,6 +31,8 @@ import os
 from typing import Dict, List, Optional, Sequence
 
 import torch
+
+from ai.models.hyperspherical import project_sphere_state
 
 
 def average(paths: Sequence[str]) -> Dict[str, torch.Tensor]:
@@ -50,6 +54,8 @@ def average(paths: Sequence[str]) -> Dict[str, torch.Tensor]:
             out[k] = torch.stack([s[k].float() for s in states]).mean(0).to(states[0][k].dtype)
         else:
             out[k] = states[-1][k].clone()
+    # Fix verification V-7.4 (2026-11-22): the sphere trunk's rows are unit vectors; their Euclidean mean is not.
+    project_sphere_state(out)
     return out
 
 

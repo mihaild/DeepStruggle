@@ -40,6 +40,10 @@ def model_view(model: Any, merged_influence: bool) -> AgentView:
     """The view a bare network decides in: its own observation feature set, and the action view the
     caller read from its run directory (`tools.lib.action_view.checkpoint_merged_influence`)."""
     check_obs_width(model)
+    if bool(getattr(model, "macro_influence", False)):
+        # Fix verification S-9.6 (2026-11-22): AgentView has no macro view; every env here masks in E4 or merged.
+        raise ValueError("a macro-view network (--macro-influence, 304 slots) is not supported by the probes' "
+                         "playout: its envs mask in the E4 or merged view")
     return AgentView(model_obs_features(model), bool(merged_influence))
 
 

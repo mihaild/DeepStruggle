@@ -138,7 +138,9 @@ def scan(paths: Sequence[str], net_spec: str, search_spec: str, kinds: Sequence[
             searcher.reseed(replay_id)
         picks: List[int] = []
         for i in range(0, len(states), chunk):
-            picks += [int(a) for a in searcher.select_actions_batch(states[i:i + chunk])]
+            # Clones (fix verification S-9.6, 2026-11-22): a searcher seats its decider on the states it is given, in
+            # place, which moved position_token(st) and the rows' fields read from `st` below.
+            picks += [int(a) for a in searcher.select_actions_batch([s.clone() for s in states[i:i + chunk]])]
         for i, ((st, kind, human), s_act) in enumerate(zip(col.seen, picks)):
             p = _softmax(logits[i], masks[i])
             n_act = int(np.argmax(np.where(masks[i].astype(bool), p, -1.0)))

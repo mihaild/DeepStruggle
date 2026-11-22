@@ -31,6 +31,7 @@ import ts_engine as ts
 from bindings.action_encoder import ActionEncoder
 
 from ai.models.coldwar_net_v2 import POLICY_HEAD_MODULES, create_like
+from ai.models.head_registry import HEAD_NORMS, VALUE_HEADS
 from ai.models.hyperspherical import register_sphere_projection
 from ai.eval.loading import load_for_eval
 from bindings.ts_env import legal_mask, model_obs_features, observe
@@ -43,8 +44,18 @@ TREND = {
     "heads run 2,000M": "/workspace/data/checkpoints/E7-A8-R1-S44_20261007_162257/swa_1920-2000M.pt",
     "heads run 6,400M": "/workspace/data/checkpoints/E7-A8-R1-S44_20261007_162257/swa_6320-6400M.pt",
 }
-TRUNK = ("lad_board", "lad_card", "global_proj", "tok_main", "fusion_in", "res_blocks")
-POLICY_HEAD = POLICY_HEAD_MODULES
+#: Fix verification V-7.3 (2026-11-22): --ladder-head-norm's norms (`head_norms`, left uncopied by with_head and frozen
+#: in fit) belong to the policy head, and the trunk is every other top-level module but the value and training-only
+#: heads -- a fixed list of trunk modules left out the hyperspherical trunk (`sphere`, whose projection hook was then
+#: dead) and the token path's input layers.
+POLICY_HEAD = POLICY_HEAD_MODULES + (HEAD_NORMS,)
+NOT_TRUNK = POLICY_HEAD + VALUE_HEADS + ("defcon_risk_head", "aux_own_head", "aux_vp_head", "card_aux_head",
+                                         "opp_legal_head", "prior_gain_head")
+
+
+def trunk_modules(model: nn.Module) -> List[str]:
+    """The names of `model`'s trunk modules (top-level, in model order)."""
+    return [name for name, _m in model.named_children() if name not in NOT_TRUNK]
 A = ActionEncoder.BASE_ACTION_SIZE
 
 
@@ -120,9 +131,10 @@ def fit(model: nn.Module, d: Dict[str, Any], labels: np.ndarray, soft: bool, fro
     fit: accuracy (argmax = label or = target's top) and, for soft targets, the departures' switch rate."""
     torch.manual_seed(seed)
     model.train()
+    trunk = set(trunk_modules(model))
     for name, p in model.named_parameters():
         top = name.split(".")[0]
-        p.requires_grad_(top in POLICY_HEAD or (not frozen and top in TRUNK))
+        p.requires_grad_(top in POLICY_HEAD or (not frozen and top in trunk))
     params = [p for p in model.parameters() if p.requires_grad]
     opt = register_sphere_projection(torch.optim.Adam(params, lr=lr), model)
     obs = torch.from_numpy(d["obs"])
@@ -171,7 +183,7 @@ def dormant(model: nn.Module, obs: torch.Tensor, masks: torch.Tensor,
     averaged over the batch and over entities where the layer is per-entity)."""
     stats: List[Tuple[str, torch.Tensor]] = []
     hooks = []
-    for top in TRUNK:
+    for top in trunk_modules(model):
         mod = getattr(model, top, None)
         if mod is None:
             continue

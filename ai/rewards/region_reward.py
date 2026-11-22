@@ -53,6 +53,8 @@ class RegionTargetedReward:
     """The per-region exploiter's reward (module docstring). The trainer `attach`es the env's runner, whose per-step
     Event VP record `compute_step_rewards` reads (before the env resets finished games)."""
 
+    terminal_only: bool = False   # the region part is paid densely, at each scoring
+
     def __init__(self, region: str, learner_side: int, scale: float, num_envs: int, weight: float = 0.8,
                  win_bonus: float = 0.2, loss_share: float = 0.2, floor: float = -1.0, cap: float = 2.0,
                  scale_ussr: Optional[float] = None, control_win: float = 1.0) -> None:

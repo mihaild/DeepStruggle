@@ -10,7 +10,9 @@ untouched from turn 8 on. Two properties have to hold or the idea backfires:
 """
 
 import collections
+import random
 
+import numpy as np
 import pytest
 import torch
 import ts_engine as ts
@@ -124,3 +126,16 @@ def test_harvest_refuses_a_featured_model() -> None:
     object.__setattr__(net, "obs_feature_bits", 1 << 2)
     with pytest.raises(ValueError, match="feature set"):
         StartPositionPool(turns=(2, 3), capacity_per_turn=4, seed=5).harvest(net, num_envs=4, num_episodes=1)
+
+
+def test_harvest_leaves_the_training_rng_where_it_was() -> None:
+    """Audit T-9 / fix verification V-10: the harvest samples actions from torch's global generator, the stream the
+    rollout samples from; a pool refresh must leave every global stream where it was (@preserves_training_rng)."""
+    net = create_coldwar_net_v2("cpu")
+    torch.manual_seed(3); np.random.seed(3); random.seed(3)
+    stats = StartPositionPool(turns=(2, 3), capacity_per_turn=8, seed=5).harvest(net, num_envs=8, num_episodes=2)
+    assert stats.episodes > 0
+    after = (torch.rand(4), np.random.rand(4), random.random())
+    torch.manual_seed(3); np.random.seed(3); random.seed(3)
+    fresh = (torch.rand(4), np.random.rand(4), random.random())
+    assert torch.equal(after[0], fresh[0]) and np.array_equal(after[1], fresh[1]) and after[2] == fresh[2]

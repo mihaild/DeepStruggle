@@ -114,14 +114,19 @@ graph TD
 │   │                           # opponent_pool.py, behavioral_cloning.py, warmup_dataset_loader.py,
 │   │                           # human_corpus_dataset.py, search_workers.py, start_pool.py,
 │   │                           # restart_pool.py (P48b: restarts from the run's own positions),
-│   │                           # afterstate_critic.py (the critic after a decision / around its rolls), ...
+│   │                           # afterstate_critic.py (the critic after a decision / around its rolls;
+│   │                           # under --per-player-gae it captures every decision's walk, each side's
+│   │                           # own last moment being its end-of-rollout bootstrap), training_rng.py
+│   │                           # (preserves_training_rng: evaluations and the start-pool harvest leave
+│   │                           # the rollout's random streams alone), ...
 │   ├── rewards/                # reward_calculator.py: perspective-aligned zero-sum reward schemes
 │   ├── search/                 # rollout_root.py, gumbel_root.py, batched_mcts.py, dmcts.py,
 │   │                           # pimcts.py, heuristic_mcts.py
 │   └── eval/                   # probe suite: calibration, ablations, behaviour, human-corpus agreement, ...
 │                               # playout.py (the one batched self-play loop, in the model's own view:
 │                               # model_view/make_env/make_runner/Sampler/play_out) and loading.py
-│                               # (load_for_eval -> model, features, action view) are what probes build on
+│                               # (load_for_eval -> model, features, action view) are what probes build on;
+│                               # both refuse a macro-view (P42) network, which no probe supports
 │
 ├── bot/                        # BaseBot and baselines (bot/AGENTS.md)
 │

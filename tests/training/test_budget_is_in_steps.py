@@ -87,6 +87,24 @@ def test_the_cli_rejects_a_zero_budget_end_to_end() -> None:
     (dict(forced_opening="x", restart_pool_frac=0.25), "--forced-opening and --restart-pool-frac"),
     (dict(start_pool_frac=0.25, obs_features=1 << 2), "--start-pool-frac harvests"),
     (dict(start_pool_frac=0.25, merged_influence=True), "--start-pool-frac harvests"),
+    # Fix verification V-5: per-player GAE's end-of-rollout bootstrap from a side's own last afterstate moment.
+    (dict(per_player_gae=True), "afterstate critic at every decision"),
+    (dict(per_player_gae=True, afterstate_value_coef=1.0, afterstate_frac=0.25), "afterstate critic at every decision"),
+    (dict(per_player_gae=True, afterstate_value_coef=1.0, afterstate_frac=1.0, gamma=0.99), "--gamma 1.0"),
+    (dict(per_player_gae=True, afterstate_value_coef=1.0, afterstate_frac=1.0, reward_scheme="shaped"), "terminal-only"),
+    (dict(per_player_gae=True, afterstate_value_coef=1.0, afterstate_frac=1.0, vp_potential=0.05), "terminal-only"),
+    (dict(per_player_gae=True, afterstate_value_coef=1.0, afterstate_frac=1.0, target_region="europe"),
+     "terminal-only"),
+    # Audit T-5: the critic prior against mechanisms that read the unshifted critic or treat pool games otherwise.
+    (dict(critic_prior_window=200), "needs --opponent-per-game"),
+    (dict(critic_prior_window=200, opponent_per_game=True), "needs an opponent pool"),
+    *[(dict(critic_prior_window=200, opponent_per_game=True, opponent_frac=0.3, **kw), needle) for kw, needle in (
+        (dict(afterstate_value_coef=1.0), "--afterstate-value-coef"),
+        (dict(predeal_value_coef=1.0), "--predeal-value-coef"),
+        (dict(same_perspective_bootstrap=True), "--same-perspective-bootstrap"),
+        (dict(value_selfplay_only=True), "--value-selfplay-only"),
+        (dict(value_learner_only=True), "--value-learner-only"),
+    )],
 ])
 def test_combinations_that_would_corrupt_silently_raise_before_anything_is_built(kwargs, needle: str) -> None:
     base = dict(train_steps=1_000_000, snapshot_every_steps=100_000)

@@ -61,15 +61,18 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from ai.models.head_registry import VALUE_HEADS
 from ai.models.hyperspherical import register_sphere_projection
 from ai.models.ladder_net import create_ladder_net, ladder_config_from_state_dict
 from ai.training.generic_trainer import _resolve_run_dir
 from ai.training.npz_mmap import load_npz_mmap
-from ai.training.policy_fit import ACTIONS, POLICY_MODULES, masks_of
+from ai.training.policy_fit import ACTIONS, POLICY_MODULES, masks_of, refuse_macro
 from ai.training.value_fit import Codes, _git
 from tools.lib.engine_fingerprint import check_raw_states
 
-VALUE_PREFIXES = ("val_win_head", "val_vp_head", "val_logits_head")
+#: Fix verification V-7.2 (2026-11-22): the registry's value heads (the old list named a nonexistent
+#: "val_logits_head" and left value_dist_head out).
+VALUE_PREFIXES = VALUE_HEADS
 
 
 @dataclass
@@ -149,6 +152,7 @@ def run_q_fit(cfg: QFitConfig, run_name: Optional[str], description: Optional[st
     lcfg = ladder_config_from_state_dict(sd)
     if lcfg is None:
         raise SystemExit(f"{cfg.init}: the Q fit takes a LadderNet checkpoint")
+    refuse_macro(lcfg, "the Q fit")
     model = create_ladder_net(dev, **lcfg)
     model.load_state_dict(sd, strict=True)
     base_net = copy.deepcopy(model).eval()          # the starting network: its logits are a baseline

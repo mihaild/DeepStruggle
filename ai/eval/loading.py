@@ -31,9 +31,14 @@ def load_for_eval(path: str, device: Union[torch.device, str], *, merged_ok: boo
 
     `merged_ok` is required: a probe that builds every mask in the E4 view must say so with False,
     and a merged-view (E4.1, P23) checkpoint is then refused here -- loudly, instead of being
-    measured as a policy it is not.
+    measured as a policy it is not. A macro-view (P42) checkpoint is always refused.
     """
     agent = NeuralAgent.from_checkpoint(path, device=device)
+    if agent.macro_influence:
+        # Fix verification S-9.6 / V-6.3 (2026-11-22): EvalModel carries no macro view, and the probes build E4 masks
+        # (220 slots) a macro network's 304-slot policy does not line up with -- refused instead of misread.
+        raise ValueError(f"{path} decides in the macro view (--macro-influence, 304 slots); the probes build their "
+                         f"masks in the E4 or merged view and do not support it")
     if agent.merged_influence and not merged_ok:
         raise ValueError(
             f"{path} decides in the merged-influence (E4.1) view and this probe builds its masks in "

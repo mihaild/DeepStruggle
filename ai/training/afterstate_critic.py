@@ -140,10 +140,15 @@ class AfterstateCapture:
     `before()` runs before the env step (it picks the envs), `after()` right after it (it reads the rows)."""
 
     def __init__(self, frac: float, features: int, width: int, forced: bool = True, seed: int = 0,
-                 roll_faces: bool = False) -> None:
+                 roll_faces: bool = False, every_decider: bool = False) -> None:
         if not 0.0 < frac <= 1.0:
             raise ValueError(f"--afterstate-frac must be in (0, 1], got {frac}")
+        if every_decider and frac < 1.0:
+            raise ValueError("every_decider captures every decision's walk; it needs frac 1.0")
         self.frac = float(frac)
+        #: --per-player-gae (fix verification V-5, 2026-11-22): every decision's walk, not only the learner's, so each
+        #: side's chain has its own last moment to bootstrap from (build_targets still trains on learner walks only).
+        self.every_decider = bool(every_decider)
         #: P56: also capture each before-roll row's distinct die outcomes (rows' face_* fields).
         self.roll_faces = bool(roll_faces)
         self.features = int(features)
@@ -173,8 +178,11 @@ class AfterstateCapture:
         if self._on is not runner:
             runner.set_capture_afterstates(True, self.roll_faces)
             self._on = runner
-        pick = (np.asarray(learner, dtype=bool) & (np.asarray(deciders) != 0)
-                & (self.rng.random(len(deciders)) < self.frac))
+        if self.every_decider:
+            pick = np.asarray(deciders) != 0
+        else:
+            pick = (np.asarray(learner, dtype=bool) & (np.asarray(deciders) != 0)
+                    & (self.rng.random(len(deciders)) < self.frac))
         runner.set_afterstate_envs(np.ascontiguousarray(pick, dtype=np.uint8))
         self.decisions += int(pick.sum())
 
@@ -465,37 +473,78 @@ def node_tensors(rows: Sequence[AfterstateRows], horizon: int, num_envs: int, de
             torch.from_numpy(ntgt).to(device))
 
 
-def last_moment_values(rows: Sequence[AfterstateRows], players: np.ndarray, num_envs: int) -> np.ndarray:
+def last_moment_values(rows: Sequence[AfterstateRows], players: np.ndarray, num_envs: int,
+                       value_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None) -> np.ndarray:
     """(2, num_envs): per env, for the US (row 0) and the USSR (row 1), the value of the latest captured moment of that
     side's last decision in the rollout, in its own frame -- the exact roll average where that moment waits on a die
     -- or NaN where there is none (no decision of that side, or its walk was cut). Audit T-4(2), 2026-11-22: the
     per-player chain of the side NOT to move at the rollout's end bootstraps from its own last trained moment instead
     of the negated value of the side to move (another information set), and never reads the critic at the
-    opponent's decision, a position it is not trained on."""
+    opponent's decision, a position it is not trained on.
+
+    Rows whose values were not read yet (no --afterstate-advantage, which reads them all) are read here with
+    `value_fn`, only the few this needs -- at most one a side and env (fix verification V-5, 2026-11-22: reading the
+    whole rollout's rows for them was wasted inference)."""
     out = np.full((2, num_envs), np.nan, dtype=np.float32)
-    seen = np.zeros((2, num_envs), dtype=np.int64) - 1
+    lastdec = np.full((2, num_envs), -1, dtype=np.int64)
+    for qi, pl in ((0, 1), (1, -1)):
+        for t in range(players.shape[0]):
+            lastdec[qi] = np.where(players[t] == pl, t, lastdec[qi])
+    pending: List[Tuple[np.ndarray, np.ndarray, torch.Tensor]] = []
     for r in rows:
         n = len(r.envs)
-        if n == 0 or r.values is None:
+        if n == 0:
             continue
         envs = np.asarray(r.envs)
+        last = np.flatnonzero(np.r_[envs[1:] != envs[:-1], True])       # an env's rows in a step are one walk
+        e = envs[last]
+        q = np.where(np.asarray(r.sides)[last] > 0, 0, 1)
+        sel = lastdec[q, e] == r.step                                    # the walk of that side's last decision
+        if not sel.any():
+            continue
+        if r.values is None:
+            if value_fn is None:
+                raise ValueError("last_moment_values: the rows' values were not read and no value_fn was given")
+            if r.face_obs is not None and r.face_obs.shape[0]:
+                read_node_values(r, value_fn)                            # the roll average needs the outcomes
+            else:
+                idx = torch.from_numpy(last[sel]).to(r.obs.device)
+                pending.append((q[sel], e[sel], r.obs.index_select(0, idx)))
+                continue
+        assert r.values is not None
         vals = r.values.detach().float().cpu().numpy()
         avg = r.avg.detach().float().cpu().numpy() if r.avg is not None else np.full(n, np.nan, dtype=np.float32)
-        last = np.flatnonzero(np.r_[envs[1:] != envs[:-1], True])
-        e = envs[last]
-        side = np.asarray(r.sides)[last]
         v = np.where(np.isfinite(avg[last]), avg[last], vals[last])
-        q = np.where(side > 0, 0, 1)
-        newer = r.step >= seen[q, e]
-        out[q[newer], e[newer]] = v[newer]
-        seen[q[newer], e[newer]] = r.step
-    # A side whose last decision in the rollout came after its last captured walk has no moment for it.
-    for qi, pl in ((0, 1), (1, -1)):
-        lastdec = np.full(num_envs, -1, dtype=np.int64)
-        for t in range(players.shape[0]):
-            lastdec = np.where(players[t] == pl, t, lastdec)
-        out[qi] = np.where(seen[qi] == lastdec, out[qi], np.nan)
+        out[q[sel], e[sel]] = v[sel]
+    if pending:
+        assert value_fn is not None
+        with torch.no_grad():
+            v_all = value_fn(torch.cat([p[2] for p in pending])).reshape(-1).float().cpu().numpy()
+        at = 0
+        for q_p, e_p, _o in pending:
+            out[q_p, e_p] = v_all[at:at + len(e_p)]
+            at += len(e_p)
     return out
+
+
+def missing_last_moments(last_side: np.ndarray, players: np.ndarray, cuts: np.ndarray,
+                         last_players: np.ndarray) -> np.ndarray:
+    """(2, num_envs) bool: where per-player GAE needs a side's own last moment (`last_moment_values`) and has none.
+    The bootstrap past the buffer is read for a side not to move at the end (`last_players`) whose last decision comes
+    after its env's last cut (`cuts`: the dones, plus the turn boundaries under --slice-turn-boundaries -- the rows the
+    per-player pass drops the carried state at). Without its own moment it would fall back to the negated value of
+    the side to move, the cross-perspective bootstrap per-player GAE exists to remove (fix verification V-5,
+    2026-11-22): the trainer refuses that instead."""
+    horizon, n = players.shape
+    lastcut = np.full(n, -1, dtype=np.int64)
+    lastdec = np.full((2, n), -1, dtype=np.int64)
+    for t in range(horizon):
+        lastcut = np.where(cuts[t], t, lastcut)
+        lastdec[0] = np.where(players[t] == 1, t, lastdec[0])
+        lastdec[1] = np.where(players[t] == -1, t, lastdec[1])
+    lp = np.asarray(last_players)
+    need = np.stack([(lastdec[0] > lastcut) & (lp != 1), (lastdec[1] > lastcut) & (lp != -1)])
+    return need & ~np.isfinite(last_side)
 
 
 def build_targets(rows: Sequence[AfterstateRows], players: np.ndarray, dones: np.ndarray, rewards: np.ndarray,
@@ -517,6 +566,9 @@ def build_targets(rows: Sequence[AfterstateRows], players: np.ndarray, dones: np
         has = np.isfinite(ovr)
         target = np.where(has, ovr, target).astype(np.float32)
         keep = keep | has
+    # Only the walks of learner decisions are trained on: --per-player-gae also captures the others' (a pool
+    # member's, a forced move's) for their last moments alone (fix verification V-5, 2026-11-22).
+    keep = keep & np.asarray(learner, dtype=bool)[t, e]
     if not keep.any():
         return None, None, None
     idx = torch.from_numpy(np.flatnonzero(keep)).to(rows[0].obs.device)

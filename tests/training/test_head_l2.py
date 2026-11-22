@@ -125,3 +125,27 @@ def test_a_fresh_optimiser_keeps_the_weights_and_drops_the_moments(tmp_path) -> 
     assert all(torch.equal(a, b) for a, b in zip(fresh.parameters(), net.parameters()))   # the weights as saved
     assert len(t_kept.optimizer.state) > 0                                              # a plain resume keeps them
     assert len(t_fresh.optimizer.state) == 0                                            # the fresh one starts anew
+
+
+def test_a_fresh_optimiser_never_reads_the_saved_state(tmp_path) -> None:
+    """Fix verification V-3: --resume-fresh-optimizer discards the optimiser state, so it is neither transformed nor
+    loaded -- a state laid out in other groups (a pre-T-14 --no-decay-norms-biases one) resumes fresh instead of
+    crashing in the load before the moments were dropped. A plain resume of it still fails loudly."""
+    net = _net()
+    trainer = _Trainer(net, 0.0)
+    _train(net, trainer.optimizer)
+    path = os.path.join(tmp_path, RESUME_FILENAME)
+    save_resume_state(path, net, trainer, iteration=1, total_env_steps=0, elapsed_seconds=0.0)
+    blob = torch.load(path, weights_only=False)
+    n = len(list(net.parameters()))
+    blob["optimizer_state_dict"] = {"state": {}, "param_groups": [{"params": list(range(1, n)), "lr": 1e-2},
+                                                                  {"params": [0, 0], "lr": 1e-2}]}
+    blob.pop("optimizer_param_names", None)
+    torch.save(blob, path)
+    fresh = _net(3)
+    t_fresh = _Trainer(fresh, 0.0)
+    load_resume_state(path, fresh, t_fresh, fresh_optimizer=True)
+    assert all(torch.equal(a, b) for a, b in zip(fresh.parameters(), net.parameters()))
+    assert len(t_fresh.optimizer.state) == 0
+    with pytest.raises(Exception):
+        load_resume_state(path, _net(3), _Trainer(_net(3), 0.0))
