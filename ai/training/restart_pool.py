@@ -134,6 +134,9 @@ class RestartPool:
         #: Envs whose next decision is a restart's first: its value is the continuation's v.
         self.awaiting_v = np.zeros(self.num_envs, dtype=bool)
         self.v_now: List[Optional[float]] = [None] * self.num_envs
+        #: The finished continuation's v, snapshotted with `finished` when its game ends: the env's next start
+        #: (provide(), called inside the step that ended the game) resets v_now before complete() reads the result.
+        self.finished_v: List[Optional[float]] = [None] * self.num_envs
         #: Pre-step states of the whole-game envs, and their turns, for capture.
         self._prev: List[Optional[Any]] = [None] * self.num_envs
         self._prev_turn = np.zeros(self.num_envs, dtype=np.int64)
@@ -174,6 +177,8 @@ class RestartPool:
         if self.playing[env_idx] is not None:
             # Its game just ended; the result is read after the step (complete()).
             self.finished[env_idx] = self.playing[env_idx]
+            self.finished_v[env_idx] = self.v_now[env_idx]
+            self.v_now[env_idx] = None
             self.playing[env_idx] = None
         if not self.restart_env[env_idx]:
             return None
@@ -261,8 +266,8 @@ class RestartPool:
         """A restart's continuation ended with this US score: update its position, then put it back or retire it."""
         pos = self.finished[env_idx]
         self.finished[env_idx] = None
-        v = self.v_now[env_idx]
-        self.v_now[env_idx] = None
+        v = self.finished_v[env_idx]
+        self.finished_v[env_idx] = None
         if pos is None:
             return
         self.out[pos.turn] -= 1

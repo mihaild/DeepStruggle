@@ -160,3 +160,17 @@ def test_a_checked_out_position_keeps_its_place_and_its_put_back_fits() -> None:
     pool.steps = 10
     pool.provide(1)
     assert pool.metrics()["restart/wait_back_median"] == 3.0, "waited from its put-back to its next draw"
+
+
+def test_complete_reads_the_finished_continuations_value_not_the_next_ones() -> None:
+    """Audit T-6: the env's next start is drawn (provide) inside the step that ended its game, before the result is
+    read (complete). With stock left, provide used to reset v_now first, so complete fell back to the admission value."""
+    pool = _stocked(n=2, max_continuations=8)
+    pool.provide(0)
+    first = pool.playing[0]
+    assert first is not None
+    pool.first_values(np.full(8, 0.9))   # the critic's v at the restart's first decision
+    pool.provide(0)                      # the game ended: env 0 draws the second stocked position
+    assert pool.playing[0] is not None and pool.playing[0] is not first
+    pool.complete(0, 1.0)
+    assert first.v_values == [pytest.approx(0.9)], "the finished continuation's own v, not p_admit = 0.5"
