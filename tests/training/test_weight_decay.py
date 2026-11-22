@@ -22,10 +22,11 @@ def test_the_default_is_one_group_decayed_as_before() -> None:
 def test_norms_and_biases_can_be_left_undecayed() -> None:
     net = _net()
     opt = make_optimizer(net, 1e-2, weight_decay=0.1, decay_norms_biases=False)
-    decay, keep = opt.param_groups
-    assert decay["weight_decay"] == 0.1 and keep["weight_decay"] == 0.0
-    assert all(p.ndim >= 2 for p in decay["params"]) and all(p.ndim < 2 for p in keep["params"])
-    assert len(decay["params"]) + len(keep["params"]) == len(list(net.parameters()))
+    # Contiguous runs in model order (audit T-14), each decayed exactly when its parameters are matrices.
+    for g in opt.param_groups:
+        assert g["weight_decay"] == (0.1 if g["params"][0].ndim >= 2 else 0.0)
+        assert len({p.ndim >= 2 for p in g["params"]}) == 1
+    assert [p for g in opt.param_groups for p in g["params"]] == list(net.parameters())
     # A step with zero gradients changes only what decays: the matrices shrink, gains and biases stay.
     before = {n: p.detach().clone() for n, p in net.named_parameters()}
     for p in net.parameters():

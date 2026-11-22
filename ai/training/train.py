@@ -673,8 +673,8 @@ def build_parser() -> argparse.ArgumentParser:
                              "1e-2 -- P38 rung 1).")
     parser.add_argument("--no-decay-norms-biases", dest="decay_norms_biases", action="store_false",
                         help="Leave LayerNorm gains and biases (every parameter of fewer than two dimensions) "
-                             "undecayed, in a second optimiser group. Default: one group, everything decayed, as "
-                             "before P38.")
+                             "undecayed, in their own optimiser groups (contiguous runs in model order). Default: "
+                             "one group, everything decayed, as before P38.")
     # P39 arm 5 (research/plans/P39_deep_trunk_optimisation.md): the optimiser's other parameters.
     parser.add_argument("--adam-beta2", type=float, default=0.999,
                         help="AdamW's beta2 (P39 arm 5 tries 0.95: a shorter second-moment memory).")

@@ -44,7 +44,8 @@ from ai.training.searched_opponent import SearchedOpponent
 from ai.training.rollout_buffer import RolloutBuffer
 from ai.training.run_name import is_run_name
 from ai.training.schedule import WeightEMA, scheduled_lr, warmup_factor
-from ai.training.nash_pg import DEFAULT_ROLLOUT_TEMPS, NashPGTrainer, regroup_optimizer_state
+from ai.training.nash_pg import (DEFAULT_ROLLOUT_TEMPS, NashPGTrainer, optimizer_param_names,
+                                 optimizer_state_in_model_order, regroup_optimizer_state)
 from ai.training.restart_pool import RestartPool, parse_turn_weights
 from ai.training.start_pool import DEFAULT_TURN_MIX, StartPositionPool
 from ai.eval.agreement import evaluate_dataset
@@ -1501,6 +1502,8 @@ def save_resume_state(path: str, model: nn.Module, trainer: Any, iteration: int,
     torch.save({
         "model_state_dict": model.state_dict(),
         "optimizer_state_dict": trainer.optimizer.state_dict(),
+        # The parameter behind each optimizer index, so a resume maps every moment by name (audit T-14).
+        "optimizer_param_names": optimizer_param_names(trainer.optimizer, model),
         "reference_state_dict": trainer.reference_net.state_dict(),
         "total_env_steps": int(total_env_steps),
         "total_iterations": int(getattr(trainer, "total_iterations", 0)),
@@ -1730,6 +1733,11 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
         print(f"[resume add rules] {', '.join(_obs_feature_names(add_rules))}: added to the network, pi_ref and "
               f"the pool; the weights are unchanged", flush=True)
     check_state_obs_features(model, blob["model_state_dict"], f"the resume state {path}")
+    if not fresh_optimizer:
+        # Audit T-14: every transform below and the load assume the state indexes the parameters in model order.
+        blob["optimizer_state_dict"] = optimizer_state_in_model_order(
+            blob["optimizer_state_dict"], blob.get("optimizer_param_names"), blob["model_state_dict"],
+            [n for n, _ in model.named_parameters()])
     if widen:
         # --resume-widen: the model's grouped projections are k times wider than the state's. The
         # network and pi_ref are widened without changing their function, Adam's moments with them

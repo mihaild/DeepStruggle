@@ -18,7 +18,7 @@ import fcntl
 import os
 import time
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Any, Sequence, Tuple, cast
+from typing import Callable, Dict, List, Mapping, Optional, Any, Sequence, Tuple, cast
 import numpy as np
 import torch
 import torch.nn as nn
@@ -340,14 +340,21 @@ def make_optimizer(net: nn.Module, lr: float, weight_decay: float = 1e-4,
     `lr * mult`. The groups are then contiguous runs of parameters in the model's own order that share a weight decay
     and a multiplier, each carrying its `lr_mult` so the schedule scales it (the global parameter order is kept, so a
     single-group state maps onto them: `regroup_optimizer_state`)."""
-    if lr_mults is None:
-        if decay_norms_biases:
-            opt = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=float(weight_decay), betas=betas, eps=eps)
-        else:
-            decay = [p for p in net.parameters() if p.ndim >= 2]
-            keep = [p for p in net.parameters() if p.ndim < 2]
-            opt = torch.optim.AdamW([{"params": decay, "weight_decay": float(weight_decay)},
-                                     {"params": keep, "weight_decay": 0.0}], lr=lr, betas=betas, eps=eps)
+    if lr_mults is None and decay_norms_biases:
+        opt = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=float(weight_decay), betas=betas, eps=eps)
+    elif lr_mults is None:
+        # Contiguous runs in the model's order (audit T-14): the saved state's global index is the parameter's place
+        # in named_parameters(), as in every other layout. (Before 2026-11-22 this was two groups, every >= 2-D
+        # parameter then every other one, so a resume into another layout moved moments between parameters;
+        # optimizer_state_in_model_order recognises and reorders such a state.)
+        groups: List[Dict[str, Any]] = []
+        for p in net.parameters():
+            wd = float(weight_decay) if p.ndim >= 2 else 0.0
+            if groups and groups[-1]["weight_decay"] == wd:
+                groups[-1]["params"].append(p)
+            else:
+                groups.append({"params": [p], "weight_decay": wd})
+        opt = torch.optim.AdamW(groups, lr=lr, betas=betas, eps=eps)
     else:
         groups: List[Dict[str, Any]] = []
         for name, p in net.named_parameters():
@@ -366,6 +373,63 @@ def make_optimizer(net: nn.Module, lr: float, weight_decay: float = 1e-4,
             project()
         opt.register_step_post_hook(_project)
     return opt
+
+
+def optimizer_param_names(optimizer: torch.optim.Optimizer, net: nn.Module) -> Optional[List[str]]:
+    """The parameter name behind each index of `optimizer.state_dict()` (its groups' parameters, flattened), saved
+    beside the state so a resume can check that every moment lands on the parameter it was taken for. None when the
+    optimizer holds a parameter `net` does not."""
+    by_id = {id(p): n for n, p in net.named_parameters()}
+    names = [by_id.get(id(p)) for g in optimizer.param_groups for p in g["params"]]
+    return None if any(n is None for n in names) else [str(n) for n in names]
+
+
+def optimizer_state_in_model_order(saved: Dict[str, Any], saved_names: Optional[Sequence[str]],
+                                   saved_model: Mapping[str, Any], model_names: Sequence[str]) -> Dict[str, Any]:
+    """A saved optimizer state indexed in the saved model's parameter order (audit T-14), which every resume
+    transform (regroup, widen, grow, added heads) assumes.
+
+    `saved_model` is the saved model's state dict and `model_names` the current model's parameter names; the saved
+    model's parameters are the current names it holds, in the current order. With `saved_names` (written beside the
+    state since 2026-11-22) each index is mapped by name. Without them the state is in model order unless it has the
+    pre-2026-11-22 `--no-decay-norms-biases` layout -- two groups, every >= 2-D parameter then the rest, the second
+    undecayed, no lr_mult -- which is reordered. Then every moment's shape is checked against its parameter's. A state
+    already in model order is returned as it is; a reordered one as a single group (the current optimizer's groups
+    and hyperparameters are applied on load)."""
+    order = [n for n in model_names if n in saved_model]
+    groups = saved["param_groups"]
+    flat = [int(i) for g in groups for i in g["params"]]
+    if len(flat) != len(order):
+        # Parameters the current model lacks: the model's own load refuses them with the names; nothing to map here.
+        return saved
+    if saved_names is not None:
+        names = [str(n) for n in saved_names]
+        if sorted(names) != sorted(order) or len(names) != len(flat):
+            raise RuntimeError("the saved optimizer state's parameter names are not the saved model's parameters")
+        # The state's index for each name: its position in the saved groups' flattened order.
+        by_name = {n: flat[k] for k, n in enumerate(names)}
+    elif (len(groups) == 2 and not any("lr_mult" in g for g in groups)
+          and float(groups[1].get("weight_decay", 0.0)) == 0.0
+          and len(groups[0]["params"]) == sum(1 for n in order if saved_model[n].dim() >= 2)):
+        decay = [n for n in order if saved_model[n].dim() >= 2]
+        keep = [n for n in order if saved_model[n].dim() < 2]
+        by_name = {n: flat[k] for k, n in enumerate(decay + keep)}
+    else:
+        by_name = {n: flat[k] for k, n in enumerate(order)}
+    state = saved["state"]
+    for n in order:
+        st = state.get(by_name[n])
+        avg = st.get("exp_avg") if isinstance(st, dict) else None
+        if isinstance(avg, torch.Tensor) and tuple(avg.shape) != tuple(saved_model[n].shape):
+            raise RuntimeError(f"the saved optimizer state's moment for {n} has shape {tuple(avg.shape)}, the "
+                               f"parameter {tuple(saved_model[n].shape)}: the state does not index the parameters in "
+                               f"the order it claims")
+    if all(by_name[n] == k for k, n in enumerate(order)) and flat == list(range(len(order))):
+        return saved
+    new_state = {k: state[by_name[n]] for k, n in enumerate(order) if by_name[n] in state}
+    group = {key: v for key, v in groups[0].items() if key not in ("params", "lr_mult")}
+    group["params"] = list(range(len(order)))
+    return {"state": new_state, "param_groups": [group]}
 
 
 def regroup_optimizer_state(saved: Dict[str, Any], optimizer: torch.optim.Optimizer) -> Dict[str, Any]:
