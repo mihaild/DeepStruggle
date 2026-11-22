@@ -156,7 +156,7 @@
     ]
   },
   "E9": {
-    "description": "The E9 engine (owner, 2026-11-22): E8.1's rules with every engine finding of the 2026-11-22 audit fixed (research/log/audit_2026-11-22_verification.md, engine/AGENTS.md section 24) -- among them the Olympic Games sponsor after Grain Sales, Star Wars running a USSR war as the USSR's, We Will Bury You and Missile Envy settled only by their own plays, Five Year Plan placing a card after its Event, events not finding a card being played for its Ops, headline cards and Grain Sales' decline not lingering, an owed Event clearing the Ops' start-of-round snapshot (observation: the 'can place' slot), Flower Power on US-played USSR wars, UN Intervention barred from a headline Missile Envy, the eighth round optional to a trapped or forced player, Our Man in Tehran's cards hidden from the USSR, the first headline pick visible to its picker, and the held-scoring loss recorded where it happens. Games here are played under E9's rules. Anchor and main set carried over from E8 (the E7 R34 soup's 32-world root at 1600, and the A13 heads SWA); every rating is re-measured on this engine -- E8's matches do not carry over. Greedy unless a player's id says otherwise.",
+    "description": "The E9 engine (owner, 2026-11-22): E8.1's rules with every engine finding of the 2026-11-22 audit fixed (research/log/audit_2026-11-22_verification.md, engine/AGENTS.md section 24) -- among them the Olympic Games sponsor after Grain Sales, Star Wars running a USSR war as the USSR's, We Will Bury You and Missile Envy settled only by their own plays, Five Year Plan placing a card after its Event, events not finding a card being played for its Ops, headline cards and Grain Sales' decline not lingering, an owed Event clearing the Ops' start-of-round snapshot (observation: the 'can place' slot), Flower Power on US-played USSR wars, UN Intervention barred from a headline Missile Envy, the eighth round optional to a trapped or forced player, Our Man in Tehran's cards hidden from the USSR, the first headline pick visible to its picker, and the held-scoring loss recorded where it happens. Games here are played under E9's rules. Anchor carried over from E8 (the E7 R34 soup's 32-world root at 1600); the main set is the anchor alone until E9 has main-vs-main games -- E8's second main player, the A13 heads SWA, joins once it has been played against the anchor here. Every rating is re-measured on this engine; E8's matches do not carry over. Greedy unless a player's id says otherwise.",
     "behaviour": {
       "version": 3,
       "runner": "67832b37fc35513676e6b05ccb1b157a9e3b76303c320168f4304a69c8542c5c",
@@ -167,8 +167,7 @@
     "anchor": "E7-A8-R1-S44@6400M+(R34,R34-S45,R34-S46)@7120..7200M~rollout(k=4,worlds=32,horizon=4,rule=z2,stop=earlier,leaf=own,chance=keyed,aligned=true,box4=true)",
     "anchor_elo": 1600.0,
     "main": [
-      "E7-A8-R1-S44@6400M+(R34,R34-S45,R34-S46)@7120..7200M~rollout(k=4,worlds=32,horizon=4,rule=z2,stop=earlier,leaf=own,chance=keyed,aligned=true,box4=true)",
-      "E7-A8-R1-S44@6400M+R34@7200M+R48@9170M+A13@11920..12000M"
+      "E7-A8-R1-S44@6400M+(R34,R34-S45,R34-S46)@7120..7200M~rollout(k=4,worlds=32,horizon=4,rule=z2,stop=earlier,leaf=own,chance=keyed,aligned=true,box4=true)"
     ],
     "also_accepts": []
   }
