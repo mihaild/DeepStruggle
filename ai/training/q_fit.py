@@ -61,6 +61,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from ai.models.hyperspherical import register_sphere_projection
 from ai.models.ladder_net import create_ladder_net, ladder_config_from_state_dict
 from ai.training.generic_trainer import _resolve_run_dir
 from ai.training.npz_mmap import load_npz_mmap
@@ -422,7 +423,7 @@ def run_q_fit(cfg: QFitConfig, run_name: Optional[str], description: Optional[st
                  "scale": float(scale.detach()), "config": asdict(cfg), "ladder_config": lcfg}
         torch.save(state, os.path.join(run_dir, name))
 
-    opt = torch.optim.AdamW(params, lr=cfg.lr, weight_decay=cfg.weight_decay)
+    opt = register_sphere_projection(torch.optim.AdamW(params, lr=cfg.lr, weight_decay=cfg.weight_decay), model)
     steps_per_epoch = max(1, tr.size // cfg.batch)
     max_steps = int(cfg.max_epochs * steps_per_epoch)
 

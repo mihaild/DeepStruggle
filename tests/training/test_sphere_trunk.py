@@ -9,9 +9,11 @@ import pytest
 import torch
 
 from ai.models.coldwar_net_v2 import create_like
-from ai.models.hyperspherical import SphereBlock, SphereTrunk
+from ai.models.hyperspherical import SphereBlock, SphereTrunk, register_sphere_projection
 from ai.models.ladder_net import LadderNet, create_ladder_net, ladder_config_from_state_dict
+from ai.training.behavioral_cloning import BehavioralCloningTrainer
 from ai.training.nash_pg import make_optimizer
+from ai.training.schedule import WeightEMA
 
 CFG = dict(input_mode="grouped", aggregation="flatten", entity_dim=16, entity_proj_dim=64,
            card_self_attention=False, cross_attention=False, per_entity_heads=16,
@@ -98,3 +100,43 @@ def test_the_output_scale_sets_the_heads_input_and_is_recovered_only_off_one() -
     plain = _sphere_net()
     assert "sphere_out_scale" not in plain.ladder_config()
     assert not any("out_scale" in k for k in plain.state_dict())
+
+
+def _rows_unit(net: LadderNet) -> bool:
+    assert net.sphere is not None
+    return all(torch.allclose(lin.weight.norm(dim=1), torch.ones(lin.weight.shape[0]), atol=1e-5)
+               for block in net.sphere.blocks for lin in (block.w1, block.w2))
+
+
+def _one_step(net: LadderNet, opt: torch.optim.Optimizer) -> None:
+    logits, v, _ = net(torch.rand(4, 3824), torch.ones(4, 220, dtype=torch.bool))
+    (logits.float().logsumexp(-1).sum() + v.sum()).backward()
+    opt.step()
+    opt.zero_grad()
+
+
+def test_every_trainers_optimiser_re_projects_the_sphere() -> None:
+    """Audit M-6: the projection is registered on every optimiser that trains a sphere network, not only the RL
+    update's; one that trains none of the trunk is left alone."""
+    net = _sphere_net()
+    _one_step(net, register_sphere_projection(torch.optim.AdamW(net.parameters(), lr=0.1), net))
+    assert _rows_unit(net)
+    bc = BehavioralCloningTrainer(net, lr=0.1, device="cpu")
+    _one_step(net, bc.optimizer)
+    assert _rows_unit(net)
+    head_only = register_sphere_projection(torch.optim.AdamW(net.val_win_head.parameters(), lr=0.1), net)
+    assert not head_only._optimizer_step_post_hooks
+    raw = torch.optim.AdamW(net.parameters(), lr=0.1)
+    _one_step(net, raw)
+    assert not _rows_unit(net)          # the step does break the invariant without the hook
+
+
+def test_the_weight_average_is_projected_back_to_the_sphere() -> None:
+    """Audit M-6: a Euclidean average of unit rows is shorter; the EMA projects it back."""
+    live = _sphere_net()
+    ema = WeightEMA(live, tau_steps=1000.0)
+    opt = make_optimizer(live, 0.1)
+    for _ in range(3):
+        _one_step(live, opt)
+    ema.update(live, 500.0)
+    assert _rows_unit(ema.model)        # type: ignore[arg-type]

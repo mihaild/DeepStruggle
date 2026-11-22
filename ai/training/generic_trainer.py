@@ -31,7 +31,7 @@ from ai.models.coldwar_net_v2 import (POLICY_HEAD_MODULES, ColdWarNetV2, create_
 from ai.models.grow import (MACRO_START_BIAS, POLICY_OUT, grow_macro_optimizer_state, grow_macro_state_dict,
                             grow_tokens_optimizer_state, grow_tokens_state_dict, widen_factor,
                             widen_optimizer_state, widen_state_dict)
-from ai.models.hyperspherical import SphereTrunk
+from ai.models.hyperspherical import SphereTrunk, register_sphere_projection
 from ai.models.ladder_net import LadderNet, create_ladder_net
 from ai.models.mup import (base_shapes_for, combine_lr_mults, mup_lr_mults, policy_head_lr_mults,
                            zero_output_layers)
@@ -720,7 +720,7 @@ class _HumanInjector:
         self.device = device
         self.batch_size = batch_size
         self.ds = HumanCorpusDataset(dataset_path)
-        self.opt = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
+        self.opt = register_sphere_projection(torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4), model)
         self.steps = 0
 
         # Injection trains on the same games the warm start did, and no others. Without this the
@@ -817,7 +817,7 @@ def run_search_distillation(
     dev = resolve_device(device)
     model.to(dev)
     model.train()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+    optimizer = register_sphere_projection(torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4), model)
 
     if os.path.isdir(dataset_path):
         raise ValueError(
@@ -912,7 +912,7 @@ def run_behavioral_cloning_warmup(
     dev = resolve_device(device)
     model.to(dev)
     model.train()
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+    optimizer = register_sphere_projection(torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4), model)
 
     # A directory is the human corpus; a file is the self-play set. They differ in more than
     # storage: roughly half the human games stop mid-recording and have no outcome, so their

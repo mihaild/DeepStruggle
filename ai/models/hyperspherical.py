@@ -21,6 +21,7 @@ scaling (continuous-control return scales).
 from __future__ import annotations
 
 import math
+from typing import Any, TypeVar
 
 import torch
 import torch.nn as nn
@@ -99,3 +100,32 @@ class SphereTrunk(nn.Module):
         for block in self.blocks:
             assert isinstance(block, SphereBlock)
             block.project()
+
+
+OptT = TypeVar("OptT", bound=torch.optim.Optimizer)
+
+
+def project_sphere(net: nn.Module) -> None:
+    """`net`'s sphere-trunk weight rows back to unit norm; a no-op for a network without a sphere trunk."""
+    sphere = getattr(net, "sphere", None)
+    if isinstance(sphere, SphereTrunk):
+        sphere.project()
+
+
+def register_sphere_projection(opt: OptT, net: nn.Module) -> OptT:
+    """Re-project `net`'s sphere trunk after every step `opt` takes, when `opt` optimises any of the trunk's
+    parameters (audit M-6): every optimiser that trains a sphere network -- the RL update (make_optimizer), BC, the
+    human injector, search distillation, value / policy / Q fits -- goes through here, so the unit-norm invariant
+    holds wherever the step is taken. Returns `opt`; unchanged for a network without a sphere trunk."""
+    sphere = getattr(net, "sphere", None)
+    if not isinstance(sphere, SphereTrunk):
+        return opt
+    mine = {id(p) for p in sphere.parameters()}
+    if not any(id(p) in mine for g in opt.param_groups for p in g["params"]):
+        return opt
+
+    def _project(_opt: torch.optim.Optimizer, _args: Any, _kwargs: Any) -> None:
+        sphere.project()
+
+    opt.register_step_post_hook(_project)
+    return opt

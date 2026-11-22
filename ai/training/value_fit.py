@@ -34,6 +34,7 @@ import torch.nn.functional as F
 
 import ts_engine as ts
 from ai.models.ladder_net import LadderNet, create_ladder_net, ladder_config_from_state_dict
+from ai.models.hyperspherical import register_sphere_projection
 from ai.training.generic_trainer import _resolve_run_dir
 from ai.training.npz_mmap import load_npz_mmap
 from tools.lib.engine_fingerprint import fingerprint
@@ -325,7 +326,7 @@ def run_value_fit(cfg: ValueFitConfig, run_name: Optional[str], description: Opt
 
     aux = AuxHead(model.val_win_head[0].in_features).to(dev)   # type: ignore[index]
     params = list(model.parameters()) + list(aux.parameters())
-    opt = torch.optim.AdamW(params, lr=cfg.lr, weight_decay=cfg.weight_decay)
+    opt = register_sphere_projection(torch.optim.AdamW(params, lr=cfg.lr, weight_decay=cfg.weight_decay), model)
     steps_per_epoch = max(1, x_train.shape[0] // cfg.batch)
     max_steps = int(cfg.max_epochs * steps_per_epoch)
 

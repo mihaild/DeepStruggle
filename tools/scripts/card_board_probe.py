@@ -47,6 +47,7 @@ _root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
+from ai.models.hyperspherical import register_sphere_projection  # noqa: E402
 from ai.models.ladder_net import create_ladder_net  # noqa: E402
 from tools.lib.player_agent import NeuralAgent  # noqa: E402
 from ai.training.card_event_targets import (BOARD_W, CARD_OFFSET, CARD_W, GLOBAL_OFFSET, N_CARDS,  # noqa: E402
@@ -185,7 +186,7 @@ def fit_model(model: nn.Module, inputs: Callable[[torch.Tensor], torch.Tensor], 
               batch: int = 512) -> Tuple[nn.Module, Dict[str, Any]]:
     torch.manual_seed(seed)
     model = model.to(dev)
-    opt = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
+    opt = register_sphere_projection(torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4), model)
     fi = torch.from_numpy(fit_idx).to(dev)
     vi = torch.from_numpy(val_idx).to(dev)
 

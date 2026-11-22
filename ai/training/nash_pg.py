@@ -27,6 +27,7 @@ import torch.nn.functional as F
 import ts_engine as ts
 
 from ai.models.coldwar_net_v2 import VP_LIMIT
+from ai.models.hyperspherical import register_sphere_projection
 from ai.search.batched_mcts import BatchedMCTS, BatchedMCTSConfig
 from ai.training.card_event_targets import aux_label
 from ai.training.afterstate_critic import KIND_NAMES as AFTERSTATE_KINDS
@@ -366,13 +367,8 @@ def make_optimizer(net: nn.Module, lr: float, weight_decay: float = 1e-4,
                 groups.append({"params": [p], "weight_decay": wd, "lr_mult": mult, "lr": lr * mult})
         opt = torch.optim.AdamW(groups, lr=lr, betas=betas, eps=eps)
     # A hyperspherical trunk (P38 rung 2) keeps its weight rows at unit norm: re-projected after every step, wherever
-    # the step is taken (the update and every auxiliary fit share this optimiser).
-    project = getattr(net, "project_weights", None)
-    if getattr(net, "sphere", None) is not None and callable(project):
-        def _project(_opt: torch.optim.Optimizer, _args: Any, _kwargs: Any) -> None:
-            project()
-        opt.register_step_post_hook(_project)
-    return opt
+    # the step is taken (the update and every auxiliary fit share this optimiser; other trainers register the same).
+    return register_sphere_projection(opt, net)
 
 
 def optimizer_param_names(optimizer: torch.optim.Optimizer, net: nn.Module) -> Optional[List[str]]:

@@ -20,6 +20,8 @@ from typing import Any, Dict, Optional, Sequence
 import torch
 import torch.nn as nn
 
+from ai.models.hyperspherical import project_sphere
+
 LR_SCHEDULES = ("constant", "step", "cosine")
 
 
@@ -101,6 +103,9 @@ class WeightEMA:
                 v.lerp_(src.to(v.dtype), alpha)
             else:
                 v.copy_(src)
+        # A sphere trunk's rows are unit-norm; a Euclidean average of two unit rows is shorter (audit M-6), so the
+        # average is projected back as the live weights are after each step. A no-op without a sphere trunk.
+        project_sphere(self.model)
         return alpha
 
     def state_dict(self) -> Dict[str, Any]:

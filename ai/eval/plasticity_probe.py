@@ -31,6 +31,7 @@ import ts_engine as ts
 from bindings.action_encoder import ActionEncoder
 
 from ai.models.coldwar_net_v2 import POLICY_HEAD_MODULES, create_like
+from ai.models.hyperspherical import register_sphere_projection
 from ai.eval.loading import load_for_eval
 from bindings.ts_env import legal_mask, model_obs_features, observe
 
@@ -123,7 +124,7 @@ def fit(model: nn.Module, d: Dict[str, Any], labels: np.ndarray, soft: bool, fro
         top = name.split(".")[0]
         p.requires_grad_(top in POLICY_HEAD or (not frozen and top in TRUNK))
     params = [p for p in model.parameters() if p.requires_grad]
-    opt = torch.optim.Adam(params, lr=lr)
+    opt = register_sphere_projection(torch.optim.Adam(params, lr=lr), model)
     obs = torch.from_numpy(d["obs"])
     masks = torch.from_numpy(d["masks"]).bool()
     y = torch.from_numpy(labels)

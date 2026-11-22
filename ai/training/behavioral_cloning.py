@@ -10,6 +10,7 @@ from torch.utils.data import Dataset, DataLoader
 
 import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet
+from ai.models.hyperspherical import register_sphere_projection
 from bindings.action_encoder import ActionEncoder
 from bindings.ts_env import model_obs_features, observe
 from tools.lib.game_step import drain_chance
@@ -349,7 +350,8 @@ class BehavioralCloningTrainer:
         self.device = torch.device(device)
         self.model = model.to(self.device)
         self.batch_size = batch_size
-        self.optimizer = optim.AdamW(self.model.parameters(), lr=lr, weight_decay=1e-4)
+        self.optimizer = register_sphere_projection(optim.AdamW(self.model.parameters(), lr=lr, weight_decay=1e-4),
+                                                    self.model)
         self.policy_criterion = nn.CrossEntropyLoss()
         self.value_criterion = nn.MSELoss()
 
