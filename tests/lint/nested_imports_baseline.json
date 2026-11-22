@@ -21,7 +21,6 @@
  "tests/training/test_categorical_value_and_filtering.py": 9,
  "tests/training/test_checkpoint_id.py": 2,
  "tests/training/test_compare_runs.py": 1,
- "tests/training/test_credit_assignment.py": 1,
  "tests/training/test_critic_boundary.py": 1,
  "tests/training/test_critic_probes.py": 2,
  "tests/training/test_critic_tracker.py": 2,
