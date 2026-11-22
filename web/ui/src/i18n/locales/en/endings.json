@@ -3,6 +3,7 @@
   "europeControl": "Europe Control",
   "wargames": "wargames",
   "finalScoring": "final scoring",
+  "heldScoring": "a scoring card held at turn end",
   "defconOwn": "DEFCON 1 (own decision)",
   "defconOpponent": "DEFCON 1 (opponent decision)"
 }

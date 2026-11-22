@@ -226,14 +226,14 @@ void Scoring::score_region(GameState& state, Region r) noexcept {
     // ending cannot be classified afterwards. Analytics only -- see effect_bits.
     if (r == Region::EUROPE) {
         if (summary.us_status == RegionalStatus::CONTROL) {
-            if (scoring_tap) scoring_tap->report(0, 20);
+            if (scoring_tap) scoring_tap->report(0, effect_bits::EUROPE_CONTROL_VP);   // E9: Europe Control reads 40
             state.victory_points = 20;
             state.set_flag(effect_bits::EUROPE_CONTROL_WIN);
             state.current_phase = Phase::GAME_OVER;
             return;
         }
         if (summary.ussr_status == RegionalStatus::CONTROL) {
-            if (scoring_tap) scoring_tap->report(0, -20);
+            if (scoring_tap) scoring_tap->report(0, -effect_bits::EUROPE_CONTROL_VP);
             state.victory_points = -20;
             state.set_flag(effect_bits::EUROPE_CONTROL_WIN);
             state.current_phase = Phase::GAME_OVER;
@@ -312,14 +312,14 @@ void Scoring::execute_final_scoring(GameState& state) noexcept {
     // Control win, not a 20 VP one.
     auto europe_summary = evaluate_region(state, Region::EUROPE);
     if (europe_summary.us_status == RegionalStatus::CONTROL) {
-        if (scoring_tap) scoring_tap->report(0, 20);
+        if (scoring_tap) scoring_tap->report(0, effect_bits::EUROPE_CONTROL_VP);   // E9: Europe Control reads 40
         state.victory_points = 20;
         state.set_flag(effect_bits::EUROPE_CONTROL_WIN);
         state.current_phase = Phase::GAME_OVER;
         return;
     }
     if (europe_summary.ussr_status == RegionalStatus::CONTROL) {
-        if (scoring_tap) scoring_tap->report(0, -20);
+        if (scoring_tap) scoring_tap->report(0, -effect_bits::EUROPE_CONTROL_VP);
         state.victory_points = -20;
         state.set_flag(effect_bits::EUROPE_CONTROL_WIN);
         state.current_phase = Phase::GAME_OVER;

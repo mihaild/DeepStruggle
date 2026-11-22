@@ -268,7 +268,19 @@ def test_canonical_game_ending_reasons():
     st.current_phase = ts_engine.Phase.GAME_OVER
     assert classify_game_ending_reason(st) == "final scoring"
 
-    # 5. Wargames (#100) - the game is over, short of final scoring, with abs(VP) < 20.
+    # 4b. Final scoring that lands on the clamped +/-20 is still final scoring (audit T-10).
+    st.victory_points = 20
+    assert classify_game_ending_reason(st) == "final scoring"
+
+    # 4c. A scoring card held at turn end, recorded by the engine (one holder, or both at VP 0).
+    st.set_flag(ts_engine.EffectBits.HELD_SCORING_LOSS)
+    for vp in (20, -20, 0):
+        st.victory_points = vp
+        assert classify_game_ending_reason(st) == "held scoring card"
+    st.clear_flag(ts_engine.EffectBits.HELD_SCORING_LOSS)
+
+    # 5. Wargames (#100) - the engine records it (EffectBits.WARGAMES_END); short of 20 VP, as the score alone was read.
+    st.set_flag(ts_engine.EffectBits.WARGAMES_END)
     st.turn = 8
     st.victory_points = 4
     st.current_phase = ts_engine.Phase.GAME_OVER

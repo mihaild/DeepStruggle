@@ -1166,25 +1166,23 @@ const char* ending_reason(const GameState& state) {
                                                                      : "DEFCON 1 (own decision)";
     }
 
-    const int vp = state.victory_points;
-    const int abs_vp = vp < 0 ? -vp : vp;
+    // From what the engine recorded, not from the score (audit T-10, 2026-11-22): final scoring clamps VP to +/-20,
+    // so a game decided there was called "20 VP", and a held-scoring loss read as "20 VP" (one holder) or "wargames"
+    // (both, VP 0).
+    // 2. A scoring card held at turn end (Phase F).
+    if (state.has_flag(effect_bits::HELD_SCORING_LOSS)) return "held scoring card";
 
-    // 2. Wargames (#100): over before final scoring, without 20 VP. `<= 10`, not `< 10`: a game
-    // that goes the distance terminates holding turn 11 (finish_end_turn increments the turn and
-    // only then tests `turn <= 10`), so a Wargames in turn 10 is still a Wargames.
-    if (state.turn <= 10 && abs_vp < 20 && state.current_phase == Phase::GAME_OVER) return "wargames";
-
-    // 3. Europe Control ends the game at +/-20 VP, indistinguishable from any other 20 VP win
-    // without the flag the engine sets.
+    // 3. Europe Control.
     if (state.has_flag(effect_bits::EUROPE_CONTROL_WIN)) return "Europe Control";
 
-    // 4. 20 VP, or a held scoring card.
-    if (abs_vp >= 20) return "20 VP";
+    // 4. Wargames (#100).
+    if (state.has_flag(effect_bits::WARGAMES_END)) return "wargames";
 
-    // 5. Final scoring.
-    if (state.turn >= 10) return "final scoring";
+    // 5. Final scoring: a game that goes the distance terminates holding turn 11 (finish_end_turn increments the turn
+    // before it tests `turn <= 10`), whatever the score.
+    if (state.turn > 10) return "final scoring";
 
-    if (state.current_phase == Phase::GAME_OVER) return "wargames";
+    // 6. 20 VP on the track.
     return "20 VP";
 }
 

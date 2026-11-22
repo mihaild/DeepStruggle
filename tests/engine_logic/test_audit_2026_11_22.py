@@ -327,3 +327,35 @@ def test_e19_an_eighth_round_win_is_not_a_held_scoring_loss() -> None:
     assert E.is_held_scoring_game_over(s) and E.is_held_scoring_loss(s, P.USSR)
 
 
+
+
+def _europe() -> List[int]:
+    return [i for i in range(84) if ts.MapData.get_country_info(i)["region"] == 0]
+
+
+def test_t13_europe_control_is_booked_as_forty_whatever_the_score() -> None:
+    """Audit T-13 / E9: the Event that wins by Europe Control records +/-40 VP for Europe scoring, not the track's
+    jump to +/-20 (which depended on the score before); the game ends at 20 as Europe Control."""
+    eu = card("Europe Scoring")
+    for vp_before in (-15, 0, 12):
+        s = to_ar(1600, P.US, 4, 7)
+        for i in _europe():
+            s.set_country(i, 20, 0)
+        s.victory_points = vp_before
+        set_hand(s, P.US, [eu, card("NATO")])
+        step(s, CARD + eu - 1)
+        sd = s.to_save_dict()
+        tracks = [t for t in sd["last_event_tracks"] if t["card_id"] == eu]
+        assert tracks and tracks[0]["vp_delta"] == 40, (vp_before, tracks)
+        assert s.victory_points == 20 and str(ts.game_ending_reason(s)) == "Europe Control"
+
+
+def test_t10_wargames_and_final_scoring_are_read_from_what_happened() -> None:
+    wg = card("Wargames")
+    s = to_ar(1700, P.US, 8, 10)
+    s.defcon = 2
+    set_hand(s, P.US, [wg, card("NATO")])
+    step(s, CARD + wg - 1)
+    advance_to(s, lambda s: s.ctx().resolving_card == wg and s.ctx().decision_type == DT.CHOOSE_BRANCH, 5)
+    step(s, BR + 0)
+    assert E.is_terminal(s) and str(ts.game_ending_reason(s)) == "wargames"

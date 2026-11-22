@@ -774,3 +774,15 @@ default; no minor version). The leaderboard has an E9 epoch with its own behavio
 The fuzzer's stack-depth bound is the stack's capacity (it was 2 from when the stack held three frames; Five Year Plan
 discarding Grain Sales whose drawn card is played Event-first reaches depth 3). Tests: the full C++ suite, the fuzzer,
 the whole human corpus, the observation golden (regenerated for E-16), the WebAssembly parity suite.
+
+**Added to E9 the same day (owner, 2026-11-22):**
+
+* **Europe Control reads 40 VP** (`effect_bits::EUROPE_CONTROL_VP`), an amount that always means an instant win:
+  the observation's Europe region slot shows +/-2.0 (40 / 20; only that slot's clamp is widened, nothing else
+  reaches beyond about 0.5), the per-Event VP record (`last_event_tracks`, read by the region reward) books +/-40 for
+  the Event that wins by it (audit T-13: it booked 20 - the score before), and the scoring tap reports +/-40. The VP
+  track itself still ends at +/-20.
+* **The ending is classified from what the engine recorded** (`state_json::ending_reason`, audit T-10): CMC
+  suicide, DEFCON 1 (own decision / opponent's -- unchanged), `held scoring card` (`HELD_SCORING_LOSS`, a new
+  reason), Europe Control, `wargames` (`effect_bits::WARGAMES_END`, bit 51, set by Wargames' end), `final scoring`
+  (turn > 10, whatever the score -- it clamps to +/-20 and was called "20 VP"), else `20 VP`.

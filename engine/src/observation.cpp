@@ -404,12 +404,17 @@ void extract_into(const GameState& state, Player perspective, float* board, floa
         // net_delta ranks a won position *below* a dominated one -- about 6 against 12 once
         // battlegrounds and adjacency are added. Report the win as a win; the engine's own
         // shaping potential already special-cases this the same way.
+        // E9 (owner, 2026-11-22): Europe Control reads +/-40 VP, an amount that always means an instant win whatever
+        // the score -- +/-2.0 here, beyond anything another region can show (about 0.5); it read 20 (1.0), a margin
+        // the VP slot could cancel. Only Europe's slot is widened to +/-2.
+        bool europe_control = false;
         if (static_cast<Region>(r) == Region::EUROPE) {
-            if (summary.us_status == RegionalStatus::CONTROL)         net = 20;
-            else if (summary.ussr_status == RegionalStatus::CONTROL)  net = -20;
+            if (summary.us_status == RegionalStatus::CONTROL)         { net = effect_bits::EUROPE_CONTROL_VP; europe_control = true; }
+            else if (summary.ussr_status == RegionalStatus::CONTROL)  { net = -effect_bits::EUROPE_CONTROL_VP; europe_control = true; }
         }
         const float my_region_vp = (my_player == Player::US) ? static_cast<float>(net) : -static_cast<float>(net);
-        globals[64 + r] = std::clamp(my_region_vp / 20.0f, -1.0f, 1.0f);
+        const float lim = europe_control ? 2.0f : 1.0f;
+        globals[64 + r] = std::clamp(my_region_vp / 20.0f, -lim, lim);
     }
 
     globals[70] = static_cast<float>(opp_hand_cnt) / 10.0f;

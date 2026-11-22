@@ -46,6 +46,7 @@ const ENDINGS: Record<string, string> = {
   "Europe Control": "europeControl",
   "wargames": "wargames",
   "final scoring": "finalScoring",
+  "held scoring card": "heldScoring",
   "DEFCON 1 (own decision)": "defconOwn",
   "DEFCON 1 (opponent decision)": "defconOpponent",
 };

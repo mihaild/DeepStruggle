@@ -398,6 +398,12 @@ namespace effect_bits {
     // The game ended at turn end because a scoring card was held (Phase F) -- recorded where it happens, so
     // nothing has to guess it from the action round afterwards (audit E-19, 2026-11-22). Not observed (>= 45).
     constexpr uint64_t HELD_SCORING_LOSS           = 1ULL << 50;
+    // Wargames ended the game -- recorded so the ending is classified from what happened, not inferred from the
+    // score and turn (audit T-10, 2026-11-22). Not observed (>= 45).
+    constexpr uint64_t WARGAMES_END                = 1ULL << 51;
+    // Europe Control's VP as every record of it reads (E9, owner 2026-11-22): an amount that always means an
+    // instant win, whatever the score before -- the VP track itself still ends at +/-20.
+    constexpr int EUROPE_CONTROL_VP                = 40;
 
     // Mask for flags that are cleared automatically at end of turn
     constexpr uint64_t TURN_CLEANUP_MASK           = CONTAINMENT_ACTIVE |

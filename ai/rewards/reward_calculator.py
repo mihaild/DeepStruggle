@@ -91,6 +91,7 @@ ENDING_FAMILY: Dict[str, str] = {
     "DEFCON 1 (opponent decision)": "defcon",
     "wargames": "wargames",
     "final scoring": "final_scoring",
+    "held scoring card": "held_scoring",   # a loss for the holder; not a family --target-endings names
 }
 TARGET_ENDINGS = ("20vp", "europe_control", "defcon", "wargames", "final_scoring")
 

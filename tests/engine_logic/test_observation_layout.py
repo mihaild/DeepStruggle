@@ -233,17 +233,18 @@ def _europe() -> list[int]:
 
 def test_europe_control_reads_as_a_win_not_as_half_a_domination() -> None:
     """Europe's control_vp is 0 against domination_vp 7, so net_delta ranked a won game below a
-    dominated one -- about 6 against 12. Control ends the game; the feature must say so."""
+    dominated one -- about 6 against 12. Control ends the game; the feature must say so. Since E9 it reads
+    40 VP (2.0), an amount that always means an instant win whatever the score (owner, 2026-11-22)."""
     state = _fresh()
     for i in _europe():
         state.set_country(i, 20, 0)
-    assert _v22(state, ts.Player.US)[EUROPE_VP] == pytest.approx(1.0)
-    assert _v22(state, ts.Player.USSR)[EUROPE_VP] == pytest.approx(-1.0)
+    assert _v22(state, ts.Player.US)[EUROPE_VP] == pytest.approx(2.0)
+    assert _v22(state, ts.Player.USSR)[EUROPE_VP] == pytest.approx(-2.0)
 
     other = _fresh()
     for i in _europe():
         other.set_country(i, 0, 20)
-    assert _v22(other, ts.Player.US)[EUROPE_VP] == pytest.approx(-1.0)
+    assert _v22(other, ts.Player.US)[EUROPE_VP] == pytest.approx(-2.0)
 
 
 def test_the_other_regions_keep_their_scoring() -> None:

@@ -360,8 +360,15 @@ bool recorded(GameState& state, uint8_t card, Run&& run) noexcept {
     const int vp_before = state.victory_points;
     const int defcon_before = state.defcon;
     const uint8_t first = state.last_event_track_count;
+    const bool europe_before = state.has_flag(effect_bits::EUROPE_CONTROL_WIN);
     const bool done = run();
     int vp = state.victory_points - vp_before;
+    // Europe Control is booked as a fixed +/-40 (E9): the track's jump to +/-20 depended on the score before, so a
+    // region reward read 20 - VP_before as Europe's VP -- up to 40 for a winner behind, and a loss sized by the score
+    // rather than by Europe (audit T-13, 2026-11-22).
+    if (!europe_before && state.has_flag(effect_bits::EUROPE_CONTROL_WIN)) {
+        vp = state.victory_points > 0 ? effect_bits::EUROPE_CONTROL_VP : -effect_bits::EUROPE_CONTROL_VP;
+    }
     int defcon = static_cast<int>(state.defcon) - defcon_before;
     for (uint8_t i = first; i < state.last_event_track_count; ++i) {
         vp -= state.last_event_tracks[i].vp_delta;
@@ -1252,6 +1259,7 @@ bool CardHandlers::run_event_step(GameState& state, const MicroAction& action) n
                 int32_t vp_delta = (opp == Player::US) ? 6 : -6;
                 award_vp(state, vp_delta);
                 state.current_phase = Phase::GAME_OVER;
+                state.set_flag(effect_bits::WARGAMES_END);
                 state.ctx().resolving_card = 0;
                 return true;
             } else {

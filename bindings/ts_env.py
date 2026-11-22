@@ -29,6 +29,7 @@ _ENDING_REASON_MAP: Dict[str, str] = {
     "DEFCON 1 (own decision)": "defcon1_self",
     "DEFCON 1 (opponent decision)": "defcon1_provoked",
     "wargames": "wargames",
+    "held scoring card": "held_scoring",
 }
 
 

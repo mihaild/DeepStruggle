@@ -2748,4 +2748,5 @@ NB_MODULE(ts_engine, m) {
     eb.attr("CMC_SUICIDE_LOSS") = ts::effect_bits::CMC_SUICIDE_LOSS;
     eb.attr("EUROPE_CONTROL_WIN") = ts::effect_bits::EUROPE_CONTROL_WIN;
     eb.attr("HELD_SCORING_LOSS") = ts::effect_bits::HELD_SCORING_LOSS;
+    eb.attr("WARGAMES_END") = ts::effect_bits::WARGAMES_END;
 }

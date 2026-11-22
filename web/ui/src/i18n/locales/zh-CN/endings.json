@@ -3,6 +3,7 @@
   "europeControl": "控制欧洲",
   "wargames": "战争游戏",
   "finalScoring": "最终计分",
+  "heldScoring": "回合结束时持有计分牌",
   "defconOwn": "核危机等级为 1（己方决策导致）",
   "defconOpponent": "核危机等级为 1（对手决策导致）"
 }
