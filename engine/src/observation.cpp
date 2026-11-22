@@ -243,7 +243,19 @@ void extract_into(const GameState& state, Player perspective, float* board, floa
         } else if (loc == CardLocation::ONGOING_EVENT) {
             slot = card_slots::ONGOING;
         } else if (loc == CardLocation::PEEKED_TEMP) {
-            slot = card_slots::PEEKED;
+            // Our Man in Tehran's five cards are the US's to see; to the USSR they are still the draw
+            // deck (audit E-14, 2026-11-22: they showed in the USSR's view, which the afterstate
+            // critic records).
+            bool tehran = false;   // the cards Our Man in Tehran's US is looking at (cards drawn in the open are public)
+            for (size_t d = 0; d <= state.ctx_stack_depth && d < state.ctx_stack.size(); ++d) {
+                tehran = tehran || state.ctx_stack[d].resolving_card == card_ids::OUR_MAN_IN_TEHRAN;
+            }
+            if (my_player == Player::US || !tehran) {
+                slot = card_slots::PEEKED;
+            } else {
+                slot = card_slots::DECK_OR_HIDDEN;
+                draw_pile_cnt++;
+            }
         }
 
         // The China Card is not in card_locations and must not be. It is fixed at ONGOING_EVENT
@@ -326,6 +338,16 @@ void extract_into(const GameState& state, Player perspective, float* board, floa
                         ? card_slots::ACTIVE_NEXT : card_slots::ACTIVE_NOW;
                 }
             }
+        }
+
+        // The headline card I have already picked, before the other side picks: it is still in my
+        // hand, but it is committed, and I know it -- without this a first picker's position after the
+        // pick was bit-identical whichever card it chose (audit E-16, 2026-11-22). Only my own pick:
+        // the opponent's stays hidden until both are revealed.
+        if (state.current_phase == Phase::HEADLINE && state.headline_stage == 0 && in_hand_of(loc, my_player) &&
+            i == ((my_player == Player::US) ? state.headline_us_card : state.headline_ussr_card) &&
+            active < card_slots::ACTIVE_NOW) {
+            active = card_slots::ACTIVE_NOW;
         }
 
         cards[offset + card_slots::ACTIVE_CARD] = active;
@@ -474,6 +496,13 @@ size_t extract_observation_features(const GameState& state, Player perspective, 
     // Straight into `out`: building it in an ObservationBufferV23 and copying it across cost a
     // tenth of the observation (0.8 of 7.7 us).
     static_assert(OBS_SIZE_V23 == 84 * V23_BOARD_FEATURES + 110 * card_slots::V23_FEATURES + 100);
+    // The optional blocks read the same side the base did: NONE resolves exactly as extract_into
+    // resolves it (audit E-15, 2026-11-22: they used to read NONE raw and come out zero).
+    if (perspective == Player::NONE) {
+        perspective = (state.ctx().decision_player != Player::NONE) ? state.ctx().decision_player
+                                                                     : state.phasing_player;
+        if (perspective == Player::NONE) perspective = Player::US;
+    }
     extract_into(state, perspective, out, out + 84 * V23_BOARD_FEATURES,
                  out + 84 * V23_BOARD_FEATURES + 110 * card_slots::V23_FEATURES);
     size_t at = OBS_SIZE_V23;

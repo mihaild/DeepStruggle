@@ -395,6 +395,9 @@ namespace effect_bits {
     // which is indistinguishable from any other 20 VP win from the outside. It changes no
     // decision and no VP -- it is set at the moment the game is already over.
     constexpr uint64_t EUROPE_CONTROL_WIN          = 1ULL << 49;
+    // The game ended at turn end because a scoring card was held (Phase F) -- recorded where it happens, so
+    // nothing has to guess it from the action round afterwards (audit E-19, 2026-11-22). Not observed (>= 45).
+    constexpr uint64_t HELD_SCORING_LOSS           = 1ULL << 50;
 
     // Mask for flags that are cleared automatically at end of turn
     constexpr uint64_t TURN_CLEANUP_MASK           = CONTAINMENT_ACTIVE |

@@ -361,7 +361,17 @@ def test_it_reads_the_same_to_both_players() -> None:
     """
     found = _staged_decisions()
     assert found
+    tehran_id = ts.CardData.get_card_by_name("Our Man in Tehran")
     for state, decider, card in found:
         other = ts.Player.US if decider == ts.Player.USSR else ts.Player.USSR
-        assert _v22_card(_v22(state, other), card, PEEKED) == 1.0, (
-            f"card {card} was drawn in the open and should read as peeked to both sides")
+        sd = state.to_save_dict()
+        frames = [f["resolving_card"] for f in sd["ctx_stack"][:sd["ctx_stack_depth"] + 1]]
+        if tehran_id in frames:
+            # Audit E-14 (2026-11-22): Our Man in Tehran's cards are the US's alone to see; to the USSR
+            # they are still the draw deck.
+            assert _v22_card(_v22(state, ts.Player.USSR), card, PEEKED) == 0.0, (
+                f"card {card} is Our Man in Tehran's peek and must not read as peeked to the USSR")
+            assert _v22_card(_v22(state, ts.Player.USSR), card, DECK_OR_HIDDEN) == 1.0
+        else:
+            assert _v22_card(_v22(state, other), card, PEEKED) == 1.0, (
+                f"card {card} was drawn in the open and should read as peeked to both sides")

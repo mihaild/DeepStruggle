@@ -238,7 +238,7 @@ PYTHONPATH=.:build/release .venv/bin/python tools/tournament.py \
 PYTHONPATH=. .venv/bin/python tools/leaderboard.py add-network <name> <file.pt> --description "..."
 PYTHONPATH=. .venv/bin/python tools/leaderboard.py add-player '<name>[~gumbel(sims=256,k=8)]'
 tools/scripts/check_engine_fresh.sh && PYTHONPATH=.:build/release .venv/bin/python \
-  tools/leaderboard_play.py --epoch E8 --players '<player-id>' --games-per-side 1000
+  tools/leaderboard_play.py --epoch E9 --players '<player-id>' --games-per-side 1000
 PYTHONPATH=. .venv/bin/python tools/leaderboard.py show --main-only   # or --lineage <run-name>
 # Publish to Hugging Face (repo mirrors data/checkpoints/; .onnx only for the final snapshot,
 # the final SWA, soups and leaderboard networks): tools/README.md §2c
@@ -317,7 +317,9 @@ base floats, so existing checkpoints keep running. A model's set is recorded in 
 the flag with no names gives none, what every earlier run read; `launch_flags.py` compares each run
 against its own epoch's default, so earlier codes hold) **plus, since 2026-11-06, the rule bit
 `opp_event_gated`** (owner): a run playing it is **E8.1** (the minor version, like E4.1), and
-`launch_flags.py` reports rule bits as `obs_rules`, outside the A code. **Continuing an E8 run needs
+`launch_flags.py` reports rule bits as `obs_rules`, outside the A code. **Since 2026-11-22 the engine is E9** (owner):
+E8.1's rules plus every engine fix of the 2026-11-22 audit (`engine/AGENTS.md` §24); runs on it are `E9-...` (they play
+`opp_event_gated` by default, no minor version), and the leaderboard's E9 epoch starts with no matches. **Continuing an E8 run needs
 `--obs-features headline_reveal`**; the resume refuses the default for it. The engine has no default:
 `ts.extract_observation_features(state, perspective, features)` requires the set
 (`bindings.ts_env.model_obs_features(model)`),

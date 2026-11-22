@@ -392,3 +392,13 @@ cmake -B build/release -S . -DPython_EXECUTABLE=$(pwd)/.venv/bin/python3   # cla
 cmake --build build/release -j
 PYTHONPATH=.:build/release .venv/bin/python -m pytest -q tests/bindings    # python -m pytest, never .venv/bin/pytest
 ```
+
+## Audit fixes in the bindings (2026-11-22)
+
+* `RolloutBatch` (search): the z rule leaves candidate 0 only on a lead measured in at least four valued worlds
+  (`kMinZWorlds`; audit S-6); the suicide guard also guards Che's and Ortega's target choices and any decision while
+  the Cuban Missile Crisis stands against the acting side, and its probe keys the dice stream before each roll under
+  keyed chance (S-7).
+* `ts.gae_per_player` takes each side's bootstrap separately (`last_v_us`, `last_v_ussr`) and the afterstate node's
+  later-roll terms (`extra`, `ntgt`; training audit T-1 / T-4).
+* `GameState.headline_first_owner` / `headline_second_owner` are exposed read-only; `EffectBits.HELD_SCORING_LOSS`.

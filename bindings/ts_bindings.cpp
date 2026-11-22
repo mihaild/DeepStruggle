@@ -517,6 +517,8 @@ NB_MODULE(ts_engine, m) {
         .def_rw("headline_ussr_card", &ts::GameState::headline_ussr_card)
         .def_rw("headline_first_card", &ts::GameState::headline_first_card)
         .def_rw("headline_second_card", &ts::GameState::headline_second_card)
+        .def_ro("headline_first_owner", &ts::GameState::headline_first_owner)
+        .def_ro("headline_second_owner", &ts::GameState::headline_second_owner)
         .def_rw("headline_stage", &ts::GameState::headline_stage)
         .def_rw("current_phase", &ts::GameState::current_phase)
         .def_rw("forced_card_player", &ts::GameState::forced_card_player)
@@ -2711,4 +2713,5 @@ NB_MODULE(ts_engine, m) {
     eb.attr("DEFCON_SUICIDE_PROVOKED") = ts::effect_bits::DEFCON_SUICIDE_PROVOKED;
     eb.attr("CMC_SUICIDE_LOSS") = ts::effect_bits::CMC_SUICIDE_LOSS;
     eb.attr("EUROPE_CONTROL_WIN") = ts::effect_bits::EUROPE_CONTROL_WIN;
+    eb.attr("HELD_SCORING_LOSS") = ts::effect_bits::HELD_SCORING_LOSS;
 }

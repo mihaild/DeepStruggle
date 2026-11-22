@@ -145,8 +145,18 @@ int main(int argc, char** argv) {
                       << ", USSR=" << static_cast<int>(state.ussr_space_track) << std::endl;
             std::exit(1);
         }
-        if (state.ctx_stack_depth > 2) {
-            std::cerr << "Invariant violated: ctx_stack_depth=" << static_cast<int>(state.ctx_stack_depth) << std::endl;
+        // The deepest frame the stack has (six frames since the node-count packing; the bound was 2 when it held
+        // three). Legitimate chains reach depth 3 -- Five Year Plan discards Grain Sales, whose drawn card is
+        // played Event-first -- so only a stack at its last frame is flagged (a push past it fails loudly).
+        if (state.ctx_stack_depth >= state.ctx_stack.size() - 1) {
+            std::cerr << "Invariant violated: ctx_stack_depth=" << static_cast<int>(state.ctx_stack_depth)
+                      << " frames (resolving/pending):";
+            for (int d = 0; d <= state.ctx_stack_depth && d < static_cast<int>(state.ctx_stack.size()); ++d) {
+                std::cerr << " " << static_cast<int>(state.ctx_stack[d].resolving_card) << "/"
+                          << static_cast<int>(state.ctx_stack[d].pending_op_card);
+            }
+            std::cerr << " phase=" << static_cast<int>(state.current_phase) << " turn=" << static_cast<int>(state.turn)
+                      << std::endl;
             std::exit(1);
         }
 

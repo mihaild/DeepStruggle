@@ -1,6 +1,7 @@
 #include "ts/engine.hpp"
 #include "ts/state_machine.hpp"
 #include "ts/action_mask.hpp"
+#include "ts/canonical.hpp"
 #include "ts/serialization.hpp"
 #include "ts/card_data.hpp"
 #include "ts/constants.hpp"
@@ -192,7 +193,24 @@ size_t Engine::auto_advance_step(GameState& state, size_t max_steps, uint8_t* fi
 
         // 2. Multi-step events whose remaining targets must all be taken: no choice among them,
         // so the first is taken (or the event closed when none is left).
-        const int16_t forced = forced_event_target(state);
+        int16_t forced = forced_event_target(state);
+        if (forced >= 0 && forced != kCloseEvent && canonical::run_order(state) != 0) {
+            // Under a canonical order the fixed candidate order can name a country below the run's
+            // floor, which the step refuses; every remaining target must be taken anyway, so take the
+            // first one the order allows (audit E-17, 2026-11-22). None allowed: leave it a decision.
+            uint8_t m[FLAT_ACTION_SPACE_SIZE];
+            ActionMask::generate_flat_mask_212(state, m);
+            if (!m[flat_slots::NODE + forced]) {
+                forced = -1;
+                for (uint16_t c = 0; c < flat_slots::NODE_COUNT; ++c) {
+                    if (m[flat_slots::NODE + c]) { forced = static_cast<int16_t>(c); break; }
+                }
+            }
+            if (forced >= 0 && canonical::run_order(state) == obs_features::CANONICAL_LEARNED &&
+                !canonical::priority_given(state)) {
+                forced = -1;   // V3 needs its priority before the run's first choice; the step refuses it
+            }
+        }
         if (forced >= 0) {
             const MicroAction ma = (forced == kCloseEvent)
                 ? MicroAction{DecisionType::POINT_NODE, 0, 0, action_flags::CONFIRM_DONE}
@@ -256,11 +274,10 @@ bool Engine::has_held_scoring_card(const GameState& state, Player p) noexcept {
 }
 
 bool Engine::is_held_scoring_game_over(const GameState& state) noexcept {
-    if (state.current_phase != Phase::GAME_OVER) return false;
-    if (state.defcon <= 1) return false;
-    uint8_t max_ar = (state.turn <= 3) ? 6 : 7;
-    if (state.action_round <= max_ar) return false;
-    return has_held_scoring_card(state, Player::US) || has_held_scoring_card(state, Player::USSR);
+    // Read from the flag Phase F sets: guessing from the action round called an eighth round's win
+    // (North Sea Oil, a Space Station) or a turn-end Military Ops win a held-scoring loss whenever a
+    // scoring card happened to be in a hand (audit E-19, 2026-11-22).
+    return state.current_phase == Phase::GAME_OVER && state.has_flag(effect_bits::HELD_SCORING_LOSS);
 }
 
 bool Engine::is_held_scoring_loss(const GameState& state, Player p) noexcept {

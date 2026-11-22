@@ -167,7 +167,11 @@ bool trigger_missile_envy(GameState& state, Player p) noexcept {
         state.forced_card_id = card_ids::MISSILE_ENVY;
 
         const auto& c_info = CardData::get_card(chosen_card);
-        if (c_info.side == p || c_info.side == Player::NONE) {
+        // UN Intervention "cannot be played during the Headline Phase": taken by a headlined Missile
+        // Envy it is used for its Ops, as Star Wars and Grain Sales already refuse it there (audit
+        // E-11, 2026-11-22; engine/AGENTS.md section 23).
+        const bool un_in_headline = chosen_card == card_ids::UN_INTERVENTION && state.current_phase == Phase::HEADLINE;
+        if ((c_info.side == p || c_info.side == Player::NONE) && !un_in_headline) {
             // Event occurs immediately
             if (!state.push_context()) {
                 invariant_failed("event chain too deep; card", static_cast<int>(chosen_card));
@@ -410,7 +414,7 @@ bool trigger_grain_sales(GameState& state, Player p) noexcept {
     uint8_t ussr_cards[111];
     uint8_t cnt = 0;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (i != in_play && in_hand_of(state.card_locations[i], Player::USSR)) {
+        if (i != in_play && !state.card_in_play(i) && in_hand_of(state.card_locations[i], Player::USSR)) {
             ussr_cards[cnt++] = i;
         }
     }

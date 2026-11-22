@@ -420,6 +420,18 @@ struct alignas(64) GameState {
     inline const DecisionContext& ctx() const noexcept {
         return ctx_stack[ctx_stack_depth];
     }
+    // A card being played for its Ops on any open frame (the top frame's resolving card is checked by
+    // each caller). Such a card stays in its owner's hand until the play finishes, and an event
+    // scanning that hand must not find it: a top-frame-only test let Grain Sales fired by Five Year
+    // Plan draw Five Year Plan itself (audit E-6, 2026-11-22). A lower frame's RESOLVING card is not
+    // one: an Event can hand its own card over (Missile Envy into the opponent's hand), where the next
+    // Event may legitimately find it -- Five Year Plan discards it at turn 4's headline of game 206.
+    inline bool card_in_play(uint8_t card) const noexcept {
+        for (uint8_t d = 0; d <= ctx_stack_depth && d < ctx_stack.size(); ++d) {
+            if (ctx_stack[d].pending_op_card == card) return true;
+        }
+        return false;
+    }
     // Returns false when the stack is full, which the caller must not ignore: running the next
     // event in the current frame is how the old silent version corrupted it.
     [[nodiscard]] inline bool push_context() noexcept {

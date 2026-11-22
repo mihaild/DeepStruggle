@@ -727,3 +727,50 @@ skips UN Intervention while `current_phase == HEADLINE`; in an action round both
 
 Tests: `RulesAudit.StarWarsHeadline_*`, `StarWarsActionRound_*`, `GrainSalesHeadline_*`,
 `GrainSalesActionRound_*` in `engine/tests/test_rules_audit.cpp`.
+
+## 24. The 2026-11-22 audit fixes -- engine E9 (owner, 2026-11-22)
+
+An external audit's engine findings were verified one by one (`research/log/audit_2026-11-22_verification.md`) and
+every true one fixed, with a new engine epoch, **E9** (owner: "fix everything in engine, and with all new fixes update
+engine letter to E9"). E9 is E8.1's rules plus these; runs on it are named `E9-...` (it plays `opp_event_gated` by
+default; no minor version). The leaderboard has an E9 epoch with its own behaviour digest and no matches yet.
+
+* **E-1** Olympic Games' sponsor is the participant's opponent, kept in `roll_actor` at Participate -- not
+  `phasing_player`, which it is not when a USSR Grain Sales draws it for the US.
+* **E-2** Star Wars runs the chosen card's Event as written: a USSR card's (Korean War, Arab-Israeli War) as the
+  USSR's. **E-10** Flower Power charges the US 2 VP for a USSR war card it plays as an Event (a headline, Star Wars):
+  `CardHandlers::charge_flower_power_for_us_event`; wars the US rolls are still charged inside the war, Ops plays by
+  `charge_flower_power_for_ops`.
+* **E-3** We Will Bury You settles only on the US's own action round at the top frame (not a play mode a USSR Grain
+  Sales hands the US), and only UN Intervention's Event answers it.
+* **E-4** Only Missile Envy itself discharges a Missile Envy obligation (`clear_force_for_card`).
+* **E-5** Five Year Plan places the discarded US card after its Event, so Shuttle Diplomacy lands in play.
+* **E-6** `GameState::card_in_play`: a card being played for its Ops on any open frame (`pending_op_card`) is never
+  found by an event scanning a hand (Grain Sales, Five Year Plan, the random discards, Blockade and Latin American
+  Debt Crisis, their masks too). A lower frame's resolving card is not excluded: Missile Envy hands itself over and
+  Five Year Plan may then discard it (game 206).
+* **E-7** The headline card ids are cleared when both headlines resolve, and the in-hand test alone keeps a headline
+  card out of the Ops cleanup; Missile Envy spent for Ops in a headline (drawn by Grain Sales) is relocated
+  (`Handover::Ignore` when it is in the spender's own hand). **E-13** an Ops decline in a headline goes through
+  `advance_after_ops`, which relocates the card.
+* **E-8** Grain Sales' `allow_early_stop` goes with its frame when the drawn card is played.
+* **E-9** `fire_owed_event` clears the Ops' start-of-round influence snapshot and op mode: the opponent's "can place"
+  observation slot was wrong in 2.4% of decisions. An observation-content change, approved with E9.
+* **E-11** a headlined Missile Envy that takes UN Intervention uses it for Ops (section 23's rule).
+* **E-12** a trapped or Missile-Envy-forced player may still pass an eighth action round.
+* **E-14** Our Man in Tehran's peeked cards read as deck to the USSR (cards drawn in the open stay peeked to both).
+  **E-15** `extract_observation_features` resolves `Player::NONE` before its optional blocks.
+* **E-16** the first headline picker sees its own committed card (ACTIVE_NOW) before the other side picks.
+* **E-17** under a canonical order, auto-advance's forced Suez / East European Unrest target is one the order allows;
+  a run's given priority is also cleared when its frame pops.
+* **E-18** the macro (until-control) expansion runs only over placements, inside one frame, Event stage and op mode,
+  and takes no step that does not place.
+* **E-19** the held-scoring loss is recorded where Phase F declares it (`effect_bits::HELD_SCORING_LOSS`, bit 50, not
+  observed); `Engine::is_held_scoring_game_over` reads it instead of guessing from the action round.
+* Minor: Missile Envy's tie path runs the taken card's Event on its own frame, as the direct path does; the decline
+  diagnostic snapshots its context byte for byte (`memcpy`). Summit's forced-dice convention (`primary_id` the US die)
+  is kept: the human-replay converter relies on it.
+
+The fuzzer's stack-depth bound is the stack's capacity (it was 2 from when the stack held three frames; Five Year Plan
+discarding Grain Sales whose drawn card is played Event-first reaches depth 3). Tests: the full C++ suite, the fuzzer,
+the whole human corpus, the observation golden (regenerated for E-16), the WebAssembly parity suite.

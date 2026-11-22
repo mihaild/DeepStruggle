@@ -280,6 +280,11 @@ void StateMachine::advance_headline_step(GameState& state) noexcept {
             state.phasing_player = h2_owner;
             state.ctx().decision_player = exec_player;
             state.ctx().resolving_card = h2_card;
+            // A US headline of a USSR war card is a US played War card (audit E-10, 2026-11-22).
+            if (h2_owner == Player::US && !CardHandlers::charge_flower_power_for_us_event(state, h2_card)) {
+                state.card_locations[h2_card] = CardLocation::DISCARD_PILE;
+                return;
+            }
 
             const bool h2_fired = CardHandlers::event_has_effect(state, h2_card, exec_player);
             bool done = CardHandlers::trigger_event(state, h2_card, exec_player);
@@ -293,6 +298,10 @@ void StateMachine::advance_headline_step(GameState& state) noexcept {
 
     // Both headlines resolved -> Start Action Round 1
     state.headline_stage = 3;
+    // The headline cards are played; a card that comes back into a hand this turn (SALT, Missile
+    // Envy, Grain Sales) is an ordinary card again, not one to skip (audit E-7, 2026-11-22).
+    state.headline_first_card = 0;
+    state.headline_second_card = 0;
     // NORAD asks whether DEFCON reached 2 during an *action round*, and a headline that drops
     // it to 2 sets the same flag. Clearing it as the headline ends keeps that drop from
     // claiming the round that follows: at turn 5 of ts-replayer game 219 DEFCON falls to 2 in
@@ -376,6 +385,12 @@ OwedEvent fire_owed_event(GameState& state, uint8_t card, Player spender) noexce
     state.ctx().decision_player = opp;
     state.ctx().resolving_card = card;
     state.ctx().timing_branch = 255;   // cleared
+    // The Ops are spent: their start-of-round influence snapshot and their op mode are not the
+    // Event's. Left on the frame, the snapshot gated the opponent's "can place" answers by the
+    // spender's start-of-round board (2.4% of decisions) and the COUP / REALIGN mode showed in the
+    // Event's placements (audit E-9, 2026-11-22). Ops the Event grants retake both.
+    state.ctx().start_influence_nodes = {};
+    state.ctx().op_mode = OpMode::INFLUENCE;
     state.ctx().allow_early_stop = 0;
     const bool fired = CardHandlers::event_has_effect(state, card, opp);
     const bool done = CardHandlers::trigger_event(state, card, opp);
@@ -396,8 +411,9 @@ OwedEvent fire_owed_event(GameState& state, uint8_t card, Player spender) noexce
 // unwinds this frame when it finishes, or the game ended.
 bool settle_card_played_on_pushed_frame(GameState& state) noexcept {
     const uint8_t card = state.ctx().pending_op_card;
+    // A headline card is never in a hand while it is being headlined, so in-hand alone excludes it;
+    // one handed back into a hand and played again is played (audit E-7, 2026-11-22).
     if (card == 0 || card > 110 || card == card_ids::THE_CHINA_CARD ||
-        card == state.headline_first_card || card == state.headline_second_card ||
         !is_in_any_hand(state.card_locations[card])) {
         return false;
     }
@@ -498,16 +514,21 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
         // the USSR's Missile Envy asked for the highest Ops card, and playable a second time.
         uint8_t op_card = state.ctx().pending_op_card;
         if (op_card != 0 && op_card != card_ids::THE_CHINA_CARD &&
-            op_card != state.headline_first_card && op_card != state.headline_second_card &&
-            is_in_any_hand(state.card_locations[op_card])) {
+            is_in_any_hand(state.card_locations[op_card])) {   // a headline card in a hand is played (E-7)
             // Still in a hand means nothing has placed it yet. On an EVENT_FIRST play the
             // card was placed when its Event fired, by the site that knew whether the Event
             // could occur; re-deciding here on "it is an opponent's card" alone would throw
             // that answer away and remove a card whose Event never happened.
+            // Respect a card an Event handed over (Missile Envy in its recipient's hand) -- but Missile
+            // Envy still in the hand of the player whose Ops these are is the card they spent, not one
+            // handed to them: Grain Sales drawing it in a headline left it in the US hand, playable
+            // again (audit E-7, 2026-11-22).
+            const Player spender = ops_spender(state, op_card);
+            const bool spent_own = op_card == card_ids::MISSILE_ENVY &&
+                                   in_hand_of(state.card_locations[op_card], spender);
             CardHandlers::relocate_played_card(state, op_card,
-                                 event_occurred_on_ops_play(state, op_card,
-                                                            ops_spender(state, op_card)),
-                                 CardHandlers::Handover::Respect);
+                                 event_occurred_on_ops_play(state, op_card, spender),
+                                 spent_own ? CardHandlers::Handover::Ignore : CardHandlers::Handover::Respect);
         }
         advance_headline_step(state);
         return;
@@ -757,6 +778,7 @@ void StateMachine::finish_end_turn(GameState& state) noexcept {
     }
     if (us_holds || ussr_holds) {
         state.current_phase = Phase::GAME_OVER;
+        state.set_flag(effect_bits::HELD_SCORING_LOSS);
         if (us_holds && ussr_holds) {
             state.victory_points = 0;
         } else if (us_holds) {
@@ -825,9 +847,10 @@ static OpMode to_op_mode(Resolution r) noexcept {
 
 // Playing a card for Operations discharges a Missile Envy obligation.
 static void clear_force_for_card(GameState& state, Player p, uint8_t card) noexcept {
+    // Only Missile Envy itself discharges it (forced_card_id is always Missile Envy while one is
+    // owed, so a "|| == MISSILE_ENVY" here let any card do it: audit E-4, 2026-11-22).
     if (state.forced_card_player == p &&
-        (state.forced_card_id == card || state.forced_card_id == card_ids::MISSILE_ENVY ||
-         state.forced_card_id == 0)) {
+        (state.forced_card_id == card || state.forced_card_id == 0)) {
         state.forced_card_player = Player::NONE;
         state.forced_card_id = 0;
     }
@@ -930,6 +953,13 @@ bool StateMachine::step(GameState& state, const MicroAction& action, const uint8
         !in_hand_of(state.card_locations[card_ids::MISSILE_ENVY], state.forced_card_player)) {
         state.forced_card_player = Player::NONE;
         state.forced_card_id = 0;
+    }
+    // A run that ended on a pushed frame and popped leaves no priority behind for the frame beneath
+    // (audit E-17, 2026-11-22: the return below came first).
+    if (state.ctx_stack_depth < depth && state.canon_prio_tag != 0 &&
+        state.canon_prio_tag != canonical::run_tag(state)) {
+        state.canon_prio_tag = 0;
+        for (uint8_t& r : state.canon_prio) r = 0;
     }
     if (state.ctx_stack_depth != depth) return true;
     DecisionContext& c = state.ctx();
@@ -1136,6 +1166,10 @@ bool StateMachine::step_impl(GameState& state, const MicroAction& action, const 
         state.phasing_player = first_owner;
         state.ctx().decision_player = exec_player;
         state.ctx().resolving_card = first_card;
+        if (first_owner == Player::US && !CardHandlers::charge_flower_power_for_us_event(state, first_card)) {
+            state.card_locations[first_card] = CardLocation::DISCARD_PILE;   // the 2 VP ended the game (E-10)
+            return true;
+        }
 
         const bool first_fired = CardHandlers::event_has_effect(state, first_card, exec_player);
         bool done = CardHandlers::trigger_event(state, first_card, exec_player);
@@ -1169,6 +1203,9 @@ bool StateMachine::step_impl(GameState& state, const MicroAction& action, const 
             // trigger put it there, so that the mask and this step agree about where it is.
             // Moving it here instead would reintroduce exactly the split that costs.
             state.ctx().resolving_card = 0;
+            // Grain Sales' own decline flag goes with its frame: left set, the drawn card's Event
+            // offered a stray CONFIRM_DONE at its own branch nodes (audit E-8, 2026-11-22).
+            state.ctx().allow_early_stop = 0;
         }
 
         // If resolving active event sub-decision
@@ -1190,7 +1227,10 @@ bool StateMachine::step_impl(GameState& state, const MicroAction& action, const 
             // its Influence in two South American countries. At turn 8 AR4 of ts-replayer
             // game 117 the doubling vanished and the US went straight on to spend the card's
             // own Ops.
-            const DecisionContext before_ctx = state.ctx();
+            // Byte for byte, padding included: a copy-construction need not keep the padding bytes, so the memcmp
+            // below could see a difference that is not one (audit, minor, 2026-11-22).
+            DecisionContext before_ctx;
+            std::memcpy(static_cast<void*>(&before_ctx), &state.ctx(), sizeof(DecisionContext));
             const uint8_t before_card = state.ctx().resolving_card;
             bool finished = CardHandlers::handle_event_step(state, action);
             if (!finished && action.is_confirm_done()) {
@@ -1321,7 +1361,8 @@ bool StateMachine::step_impl(GameState& state, const MicroAction& action, const 
 
                 // We Will Bury You on a US action round. UN Intervention waits for its play
                 // mode below: only its Event answers the debt.
-                if (p == Player::US && state.current_phase == Phase::ACTION_ROUND &&
+                if (p == Player::US && state.phasing_player == Player::US && state.ctx_stack_depth == 0 &&
+                    state.current_phase == Phase::ACTION_ROUND &&
                     card != card_ids::UN_INTERVENTION && settle_we_will_bury_you(state, false)) {
                     return true;
                 }
@@ -1366,9 +1407,12 @@ bool StateMachine::step_impl(GameState& state, const MicroAction& action, const 
                     }
                 }
 
-                // We Will Bury You on the US action round UN Intervention is played in.
-                if (p == Player::US && state.current_phase == Phase::ACTION_ROUND &&
-                    settle_we_will_bury_you(state, mode == Resolution::EVENT)) {
+                // We Will Bury You on the US action round UN Intervention is played in -- the US's own
+                // round, not a play mode a USSR Grain Sales hands it (audit E-3, 2026-11-22), and only
+                // UN Intervention's Event answers it.
+                if (p == Player::US && state.phasing_player == Player::US && state.ctx_stack_depth == 0 &&
+                    state.current_phase == Phase::ACTION_ROUND &&
+                    settle_we_will_bury_you(state, mode == Resolution::EVENT && card == card_ids::UN_INTERVENTION)) {
                     return true;
                 }
 
@@ -1460,8 +1504,9 @@ bool StateMachine::step_impl(GameState& state, const MicroAction& action, const 
                     state.ctx().pending_op_card, state.ctx().event_granted_ops);
                 if (action.is_confirm_done() || action.primary_id == 255 ||
                     (action.primary_id == 0 && free_action_bars_influence)) {
-                    if (state.current_phase == Phase::HEADLINE && state.ctx_stack_depth == 0) advance_headline_step(state);
-                    else advance_after_ops(state);
+                    // Through advance_after_ops in a headline too, which relocates the card these Ops
+                    // belonged to before advancing the headline (audit E-13, 2026-11-22).
+                    advance_after_ops(state);
                     return true;
                 }
                 OpMode op_mode = static_cast<OpMode>(action.primary_id);

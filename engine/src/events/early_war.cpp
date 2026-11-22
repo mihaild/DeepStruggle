@@ -43,7 +43,7 @@ bool trigger_five_year_plan(GameState& state, Player p) noexcept {
     uint8_t ussr_cards[111];
     uint8_t count = 0;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (i != in_play && in_hand_of(state.card_locations[i], Player::USSR)) {
+        if (i != in_play && !state.card_in_play(i) && in_hand_of(state.card_locations[i], Player::USSR)) {
             ussr_cards[count++] = i;
         }
     }
@@ -57,16 +57,17 @@ bool trigger_five_year_plan(GameState& state, Player p) noexcept {
         // Discard card, but trigger event! Where the Event cannot occur it has not been
         // implemented, so a starred card is discarded rather than removed -- asked before the
         // Event runs, since an Event that fires sets the flags this reads.
-        CardHandlers::relocate_played_card(
-            state, chosen_card,
-            CardHandlers::event_has_effect(state, chosen_card, Player::US),
-            CardHandlers::Handover::Respect);
+        // Placed AFTER the Event runs, as every other dispatch site does: an Event that sets its own
+        // standing flag (Shuttle Diplomacy) has to be read as in effect, or the card went to the
+        // discard pile while active (audit E-5, 2026-11-22).
+        const bool fired = CardHandlers::event_has_effect(state, chosen_card, Player::US);
         if (!state.push_context()) {
             invariant_failed("event chain too deep; card", static_cast<int>(chosen_card));
         }
         state.ctx().decision_player = Player::US;
         state.ctx().resolving_card = chosen_card;
         bool done = CardHandlers::trigger_event(state, chosen_card, Player::US);
+        CardHandlers::relocate_played_card(state, chosen_card, fired, CardHandlers::Handover::Respect);
         if (done) {
             state.pop_context();
         }
@@ -110,7 +111,7 @@ bool trigger_blockade(GameState& state, Player p) noexcept {
     // Check if US has any card with Ops >= 3 to discard
     bool has_3ops = false;
     for (uint8_t i = 1; i <= 110; ++i) {
-        if (in_hand_of(state.card_locations[i], Player::US)) {
+        if (in_hand_of(state.card_locations[i], Player::US) && !state.card_in_play(i)) {
             // Effective Ops, as the discard itself is judged: Containment's +1 can make a
             // printed 2 qualify, and this test decides whether the US is asked at all.
             if (Operations::get_effective_ops(state, i, Player::US) >= 3) {

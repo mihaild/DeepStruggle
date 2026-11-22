@@ -125,16 +125,20 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                 const uint8_t left = (state.action_round <= cap)
                     ? static_cast<uint8_t>(cap - state.action_round + 1) : 0;
 
+                // The eighth action round is still theirs to leave, forced card or not (audit E-12).
+                const bool ar8_optional = state.action_round == 8;
                 if (held > 0 && held >= left) {
                     for (uint8_t i = 1; i <= 110; ++i) {
                         if (in_hand_of(state.card_locations[i], p) && CardData::is_scoring_card(i)) {
                             mask_out[i] = 1;
                         }
                     }
+                    if (ar8_optional) mask_out[0] = 1;
                     return;
                 }
                 mask_out[card_ids::THE_CHINA_CARD] = 0;   // the force blocks it too
                 mask_out[card_ids::MISSILE_ENVY] = 1;
+                if (ar8_optional) mask_out[0] = 1;
                 return;
             }
 
@@ -199,6 +203,8 @@ void ActionMask::generate_mask(const GameState& state, uint8_t* mask_out, size_t
                 bool any = false;
                 for (size_t i = 0; i < 112; ++i) if (mask_out[i]) { any = true; break; }
                 if (!any) mask_out[0] = 1;
+                // A trapped player may still leave an eighth action round (audit E-12, 2026-11-22).
+                if (state.current_phase == Phase::ACTION_ROUND && state.action_round == 8) mask_out[0] = 1;
                 return;
             }
 
@@ -813,15 +819,28 @@ bool ActionMask::is_merged_influence_action(const GameState& state, uint16_t act
 int ActionMask::apply_macro_expansion(GameState& state, uint8_t country) noexcept {
     if (country >= flat_slots::NODE_COUNT || state.ctx().decision_type != DecisionType::POINT_NODE) return 0;
     const Player side = state.ctx().decision_player;
+    // A macro is a run of placements: Influence (an Ops placement, or an Event's), not a removal, a
+    // coup or a realignment, and inside one frame, one Event stage and one op mode -- it used to run on
+    // through De-Stalinization's removal into its placement, and past a coup into the Cuban Missile
+    // Crisis' cancellation (audit E-18, 2026-11-22).
+    const DecisionContext start = state.ctx();
+    const uint8_t depth = state.ctx_stack_depth;
+    if (start.resolving_card == 0 && start.op_mode != OpMode::INFLUENCE) return 0;
     int placed = 0;
     // A country takes at most a stability's worth plus the opponent's influence; 64 bounds any
     // play by far, and only guards against a step that is accepted without ever ending.
     for (int guard = 0; guard < 64; ++guard) {
+        const uint8_t before = state.countries[country].get_influence(side);
         const MicroAction point = decode_flat_action_212(state, flat_slots::NODE + country);
-        if (!StateMachine::step(state, point)) break;
+        GameState next = state;   // a step that is not a placement is not taken at all
+        if (!StateMachine::step(next, point)) break;
+        if (next.countries[country].get_influence(side) <= before) break;   // not a placement
+        state = next;
         ++placed;
         if (is_game_over(state)) break;
-        if (state.ctx().decision_type != DecisionType::POINT_NODE || state.ctx().decision_player != side) break;
+        if (state.ctx_stack_depth != depth || state.ctx().decision_type != DecisionType::POINT_NODE ||
+            state.ctx().decision_player != side || state.ctx().resolving_card != start.resolving_card ||
+            state.ctx().event_stage != start.event_stage || state.ctx().op_mode != start.op_mode) break;
         if (Scoring::get_country_control(state, country) == side) break;
     }
     return placed;

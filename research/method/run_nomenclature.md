@@ -16,7 +16,7 @@ branch point on the way to it:
     E7-A4-R1-S44-2                                 a same-seed replicate of the first
     E8-A35-R102-S44@930M+R119@1300M+V1             a branch into view 1 (canonical setup order)
 
-- **`E`** — the engine revision, as below (`E8` since 2026-10-20, with ENG-5's alternating deal folded in on 2026-10-23 -- owner -- so an E8 run launched before then dealt the old way; a minor version is `E4.1`, and `E8.1` is E8 with ENG-9's rule bit `opp_event_gated`, the default for a
+- **`E`** — the engine revision, as below (`E9` since 2026-11-22: E8.1's rules plus the 2026-11-22 audit's engine fixes, `engine/AGENTS.md` section 24, no minor version; `E8` since 2026-10-20, with ENG-5's alternating deal folded in on 2026-10-23 -- owner -- so an E8 run launched before then dealt the old way; a minor version is `E4.1`, and `E8.1` is E8 with ENG-9's rule bit `opp_event_gated`, the default for a
   new network since 2026-11-06 -- owner -- which `tools/scripts/run_codes.py --run` checks against the
   run's recorded `obs_rules`). An
   engine revision can also move a training default: since E8 a new network reads

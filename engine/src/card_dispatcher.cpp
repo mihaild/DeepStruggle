@@ -329,6 +329,20 @@ bool CardHandlers::charge_flower_power_for_ops(GameState& state, Player p, uint8
     return true;
 }
 
+// Flower Power on a USSR war card the US plays as an Event (a headline, Star Wars): the war is the
+// USSR's and its own roll does not charge the US, but the card says "every US played War card ...
+// for Operations or an Event" (audit E-2 / E-10, 2026-11-22). A war the US rolls itself is charged
+// inside the war, and one played for Operations by charge_flower_power_for_ops. Returns false when
+// the 2 VP end the game.
+bool CardHandlers::charge_flower_power_for_us_event(GameState& state, uint8_t card) noexcept {
+    if (!CardData::is_war_card(card) || CardData::get_card(card).side != Player::USSR ||
+        !state.has_flag(effect_bits::FLOWER_POWER_ACTIVE) ||
+        !can_trigger_event(state, card, Player::USSR)) {
+        return true;
+    }
+    return !award_vp(state, -2);
+}
+
 bool CardHandlers::pay_u2_incident_rider(GameState& state) noexcept {
     if (!state.has_flag(effect_bits::U2_INCIDENT_ACTIVE)) return true;
     if (award_vp(state, -1)) {
@@ -533,6 +547,7 @@ bool CardHandlers::run_event_step(GameState& state, const MicroAction& action) n
             // makes a printed 2 enough, Red Scare's -1 makes a printed 3 insufficient. All nine
             // sub-3 escapes across the 287 downloaded human games have Containment in play.
             if (card_id >= 1 && card_id <= 110 && in_hand_of(state.card_locations[card_id], Player::US) &&
+                !state.card_in_play(card_id) &&
                 Operations::get_effective_ops(state, card_id, Player::US) >= 3) {
                 state.card_locations[card_id] = CardLocation::DISCARD_PILE;
                 state.ctx().resolving_card = 0;
@@ -686,7 +701,10 @@ bool CardHandlers::run_event_step(GameState& state, const MicroAction& action) n
         case card_ids::OLYMPIC_GAMES: {
             if (state.ctx().decision_type == DecisionType::CHOOSE_BRANCH) {
                 if (action.primary_id == 0) {
-                    // Participate: transition to ROLL_DIE
+                    // Participate: transition to ROLL_DIE. The sponsor is the participant's opponent,
+                    // kept for the roll -- not the phasing player, which it is not when a USSR Grain
+                    // Sales draws Olympic Games for the US (audit E-1, 2026-11-22).
+                    state.ctx().roll_actor = get_opponent(state.ctx().decision_player);
                     state.ctx().decision_player = Player::NONE;
                     state.ctx().decision_type = DecisionType::ROLL_DIE;
                     state.ctx().pending_roll = RollType::OLYMPIC_GAMES;
@@ -711,7 +729,8 @@ bool CardHandlers::run_event_step(GameState& state, const MicroAction& action) n
                     return false;
                 }
             } else if (state.ctx().decision_type == DecisionType::ROLL_DIE) {
-                Player sponsor = state.phasing_player;
+                Player sponsor = state.ctx().roll_actor != Player::NONE ? state.ctx().roll_actor
+                                                                       : state.phasing_player;
                 uint8_t forced_sp = (action.primary_id >= 1 && action.primary_id <= 6) ? action.primary_id : 0;
                 uint8_t forced_opp = (action.secondary_id >= 1 && action.secondary_id <= 6) ? action.secondary_id : 0;
                 uint8_t sp_roll = (forced_sp > 0) ? (forced_sp + 2) : (Prng::roll_d6(state.rng_state) + 2);
@@ -1128,13 +1147,24 @@ bool CardHandlers::run_event_step(GameState& state, const MicroAction& action) n
             state.forced_card_id = card_ids::MISSILE_ENVY;
 
             const auto& c_info = CardData::get_card(chosen_card);
-            if (c_info.side == p_player || c_info.side == Player::NONE) {
+            const bool un_in_headline = chosen_card == card_ids::UN_INTERVENTION &&
+                                        state.current_phase == Phase::HEADLINE;   // audit E-11
+            if ((c_info.side == p_player || c_info.side == Player::NONE) && !un_in_headline) {
+                // On a frame of its own, as the direct path (trigger_missile_envy) runs it: the tie
+                // route used to run the Event on Missile Envy's frame, so the two left a different
+                // stack, context and observation for the same Event (audit, minor, 2026-11-22).
+                if (!state.push_context()) {
+                    invariant_failed("event chain too deep; card", static_cast<int>(chosen_card));
+                }
                 state.ctx().decision_player = p_player;
                 state.ctx().resolving_card = chosen_card;
                 const bool fired = event_has_effect(state, chosen_card, p_player);
                 bool done = trigger_event(state, chosen_card, p_player);
                 relocate_played_card(state, chosen_card, fired, Handover::Respect);
-                if (done) state.ctx().resolving_card = 0;
+                if (done) {
+                    state.pop_context();
+                    state.ctx().resolving_card = 0;
+                }
                 return done;
             } else {
                 state.ctx().pending_op_card = chosen_card;
@@ -1241,10 +1271,20 @@ bool CardHandlers::run_event_step(GameState& state, const MicroAction& action) n
                 if (!state.push_context()) {
                     invariant_failed("event chain too deep; card", static_cast<int>(card_id));
                 }
-                state.ctx().decision_player = Player::US;
+                // The Event happens as written: a USSR card's Event is the USSR's (Korean War's North
+                // Korea invades for the USSR), as headline dispatch already runs it -- it was run as
+                // the US's, which gave the US the war and its Military Ops (audit E-2, 2026-11-22).
+                const Player exec = CardData::get_card(card_id).side == Player::USSR ? Player::USSR : Player::US;
+                state.ctx().decision_player = exec;
                 state.ctx().resolving_card = card_id;
-                const bool fired = event_has_effect(state, card_id, Player::US);
-                bool done = trigger_event(state, card_id, Player::US);
+                const bool fired = event_has_effect(state, card_id, exec);
+                if (!charge_flower_power_for_us_event(state, card_id)) {   // the US played a war card
+                    relocate_played_card(state, card_id, fired, Handover::Respect);
+                    state.pop_context();
+                    state.ctx().resolving_card = 0;
+                    return true;
+                }
+                bool done = trigger_event(state, card_id, exec);
                 relocate_played_card(state, card_id, fired, Handover::Respect);
                 if (done) state.pop_context();
                 return done;
@@ -1455,8 +1495,9 @@ bool CardHandlers::run_event_step(GameState& state, const MicroAction& action) n
                     return false;
                 }
                 uint8_t card_id = action.primary_id;
-                // Effective Ops, as for Blockade above.
+                // Effective Ops, as for Blockade above; never the card being played (E-6).
                 if (card_id >= 1 && card_id <= 110 && in_hand_of(state.card_locations[card_id], Player::US) &&
+                    !state.card_in_play(card_id) &&
                     Operations::get_effective_ops(state, card_id, Player::US) >= 3) {
                     state.card_locations[card_id] = CardLocation::DISCARD_PILE;
                     state.ctx().resolving_card = 0;
@@ -2045,8 +2086,8 @@ void CardHandlers::get_event_action_mask(const GameState& state, uint8_t* mask_o
             case card_ids::BLOCKADE:
             case card_ids::LATIN_AMERICAN_DEBT_CRISIS:
                 for (uint8_t i = 1; i <= 110; ++i) {
-                    // Effective Ops, matching what both dispatchers accept.
-                    if (in_hand_of(state.card_locations[i], Player::US) &&
+                    // Effective Ops, matching what both dispatchers accept; never the card in play (E-6).
+                    if (in_hand_of(state.card_locations[i], Player::US) && !state.card_in_play(i) &&
                         Operations::get_effective_ops(state, i, Player::US) >= 3) {
                         mask_out[i] = 1;
                     }

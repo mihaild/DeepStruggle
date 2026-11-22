@@ -19,6 +19,7 @@ def _held_scoring_end() -> ts.GameState:
     st.action_round = 8
     st.victory_points = -20
     st.current_phase = ts.Phase.GAME_OVER
+    st.set_flag(ts.EffectBits.HELD_SCORING_LOSS)   # what the engine's turn-end check records (audit E-19)
     assert ts.Engine.is_held_scoring_loss(st, ts.Player.US)
     return st
 

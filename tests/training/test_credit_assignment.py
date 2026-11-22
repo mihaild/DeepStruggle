@@ -404,6 +404,7 @@ class TestBlunderAwareRewardCalculator:
         st.turn = 3
         st.action_round = 7
         st.current_phase = ts.Phase.GAME_OVER
+        st.set_flag(ts.EffectBits.HELD_SCORING_LOSS)   # what the turn-end check records
 
         # If USSR is acting player when game ends due to held scoring:
         r_ussr = calc.compute_step_rewards(
@@ -660,7 +661,8 @@ class TestHeadlineResolutionOrder:
         ts.Engine.step(st, ts.MicroAction(ts.DecisionType.SELECT_CARD, 8, 0, 0))
 
         # On tie, US card must resolve first
-        assert st.headline_first_card == 4, f"US card (4) must resolve first on tie, got {st.headline_first_card}"
+        # The card ids are cleared once both headlines resolve (audit E-7); who went first is kept.
+        assert st.headline_first_owner == ts.Player.US, f"US must resolve first on tie, got {st.headline_first_owner}"
 
 
 class TestUsefulActionsRewardCalculator:
@@ -809,8 +811,14 @@ class TestHeldScoringAndPotentialFixes:
         assert not ts.Engine.is_held_scoring_game_over(st)
         assert not ts.Engine.is_held_scoring_loss(st, ts.Player.USSR)
 
-        # Turn-end game over (action_round > max_ar, turn 1 max_ar = 6) -> IS held scoring game over!
+        # An eighth action round's game over with a scoring card in a hand is still not a held-scoring
+        # one (audit E-19: it used to be guessed from the action round).
+        st.action_round = 8
+        assert not ts.Engine.is_held_scoring_game_over(st)
+
+        # The turn-end check (Phase F) records the held-scoring loss -> IS held scoring game over!
         st.action_round = 7
+        st.set_flag(ts.EffectBits.HELD_SCORING_LOSS)
         assert ts.Engine.is_held_scoring_game_over(st)
         assert ts.Engine.is_held_scoring_loss(st, ts.Player.USSR)
         assert not ts.Engine.is_held_scoring_loss(st, ts.Player.US)
@@ -823,6 +831,7 @@ class TestHeldScoringAndPotentialFixes:
         st.current_phase = ts.Phase.GAME_OVER
         st.turn = 4
         st.action_round = 8  # Mid/late war ends after AR 7
+        st.set_flag(ts.EffectBits.HELD_SCORING_LOSS)   # what the turn-end check records
         assert ts.Engine.is_held_scoring_game_over(st)
         assert ts.Engine.is_held_scoring_loss(st, ts.Player.US)
         assert ts.Engine.is_held_scoring_loss(st, ts.Player.USSR)

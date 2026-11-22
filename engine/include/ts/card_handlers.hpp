@@ -72,6 +72,7 @@ public:
     // played as its Event is charged where the war is rolled. Returns false if the charge ended
     // the game, and the caller must stop.
     static bool charge_flower_power_for_ops(GameState& state, Player p, uint8_t card) noexcept;
+    static bool charge_flower_power_for_us_event(GameState& state, uint8_t card) noexcept;
 
     // UN Intervention was played as an Event: U-2 Incident's rider, "if UN Intervention is
     // played later this turn, either by the US or the USSR, the USSR receives an additional 1
