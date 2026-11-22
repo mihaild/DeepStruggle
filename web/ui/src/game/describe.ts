@@ -120,9 +120,12 @@ export function describeAction(
         const ussr = cardArg(ussrCard, engine.cardName(ussrCard));
         const usOps = engine.cardOps(usCard);
         const ussrOps = engine.cardOps(ussrCard);
-        // The order is the engine's: the card it resolves first (headline_first_card), set by the
-        // commit that revealed both.
-        const firstP = after.headline_first_card === ussrCard ? "USSR" : "US";
+        // The order is the engine's: the side it resolves first (headline_first_owner), set by the commit that
+        // revealed both. Not the card id: E9 clears the ids once both headlines resolve (audit E-7), which this
+        // same commit can do.
+        const firstP = after.headline_first_owner === "USSR" ? "USSR"
+          : after.headline_first_owner === "US" ? "US"
+          : after.headline_first_card === ussrCard ? "USSR" : "US";
         const secondP = firstP === "US" ? "USSR" : "US";
         logs.push(logLine("★", "log:headline.revealed", {
           usCard: us, usId: usCard, usOps, ussrCard: ussr, ussrId: ussrCard, ussrOps,

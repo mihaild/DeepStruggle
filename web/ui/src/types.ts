@@ -124,6 +124,7 @@ export interface GameState {
   headline_ussr_card: number;
   /** Once both headlines are in: the card that resolves first and the one second (0 before). */
   headline_first_card?: number;
+  headline_first_owner?: string;
   headline_second_card?: number;
   /** 0 while choosing, 1 resolving the first headline, 2 the second. */
   headline_stage?: number;

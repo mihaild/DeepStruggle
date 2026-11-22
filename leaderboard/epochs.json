@@ -159,8 +159,8 @@
     "description": "The E9 engine (owner, 2026-11-22): E8.1's rules with every engine finding of the 2026-11-22 audit fixed (research/log/audit_2026-11-22_verification.md, engine/AGENTS.md section 24) -- among them the Olympic Games sponsor after Grain Sales, Star Wars running a USSR war as the USSR's, We Will Bury You and Missile Envy settled only by their own plays, Five Year Plan placing a card after its Event, events not finding a card being played for its Ops, headline cards and Grain Sales' decline not lingering, an owed Event clearing the Ops' start-of-round snapshot (observation: the 'can place' slot), Flower Power on US-played USSR wars, UN Intervention barred from a headline Missile Envy, the eighth round optional to a trapped or forced player, Our Man in Tehran's cards hidden from the USSR, the first headline pick visible to its picker, and the held-scoring loss recorded where it happens. Games here are played under E9's rules. Anchor carried over from E8 (the E7 R34 soup's 32-world root at 1600); the main set is the anchor alone until E9 has main-vs-main games -- E8's second main player, the A13 heads SWA, joins once it has been played against the anchor here. Every rating is re-measured on this engine; E8's matches do not carry over. Greedy unless a player's id says otherwise.",
     "behaviour": {
       "version": 3,
-      "runner": "67832b37fc35513676e6b05ccb1b157a9e3b76303c320168f4304a69c8542c5c",
-      "state": "82d927f3a69ae800d67baafb1299b450956c080b250db0427711cf387d82a0ce",
+      "runner": "3cf6c5b2abfa6e831e8239552da5f2ffc7ae63b5dd30c894968b179ab2eaee49",
+      "state": "911b62655fd0f155e0862d7411469a8270d95c2c1cd30e79bea0131ecd6565d8",
       "rollout": "1c8ada8e78eba932b4a3ea7ef410cd497640de051962b571e97c73fdebde1799",
       "mcts": "37cbbc4a6f617b44b851a236fbdada91f8e9b2e73357bc52d5fc99706a195fc8"
     },

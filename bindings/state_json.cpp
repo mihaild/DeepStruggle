@@ -483,6 +483,8 @@ Value display_state(const GameState& state) {
     d.set("headline_ussr_card", I(state.headline_ussr_card));
     d.set("headline_first_card", I(state.headline_first_card));
     d.set("headline_second_card", I(state.headline_second_card));
+    // Who resolves first: kept after the headline, when the card ids are cleared (E9, audit E-7).
+    d.set("headline_first_owner", player_name(state.headline_first_owner));
     d.set("headline_stage", I(state.headline_stage));
     d.set("forced_card_player", player_name(state.forced_card_player));
     d.set("forced_card_id", I(state.forced_card_id));
