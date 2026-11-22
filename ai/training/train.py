@@ -527,7 +527,8 @@ def build_parser() -> argparse.ArgumentParser:
                              "Phi = this x VP from the US side, Phi(terminal) = 0, and each step "
                              "adds Phi(s') - Phi(s) for the mover. Over a game it sums to a "
                              "constant, so the optimal policy is unchanged; it only pays VP "
-                             "gains when they happen and takes them back at the end.")
+                             "gains when they happen and takes them back at the end. Refused with "
+                             "--target-region / --target-endings (the wrapper hides those rewards' hooks).")
     parser.add_argument("--decisiveness-turns", type=float, default=0.0,
                         help="Scale the terminal reward by (1 - turn/K), so a result on turn T is "
                              "worth 1 - T/K instead of 1 (0 = off). With gamma=1 and terminal-only "

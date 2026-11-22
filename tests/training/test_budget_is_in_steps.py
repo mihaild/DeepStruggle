@@ -76,3 +76,20 @@ def test_the_cli_rejects_a_zero_budget_end_to_end() -> None:
     assert proc.returncode != 0, "a zero step budget must not start a run"
     combined = proc.stdout + proc.stderr
     assert "train_steps must be positive" in combined, combined[-2000:]
+
+
+@pytest.mark.parametrize("kwargs, needle", [
+    # Audit T-12: the shaping wrapper hides the targeted reward from its attach / seat / metrics hooks.
+    (dict(vp_potential=0.05, target_region="europe"), "--vp-potential does not work"),
+    (dict(vp_potential=0.05, target_endings=["defcon"]), "--vp-potential does not work"),
+    # Audit T-9: the restart pool was dropped silently under a forced opening; the start pool harvests in the base
+    # observation and the E4 view.
+    (dict(forced_opening="x", restart_pool_frac=0.25), "--forced-opening and --restart-pool-frac"),
+    (dict(start_pool_frac=0.25, obs_features=1 << 2), "--start-pool-frac harvests"),
+    (dict(start_pool_frac=0.25, merged_influence=True), "--start-pool-frac harvests"),
+])
+def test_combinations_that_would_corrupt_silently_raise_before_anything_is_built(kwargs, needle: str) -> None:
+    base = dict(train_steps=1_000_000, snapshot_every_steps=100_000)
+    base.update(kwargs)
+    with pytest.raises(ValueError, match=needle):
+        train_pipeline(**base)  # type: ignore[arg-type]
