@@ -300,6 +300,21 @@ def _median(xs: List[float]) -> float:
     return ys[n // 2] if n % 2 else 0.5 * (ys[n // 2 - 1] + ys[n // 2])
 
 
+def recorded_opponent_frac(run_dir: str) -> Optional[float]:
+    """The `opponent_frac` the run recorded in its `metadata.json`, or None when it recorded none.
+
+    A run launched with `--opponent-frac 0` is pure self-play on purpose (the owner's flagship
+    recipe since B6, 2026-11-15; invariant 14), so its missing `opp_pool_size` is not a failure.
+    """
+    try:
+        with open(os.path.join(run_dir, "metadata.json"), encoding="utf-8") as f:
+            meta = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    frac = meta.get("opponent_frac") if isinstance(meta, dict) else None
+    return float(frac) if isinstance(frac, (int, float)) else None
+
+
 def health_alarms(run_dir: str, fired: Set[str]) -> List[str]:
     """Metric-condition alarms, each emitted at most once per run (latched via `fired`)."""
     path = os.path.join(run_dir, "training_metrics.jsonl")
@@ -326,10 +341,14 @@ def health_alarms(run_dir: str, fired: Set[str]) -> List[str]:
             fired.add(key)
             out.append(msg)
 
-    # 1. Structural: is there a pool at all, and is it opposition?
+    # 1. Structural: is there a pool at all, and is it opposition? A run that recorded
+    #    `opponent_frac` 0 was launched without a pool on purpose; one that recorded none is
+    #    still held to the pool.
     if not any("opp_pool_size" in r for r in rows):
-        once("nopool", "no `opp_pool_size` in the metrics at all -- this run has no opponent "
-                       "pool, which is the failure itself, not evidence of it")
+        frac = recorded_opponent_frac(run_dir)
+        if frac is None or frac > 0:
+            once("nopool", "no `opp_pool_size` in the metrics at all -- this run has no opponent "
+                           "pool, which is the failure itself, not evidence of it")
     else:
         sizes = [r["opp_pool_size"] for r in rows
                  if isinstance(r.get("opp_pool_size"), (int, float))]

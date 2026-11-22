@@ -334,10 +334,13 @@ Numbered as in `CLAUDE.md`.
     different game until re-taken. Both failure modes are silent: `(seed, actions)` datasets
     truncate each game at its first newly-illegal action (biasing what remains toward openings),
     and old checkpoints keep loading and running.
-14. **An RL run needs an opponent pool** (`--opponent-frac 0.3 --opponent-self-pool
-    --opponent-pool-size 12`): without it one seat runs away and the critic loses all skill, as
-    happened twice (`research/archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md`,
-    `research/log/E4_pool_starvation_recurrence.md`).
+14. **No opponent pool is the flagship recipe; a pool, when used, is the full pool** (`--opponent-frac 0.3
+    --opponent-self-pool --opponent-pool-size 12`). Without one, E3 and E4 runs lost a seat and the critic's
+    skill twice (`research/archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md`,
+    `research/log/E4_pool_starvation_recurrence.md`); P47 found the E3 spread pool biased at 11-14B steps, and B6
+    (R132, `--opponent-frac 0` from scratch) trained cleanly and ahead of the pooled control
+    (`research/plans/P47_pool_composition.md`). Since 2026-11-15 the owner's flagship line (R132, R139, R155,
+    R164-R171) is pure self-play; dropping the pool from a recipe that has one is the owner's call.
 15. **Derive a launch command from a healthy run** with `tools/scripts/launch_flags.py <reference>
     --diff <yours>`, before and after launching; four lineage-critical flags drifted when copied
     from templates (`research/findings/training/e4_architecture_discontinuity.md`).

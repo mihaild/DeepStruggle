@@ -220,7 +220,7 @@ you use it.
 # RL self-play + live snapshot evals (+ optional post-training tournament). Shape only: take the
 # architecture/recipe flags from launch_flags.py on the parent run, never from here.
 TRITON_CACHE_DIR=.triton_cache PYTHONPATH=.:build/release .venv/bin/python tools/train.py \
-  --arch ladder <A-code flags> <R-code flags, incl. the opponent pool of invariant 14> \
+  --arch ladder <A-code flags> <R-code flags, incl. the opponent-pool choice of invariant 14> \
   --run-name E<n>-A<n>-R<n>-S<n> --description "..." \
   --train-steps <N> --snapshot-every-steps 10000000 \
   --eval-opponents heuristic random --eval-games-per-side 50
@@ -392,12 +392,21 @@ testing.
 11. Never change the C++ engine without asking the owner first.
 12. Human replay conversion is never approximated — a decision the log does not determine is diagnosed, not filled in.
 13. Never measure against a stale engine — run `tools/scripts/check_engine_fresh.sh` before generating or consuming any checkpoint, dataset, or benchmark number, and re-take anything measured before a rebuild.
-14. **An RL run needs an opponent pool:** `--opponent-frac 0.3 --opponent-self-pool
-    --opponent-pool-size 12`, as every run since E3-30 has used. Without it the policy trains only
-    against its current self, one seat runs away and the critic loses all skill — twice now, from
-    two different causes (`research/archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md`,
-    `research/log/E4_pool_starvation_recurrence.md`). The startup banner must say
-    `[opponent pool] ... frac=0.3`.
+14. **No opponent pool is the flagship recipe; a pool, when used, is the full pool; dropping one is the
+    owner's call.** The E3/E4 lesson: without a pool the policy trained only against its current self, one
+    seat ran away and the critic lost all skill -- twice, from two different causes
+    (`research/archive/E3_ladder/log/P15_X4b_collapse_is_pool_starvation.md`,
+    `research/log/E4_pool_starvation_recurrence.md`) -- so every run from E3-30 until P47's B5 used
+    `--opponent-frac 0.3 --opponent-self-pool --opponent-pool-size 12`. P47 found that spread pool biased at
+    11-14B steps: about half its games go to members from the first 5B steps, which the learner beats ~90% of the
+    time and from which the critic learned to mark down play unlike the current self; a recent window and no pool
+    were level with the bias-fixed arms. B6 (`E8.1-A8-R132-S45`, R132: `--opponent-frac 0` from scratch, the
+    owner's go) lost no seat, led the pooled control at every read and was level with J1's best by 6,000M
+    (`research/plans/P47_pool_composition.md`, *Runs*: B5, B6). **Since 2026-11-15 the owner's flagship recipe is
+    pure self-play**: R132 and every run on its line (R139, R155, R164-R171) runs `--opponent-frac 0`. A run that
+    uses a pool passes all three flags and its banner says `[opponent pool] ... frac=0.3`; removing the pool from a
+    recipe that has one needs the owner's explicit go, as B6 did. `tools/scripts/watch_run.py` raises its
+    no-pool alarm only when the run's `metadata.json` records `opponent_frac` > 0.
 15. **Derive a launch command from a healthy run, never from a template.** Run
     `tools/scripts/launch_flags.py <reference-run> --diff <your-run>` before launching and again
     after, and be able to justify every line it prints. Four lineage-critical flags drifted
