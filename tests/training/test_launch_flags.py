@@ -152,3 +152,17 @@ def test_obs_features_default_and_opt_out_on_the_cli() -> None:
     assert p.parse_args([]).obs_features == ["headline_reveal", "opp_event_gated"]
     assert p.parse_args(["--obs-features"]).obs_features == []
     assert p.parse_args(["--obs-features", "ops_budget"]).obs_features == ["ops_budget"]
+
+
+def test_the_retired_blunder_flags_keep_old_runs_codes_and_commands() -> None:
+    """The blunder window and the blunder-aware reward were removed on 2026-11-22. Runs recorded
+    `no_blunder_window` / `no_held_scoring_blunder`; both stay known to the diff, and the commands it
+    prints for those runs still parse."""
+    lf = _lf()
+    old = _run({"no_blunder_window": True, "no_held_scoring_blunder": True, "reward_scheme": "blunder_aware"})
+    nd = lf.non_default(old)
+    assert nd["no_blunder_window"] is True and nd["no_held_scoring_blunder"] is True and "reward_scheme" not in nd
+    build_parser().parse_args(lf.as_flags({k: nd[k] for k in ("no_blunder_window", "no_held_scoring_blunder")}))
+    # A run from before the window was switched off (the baseline: window on) shows neither.
+    base = lf.non_default(_run({"no_blunder_window": False, "reward_scheme": "blunder_aware"}))
+    assert not {"no_blunder_window", "no_held_scoring_blunder", "reward_scheme"} & set(base)

@@ -9,9 +9,10 @@ predicts its own return, so averaged over positions
 
 which is 0 whenever the targets are zero-sum -- no nesting of information is needed for the
 average, and it holds within any class of positions both sides can see (turn, phase), though not
-within a class defined by one side's hand. The recipe's targets are zero-sum except in the turn of
-a blunder (`blunder_aware`: the blunderer's target is -1 and the winner's is pinned to its own
-value), so a calibrated critic should show a small negative mean there and ~0 elsewhere.
+within a class defined by one side's hand. The recipe's targets are zero-sum (they were not in the
+turn of a blunder under the `blunder_aware` scheme and its window, removed on 2026-11-22: the
+blunderer's target was -1 and the winner's pinned to its own value), so a calibrated critic should
+show a mean of ~0.
 
 This plays self-play games, records the mover's value at every decision, and reports the mean of
 v_prev + v_next over hand-overs (standard errors clustered by game), split by direction, turn and

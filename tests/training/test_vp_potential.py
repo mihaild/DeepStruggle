@@ -6,8 +6,7 @@ from typing import List
 
 import numpy as np
 
-from ai.rewards.reward_calculator import (BlunderAwareRewardCalculator, VPPotentialShaping,
-                                          ZeroSumTerminalReward)
+from ai.rewards.reward_calculator import VPPotentialShaping, ZeroSumTerminalReward
 
 
 def _step(calc: VPPotentialShaping, mover: int, prev: int, curr: int, done: bool = False,
@@ -42,7 +41,7 @@ def test_the_reward_is_in_the_movers_frame() -> None:
 
 
 def test_it_wraps_the_base_calculator() -> None:
-    base = BlunderAwareRewardCalculator(decisiveness_turns=40.0)
+    base = ZeroSumTerminalReward(decisiveness_turns=40.0)
     calc = VPPotentialShaping(base, 0.01)
     assert calc.decisiveness_turns == 40.0                # attributes reach the base
     assert not hasattr(calc, "on_env_reset")              # absent on the base, absent here

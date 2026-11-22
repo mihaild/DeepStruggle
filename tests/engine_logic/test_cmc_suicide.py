@@ -92,7 +92,7 @@ def test_classifier_reports_a_cmc_loss_as_self_inflicted() -> None:
 
 
 def test_env_marks_a_cmc_loss_as_a_blunder() -> None:
-    """The blunder window must cover CMC losses, which defcon <= 1 alone cannot see."""
+    """The DEFCON-risk label (defcon_blunder) must cover CMC losses, which defcon <= 1 alone cannot see."""
     st = ts.GameState()
     ts.Engine.init_game(st, 4242)
     st.victory_points = 20

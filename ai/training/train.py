@@ -539,8 +539,10 @@ def build_parser() -> argparse.ArgumentParser:
                              "turn 9, which is the intended 'prolong a lost game' incentive. K is "
                              "a slope: at 40, turn 3 is worth 0.925 and turn 10 is 0.75. Too steep "
                              "biases against build-to-final-scoring play, so watch the ending mix. "
-                             "Applies to --reward-scheme blunder_aware, useful_actions and "
-                             "curriculum (both stages); refused with terminal and shaped.")
+                             "Applies to --reward-scheme terminal (not with --target-endings or "
+                             "--target-region), useful_actions and curriculum (both stages); refused "
+                             "with shaped. (Before 2026-11-22 it applied to the blunder_aware "
+                             "scheme, since removed, instead of terminal.)")
     # A step budget is not a controlled comparison across engine versions: a rebuilt engine plays
     # a different game, so two runs with matched step counts are only broadly comparable. The
     # comparison that holds is a head-to-head tournament on the current engine, which does not
@@ -724,16 +726,10 @@ def build_parser() -> argparse.ArgumentParser:
                              "own factor rather than folding it in with --categorical-value.")
     parser.add_argument("--window-provoked-defcon", action="store_true", default=False,
                         help="Credit a *provoked* DEFCON-1 loss to the player who played the\n"
-                             "card, the same way an unprovoked one is credited, instead of\n"
-                             "letting it propagate back as an ordinary loss.\n"
-                             "The case for it: the fatal card play sits a handful of\n"
-                             "micro-actions from the loss and inside the same turn, which the\n"
-                             "turn-scoped window already covers, and the critic the -1 would\n"
-                             "otherwise propagate through barely moves at the deciding choice\n"
-                             "-- so there is nothing for it to attach to. A window's advantage\n"
-                             "is -1 - v_t and never consults it. Changes the returns, so a run\n"
-                             "with it on is not comparable to one without except as its own\n"
-                             "A/B.")
+                             "card, the same way an unprovoked one is credited, in the\n"
+                             "DEFCON-risk head's label (defcon_risk_target). Before 2026-11-22\n"
+                             "it also opened the blunder window on such a loss; the window is\n"
+                             "gone, so the label is all it changes now.")
     parser.add_argument("--drop-static", action="store_true", default=False,
                         help="With --arch mlp, drop the per-entity observation slots that never\n"
                              "change: stability, battleground, region, Ops, era, one-time,\n"
@@ -753,16 +749,17 @@ def build_parser() -> argparse.ArgumentParser:
                              "Model-side only: the observation is untouched.")
     parser.add_argument("--entropy-coef", type=float, default=0.01, help="Entropy bonus coefficient")
     parser.add_argument("--reward-scheme", type=str, default="terminal",
-                        choices=["blunder_aware", "terminal", "shaped", "useful_actions", "curriculum"],
+                        choices=["terminal", "shaped", "useful_actions", "curriculum"],
                         help="Reward calculation scheme. Default (owner, 2026-11-06): terminal -- winner +1, loser -1, draw 0, "
                              "whatever the ending. blunder_aware was the default before: a held-scoring loss or an unprovoked "
                              "DEFCON 1 punished the blunderer only and shielded the winner; on J1 at 14,000M and from scratch the "
                              "plain loss matched it in strength and halved held-scoring losses (R118, R119; "
-                             "research/log/held_scoring_losses.md).")
+                             "research/log/held_scoring_losses.md), and it was removed on 2026-11-22 (owner: \"we tested "
+                             "that it is not needed\"). Runs that recorded it keep their codes (launch_flags' baseline).")
     parser.add_argument("--curriculum-switch-steps", type=int, default=None,
-                        help="Env step at which the curriculum switches to the BlunderAware "
+                        help="Env step at which the curriculum switches to the terminal "
                              "reward (default: --curriculum-switch-fraction of --train-steps)")
-    parser.add_argument("--curriculum-switch-fraction", type=float, default=0.5, help="Fraction of --train-steps at which the curriculum switches to the BlunderAware reward (default: 0.5)")
+    parser.add_argument("--curriculum-switch-fraction", type=float, default=0.5, help="Fraction of --train-steps at which the curriculum switches to the terminal reward (default: 0.5)")
     parser.add_argument("--per-player-gae", action="store_true", default=False,
                         help="Compute GAE within each player's own subsequence of decisions -- "
                              "bootstrapping from that player's next OWN decision, with the "
@@ -784,19 +781,17 @@ def build_parser() -> argparse.ArgumentParser:
                              "mean absolute where it should be 0. Costs one extra forward per "
                              "step and changes what the critic is trained on, so it is an arm.")
     parser.add_argument("--slice-turn-boundaries", type=str, default="auto", choices=["auto", "on", "off"],
-                        help="Truncate GAE bootstrapping at game-turn boundaries for EVERY episode, clean wins included. Measurably degrades the policy; retained for ablations. 'auto' (default) leaves it off and relies on per-episode blunder windowing instead.")
+                        help="Truncate GAE bootstrapping at game-turn boundaries for EVERY episode, clean wins included. Measurably degrades the policy; retained for ablations. 'auto' (default) leaves it off.")
+    # Retired 2026-11-22 (owner: the blunder machinery "we tested that it is not needed"): the per-episode blunder window
+    # (--blunder-window, the default before 2026-11-06) and the blunder-aware reward's held-scoring shielding are gone.
+    # These two stay accepted, with no effect, because launch commands derived from runs that recorded them
+    # (tools/scripts/launch_flags.py) print them, and their recorded values keep those runs' A/R codes.
     parser.add_argument("--no-blunder-window", dest="no_blunder_window", action="store_true", default=True,
-                        help="No per-episode blunder windowing -- the default since 2026-11-06 (owner): a loss is credited "
-                             "back through the whole game like any other. Accepted for older launch commands.")
-    parser.add_argument("--blunder-window", dest="no_blunder_window", action="store_false",
-                        help="Per-episode blunder windowing, the default before 2026-11-06: an unprovoked blunder loss (held "
-                             "scoring card, or self-inflicted DEFCON 1) penalises only the blunderer's decisions in that turn "
-                             "and pins the opponent's advantage there to zero.")
+                        help="Retired (2026-11-22), no effect: there is no blunder window any more, so a loss is "
+                             "always credited back through the whole game. Accepted for older launch commands.")
     parser.add_argument("--no-held-scoring-blunder", action="store_true",
-                        help="Treat a held-scoring loss (rule 4.4) as an ordinary loss: the zero-sum terminal reward "
-                             "(winner +1, loser -1) and no blunder window, so its credit runs back through the whole game. "
-                             "By default it is a blunder: the holder -1 on that turn's decisions only, the winner shielded. "
-                             "Unprovoked DEFCON 1 keeps its blunder treatment either way.")
+                        help="Retired (2026-11-22), no effect: a held-scoring loss (rule 4.4) is always an ordinary "
+                             "loss now. Accepted for older launch commands.")
     parser.add_argument("--ref-update-freq", type=int, default=200_000,
                         help="Env steps between NashPG reference-policy refreshes. At 512 envs x 128 buffer one iteration is 65,536 steps, so the default refreshes pi_ref every 4 iterations; raise it for a genuinely frozen anchor.")
     parser.add_argument("--opponent-fixed-env-sides", action="store_true", default=False,
@@ -1752,8 +1747,6 @@ def main():
             token_chunk=args.ladder_token_chunk,
             token_compile=args.ladder_token_compile,
             cuda_graphs=not args.no_cuda_graphs,
-            blunder_window=not args.no_blunder_window,
-            held_scoring_blunder=not args.no_held_scoring_blunder,
             gamma=args.gamma,
             priority_alpha=args.priority_alpha,
             tensorboard=args.tensorboard,

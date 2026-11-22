@@ -1,16 +1,11 @@
 """Credit assignment must not leak across an episode boundary when starts are mid-game.
 
 With start-position sampling, an episode can begin at turn 8 immediately after one that
-ended at turn 6, in the same buffer slot. Two mechanisms scan backwards over that boundary
-and both had to be checked rather than assumed:
+ended at turn 6, in the same buffer slot. GAE bootstraps from t+1 into t: if it carried
+across a reset, a resumed episode's value would be credited to the previous game's final move.
+(The blunder window, which also scanned back over the boundary, was removed on 2026-11-22.)
 
-* GAE bootstraps from t+1 into t. If it carried across a reset, a resumed episode's value
-  would be credited to the previous game's final move.
-* The blunder window arms at a terminal step and walks back over "the turn the blunder
-  happened in". Consecutive episodes can now sit on the same turn number, so turn equality
-  alone could carry the window into a game that never blundered.
-
-Neither needs the previous trajectory's advantage stored with the position: a resumed
+It does not need the previous trajectory's advantage stored with the position: a resumed
 episode is a genuinely new episode whose returns come from its own outcome. Carrying an
 advantage over would import a different game's result.
 """
@@ -57,41 +52,12 @@ def test_gae_does_not_bootstrap_across_a_resumed_episode() -> None:
     _add(buf, player=-1, turn=8, done=False, value=0.9)
 
     buf.compute_gae(last_v_win=torch.zeros(1), last_v_vp=torch.zeros(1),
-                    last_players=torch.ones(1),
-                    blunder_window=False)
+                    last_players=torch.ones(1))
 
     # The terminal step's return is its own reward, not the resumed episode's value.
     assert abs(float(buf.returns_win[1, 0]) - 1.0) < 1e-5, (
         f"terminal return {float(buf.returns_win[1, 0])} was contaminated by the "
         f"episode that follows it in the buffer"
-    )
-
-
-def test_blunder_window_stays_inside_the_episode_that_blundered() -> None:
-    """Turn equality alone must not carry the window into a neighbouring episode.
-
-    Both episodes here sit on turn 6, which mid-game starts make common; only the later
-    one ends in a self-inflicted DEFCON-1 loss.
-    """
-    buf = _buffer(4)
-    # Episode A on turn 6, ending cleanly (no blunder).
-    _add(buf, player=1, turn=6, done=False, value=0.5)
-    _add(buf, player=1, turn=6, done=True, value=0.5, reward=1.0, blunder=0)
-    # Episode B, also turn 6, ending in the US's own DEFCON-1 loss.
-    _add(buf, player=1, turn=6, done=False, value=0.5)
-    _add(buf, player=1, turn=6, done=True, value=0.5, reward=-1.0, blunder=1)
-
-    buf.compute_gae(last_v_win=torch.zeros(1), last_v_vp=torch.zeros(1),
-                    last_players=torch.ones(1),
-                    blunder_window=True)
-
-    # Inside the window the blunderer's return is pinned to -1.
-    assert abs(float(buf.returns_win[3, 0]) + 1.0) < 1e-5, "blunderer was not penalised"
-    assert abs(float(buf.returns_win[2, 0]) + 1.0) < 1e-5, "window did not cover the run-up"
-    # The clean episode on the same turn must be untouched by it.
-    assert float(buf.returns_win[1, 0]) > 0.0, (
-        f"the window leaked into the previous episode: its terminal return is "
-        f"{float(buf.returns_win[1, 0])}, but that game ended cleanly"
     )
 
 
@@ -102,8 +68,7 @@ def test_a_resumed_episode_is_scored_by_its_own_outcome() -> None:
     _add(buf, player=-1, turn=8, done=True, value=0.0, reward=-1.0)
 
     buf.compute_gae(last_v_win=torch.zeros(1), last_v_vp=torch.zeros(1),
-                    last_players=torch.ones(1),
-                    blunder_window=False)
+                    last_players=torch.ones(1))
 
     assert abs(float(buf.returns_win[1, 0]) + 1.0) < 1e-5
 

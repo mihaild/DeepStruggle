@@ -59,6 +59,9 @@ def _split_rules(flags: dict) -> dict:
 #: Settings whose CLI default changed without an engine epoch, compared against the value they had before the change for
 #: every run: a code is a set of flags, so a run that takes today's default still names it, and every run launched before
 #: keeps its code. Pure win/loss became the default on 2026-11-06 (owner): a run that takes it is R119, not R102.
+#: Both were removed on 2026-11-22 (blunder_aware is no longer a --reward-scheme choice; --no-blunder-window and
+#: --no-held-scoring-blunder are accepted with no effect, and the trainer records them at today's values), so the
+#: baseline stays what every earlier run is read against.
 _CODE_BASELINE = {"reward_scheme": "blunder_aware", "no_blunder_window": False}
 
 

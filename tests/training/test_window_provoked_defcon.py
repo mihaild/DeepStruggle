@@ -1,9 +1,7 @@
 """`--window-provoked-defcon`: is a provoked DEFCON-1 credited to the card's player?
 
-By default it is not, so the -1 propagates back as an ordinary loss. Measured, there is nothing
-for it to propagate through: the critic barely moves at the choice that decides the game. A
-blunder window's advantage is `-1 - v_t` and never consults the critic, which is exactly why it
-is the mechanism that works here.
+By default it is not. Since the blunder window was removed (2026-11-22) the credit is only the
+DEFCON-risk head's label (`defcon_blunder`); before, it also opened the window on such a loss.
 
 The predicate is tested on constructed states rather than through self-play: a provoked ending
 is rare enough that random play never produces one in a reasonable number of steps, and the only

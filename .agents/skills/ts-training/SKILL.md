@@ -93,5 +93,6 @@ PYTHONPATH=.:build/release .venv/bin/python tools/build_human_dataset.py        
   flags, commit and description.
 - With `--post-tournament`, a round robin over the snapshots at the end (`final_tournament_report.md`).
   Ratings that are compared across runs come from the leaderboard instead (the `ts-tournament` skill).
-- Reward schemes (`--reward-scheme`): `blunder_aware` (default), `terminal`, `shaped`,
-  `useful_actions`, `curriculum`.
+- Reward schemes (`--reward-scheme`): `terminal` (default: winner +1, loser -1), `shaped`,
+  `useful_actions`, `curriculum`. `blunder_aware` and the blunder window were removed on 2026-11-22
+  (`--no-blunder-window` / `--no-held-scoring-blunder` are still accepted, with no effect).

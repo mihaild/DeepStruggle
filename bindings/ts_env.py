@@ -6,7 +6,7 @@ import ts_engine as ts
 from bindings.settle import SettleMode
 from bindings.action_encoder import ActionEncoder
 from tools.lib.game_step import IllegalActionError
-from ai.rewards.reward_calculator import RewardCalculator, BlunderAwareRewardCalculator
+from ai.rewards.reward_calculator import RewardCalculator, ZeroSumTerminalReward
 from ai.game_length import ply as _game_ply
 
 # Canonical short keys for the game-ending reasons reported per completed episode.
@@ -320,7 +320,7 @@ class TsVectorizedEnv:
                 "internally, so SettleMode.NONE has no meaning here. Use CHANCE or FORCED.")
         self.settle = settle
         self._auto_advance = settle is SettleMode.FORCED
-        self.reward_calc: RewardCalculator = reward_calculator or BlunderAwareRewardCalculator()
+        self.reward_calc: RewardCalculator = reward_calculator or ZeroSumTerminalReward()
         self.runner = ts.VectorizedBatchRunner(num_envs, base_seed)
         self.ep_lengths = np.zeros(num_envs, dtype=np.int32)
         self.ep_rewards = np.zeros(num_envs, dtype=np.float32)
@@ -558,16 +558,12 @@ class TsVectorizedEnv:
         # Post-step turn, read before any auto-reset rewinds the game to turn 1.
         _, curr_turns, curr_vp, dones, term_utils = self.runner.get_env_scalars()
 
-        # Rule 4.4 Held scoring card detection for terminal states
-        held_scoring_us = np.zeros(self.num_envs, dtype=bool)
-        held_scoring_ussr = np.zeros(self.num_envs, dtype=bool)
-        # Unprovoked DEFCON-1 suicide: the player who chose the losing action, else 0.
-        # A provoked suicide stays 0 unless `window_provoked_defcon` is set. The argument for
-        # leaving it at 0 was that the mistake lies in earlier card management rather than the
-        # final move, so its credit should keep propagating backwards. Measured, that premise
-        # does not hold: the fatal card play sits a handful of micro-actions from the loss and
-        # inside the same turn, which the turn-scoped window already covers, and the critic it
-        # would have to propagate through barely moves at the deciding choice.
+        # Unprovoked DEFCON-1 suicide: the player who chose the losing action, else 0 -- the
+        # DEFCON-risk head's label (RolloutBuffer.defcon_risk_target). A provoked suicide stays 0
+        # unless `window_provoked_defcon` is set. The argument for leaving it at 0 was that the
+        # mistake lies in earlier card management rather than the final move. Measured, that
+        # premise does not hold: the fatal card play sits a handful of micro-actions from the loss
+        # and inside the same turn, and the critic barely moves at the deciding choice.
         defcon_blunder = np.zeros(self.num_envs, dtype=np.int8)
         ending_reasons: List[str] = [""] * self.num_envs
         # Terminal length in plies. The turn alone cannot express it: a game abandoned at
@@ -585,9 +581,11 @@ class TsVectorizedEnv:
             for raw in done_idx:
                 i = int(raw)
                 st = self.runner.get_state(i)
+                # Rule 4.4: a held scoring card lost the game (for the ending's name).
+                held_scoring = False
                 if ts.Engine.is_held_scoring_game_over(st):
-                    held_scoring_us[i] = ts.Engine.is_held_scoring_loss(st, ts.Player.US)
-                    held_scoring_ussr[i] = ts.Engine.is_held_scoring_loss(st, ts.Player.USSR)
+                    held_scoring = bool(ts.Engine.is_held_scoring_loss(st, ts.Player.US)
+                                        or ts.Engine.is_held_scoring_loss(st, ts.Player.USSR))
                 elif credits_defcon_blunder(st, self.window_provoked_defcon):
                     # phasing_player is the side that played the card even when the opponent
                     # is the one acting -- verified against self-play games that ended this way.
@@ -595,12 +593,9 @@ class TsVectorizedEnv:
                 elif st.has_flag(ts.EffectBits.CMC_SUICIDE_LOSS):
                     # Couping under Cuban Missile Crisis. The engine ends the game without
                     # touching DEFCON, so the check above cannot see it, and these
-                    # self-inflicted losses were being credited as ordinary outcomes
-                    # instead of windowed as blunders.
+                    # self-inflicted losses were missing from the DEFCON-risk label.
                     defcon_blunder[i] = int(st.phasing_player)
-                ending_reasons[i] = _classify_ending(
-                    st, bool(held_scoring_us[i] or held_scoring_ussr[i])
-                )
+                ending_reasons[i] = _classify_ending(st, held_scoring)
                 terminal_plies[i] = _game_ply(
                     int(st.turn), int(st.action_round), st.phasing_player == ts.Player.US,
                     headline_stage=int(st.headline_stage))
@@ -681,8 +676,6 @@ class TsVectorizedEnv:
         info["completed_episodes"] = completed_episodes
         info["acting_players"] = acting_players
         info["turns"] = acting_turns
-        info["held_scoring_us"] = held_scoring_us
-        info["held_scoring_ussr"] = held_scoring_ussr
         info["defcon_blunder"] = defcon_blunder
         info["ending_reasons"] = ending_reasons
         info["terminal_turns"] = curr_turns

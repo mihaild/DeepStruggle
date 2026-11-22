@@ -1,8 +1,7 @@
-"""Perspective-aligned reward strategies and blunder-aware credit assignment."""
+"""Perspective-aligned reward strategies."""
 from .reward_calculator import (
     RewardCalculator,
     ZeroSumTerminalReward,
-    BlunderAwareRewardCalculator,
     ShapedZeroSumReward,
     UsefulActionsReward,
 )
@@ -10,7 +9,6 @@ from .reward_calculator import (
 __all__ = [
     "RewardCalculator",
     "ZeroSumTerminalReward",
-    "BlunderAwareRewardCalculator",
     "ShapedZeroSumReward",
     "UsefulActionsReward",
 ]

@@ -83,8 +83,8 @@ class RolloutBuffer:
                                   device=self.device)
         self.turns = torch.zeros((buffer_size, num_envs), dtype=torch.int8, device=self.device)
         self.vps = torch.zeros((buffer_size, num_envs), dtype=torch.float32, device=self.device)
-        self.held_scoring_us = torch.zeros((buffer_size, num_envs), dtype=torch.bool, device=self.device)
-        self.held_scoring_ussr = torch.zeros((buffer_size, num_envs), dtype=torch.bool, device=self.device)
+        #: The player whose own choice lost the game to DEFCON 1 (or a Cuban Missile Crisis coup), else 0:
+        #: the DEFCON-risk head's label (defcon_risk_target).
         self.defcon_blunder = torch.zeros((buffer_size, num_envs), dtype=torch.int8, device=self.device)
         #: V(s_{t+1}, p_t) -- the state AFTER this step, evaluated from the perspective of the
         #: player who just moved. Filled only when the same-perspective bootstrap is enabled; the
@@ -193,8 +193,6 @@ class RolloutBuffer:
         learner: Optional[np.ndarray | torch.Tensor] = None,
         turns: Optional[np.ndarray | torch.Tensor] = None,
         vps: Optional[np.ndarray | torch.Tensor] = None,
-        held_scoring_us: Optional[np.ndarray | torch.Tensor] = None,
-        held_scoring_ussr: Optional[np.ndarray | torch.Tensor] = None,
         defcon_blunder: Optional[np.ndarray | torch.Tensor] = None,
         next_values_own: Optional[torch.Tensor] = None,
         search_pi: Optional[torch.Tensor] = None,
@@ -241,14 +239,6 @@ class RolloutBuffer:
             if isinstance(vps, np.ndarray):
                 vps = torch.from_numpy(vps)
             self.vps[self.step].copy_(vps)
-        if held_scoring_us is not None:
-            if isinstance(held_scoring_us, np.ndarray):
-                held_scoring_us = torch.from_numpy(held_scoring_us)
-            self.held_scoring_us[self.step].copy_(held_scoring_us)
-        if held_scoring_ussr is not None:
-            if isinstance(held_scoring_ussr, np.ndarray):
-                held_scoring_ussr = torch.from_numpy(held_scoring_ussr)
-            self.held_scoring_ussr[self.step].copy_(held_scoring_ussr)
         if defcon_blunder is not None:
             if isinstance(defcon_blunder, np.ndarray):
                 defcon_blunder = torch.from_numpy(defcon_blunder)
@@ -281,7 +271,6 @@ class RolloutBuffer:
         gamma: float = 1.0,
         gae_lambda: float = 0.98,
         slice_turn_boundaries: bool = False,
-        blunder_window: bool = True,
         defcon_risk_horizon: int = 4,
         same_perspective_bootstrap: bool = False,
         per_player_gae: bool = False,
@@ -290,17 +279,11 @@ class RolloutBuffer:
     ) -> None:
         """Computes Generalized Advantage Estimation (GAE) with Zero-Sum Alternating Perspective Alignment.
 
-        Credit for an *unprovoked* blunder loss -- holding a scoring card past the end of a
-        turn, or driving DEFCON to 1 by one's own choice -- is confined to the turn the
-        blunder happened in, and the opponent is shielded from the resulting windfall. The
-        play that preceded the blunder was not necessarily bad, and the opponent did not
-        earn the win, so neither should be credited for it.
-
-        This is deliberately conditional on the episode actually ending in a blunder.
-        ``slice_turn_boundaries`` applies the same truncation to *every* episode including
-        clean wins, which strips the outcome signal from all but the final turn of the
-        ~80% of games that end normally; it is retained only as an ablation knob and
-        defaults off.
+        ``slice_turn_boundaries`` truncates bootstrapping at every game-turn boundary, clean wins
+        included, which strips the outcome signal from all but the final turn of the ~80% of games
+        that end normally; it is retained only as an ablation knob and defaults off. (The per-episode
+        blunder window, which confined an unprovoked blunder loss's credit to its turn and shielded the
+        winner, was removed on 2026-11-22: owner, "we tested that it is not needed".)
 
         ``same_perspective_bootstrap`` replaces ``-V(s_{t+1}, p_{t+1})`` with
         ``V(s_{t+1}, p_t)``. The default negation assumes ``V(s, me) = -V(s, opponent)``, exact in
@@ -324,35 +307,33 @@ class RolloutBuffer:
         mode = self.block_mode()
         if mode != "off" and per_player_gae:
             raise ValueError("block lambda is defined on the interleaved GAE recursion; "
-                             "per_player_gae replaces it outside blunder windows.")
-        key = (float(gamma), float(gae_lambda), bool(slice_turn_boundaries), bool(blunder_window),
+                             "per_player_gae replaces it.")
+        key = (float(gamma), float(gae_lambda), bool(slice_turn_boundaries),
                int(defcon_risk_horizon), bool(same_perspective_bootstrap), mode, bool(self.uses_hold))
         if self.graph_gae and self.device.type == "cuda":
-            window_mask = self._gae_backward_graphed(key, last_v_win, last_v_vp, last_players)
+            self._gae_backward_graphed(key, last_v_win, last_v_vp, last_players)
         else:
-            window_mask = self._gae_backward(key, last_v_win, last_v_vp, last_players)
+            self._gae_backward(key, last_v_win, last_v_vp, last_players)
 
         if per_player_gae or afterstate_node is not None:
             # One pass gives the plain per-player chain and, with P56's node, the node chain beside it.
             pp_adv, pp_ret, node_adv = self._gae_per_player_both(gamma, gae_lambda, last_v_win, last_players,
                                                                  afterstate_node, last_side_values)
-            keep = ~window_mask
             if per_player_gae:
-                self.advantages = torch.where(keep, pp_adv, self.advantages)
-                self.returns_win = torch.where(keep, pp_ret, self.returns_win)
+                self.advantages = pp_adv
+                self.returns_win = pp_ret
             if afterstate_node is not None:
                 # P56: the policy's advantage from each side's own chain with the afterstate node; the value
                 # targets (returns_win) stay as computed above.
-                self.advantages = torch.where(keep, node_adv, self.advantages)
+                self.advantages = node_adv
 
         self.normalise_advantages()
 
     def _gae_backward(self, key: Tuple[Any, ...], last_v_win: torch.Tensor,
-                      last_v_vp: torch.Tensor, last_players: torch.Tensor) -> torch.Tensor:
+                      last_v_vp: torch.Tensor, last_players: torch.Tensor) -> None:
         """compute_gae's backward recursion: writes advantages, returns_win, returns_vp and
-        defcon_risk_target in place and returns the blunder-window mask. No host syncs, so it can
-        be captured as a CUDA graph."""
-        (gamma, gae_lambda, slice_turn_boundaries, blunder_window, defcon_risk_horizon,
+        defcon_risk_target in place. No host syncs, so it can be captured as a CUDA graph."""
+        (gamma, gae_lambda, slice_turn_boundaries, defcon_risk_horizon,
          same_perspective_bootstrap, mode, uses_hold) = key
         # lam_one[t]: the transition t -> t+1 stays inside a block, so it takes lambda = 1. The
         # last step's successor is outside the buffer and keeps the ordinary lambda.
@@ -371,14 +352,6 @@ class RolloutBuffer:
             lam_one[:-1] = inside
         use_block = mode != "off"
         last_gae = torch.zeros(self.num_envs, dtype=torch.float32, device=self.device)
-        window_mask = torch.zeros((self.buffer_size, self.num_envs), dtype=torch.bool,
-                                  device=self.device)
-
-        # Pending blunder window, armed at a terminal step and disarmed at the turn boundary.
-        pending_hs_active = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-        pending_hs_us = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-        pending_hs_ussr = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
-        pending_hs_turn = torch.zeros(self.num_envs, dtype=torch.int8, device=self.device)
 
         last_ret_vp = last_v_vp.clone()
 
@@ -418,43 +391,12 @@ class RolloutBuffer:
                 # `last_v_win` special case either.
                 next_val = self.next_values_own[t]
 
-            # Arm/disarm the blunder window at terminal steps, vectorized across envs.
-            # The timestep loop must stay sequential because GAE is a backward recursion,
-            # but every env at a given t is independent, so the whole inner loop collapses
-            # into masked tensor ops. Held scoring can implicate both players at once; an
-            # unprovoked DEFCON-1 suicide implicates exactly the player who chose it.
+            # The timestep loop must stay sequential because GAE is a backward recursion, but every env
+            # at a given t is independent, so the inner loop is masked tensor ops.
             done_t = self.dones[t]
-            b_us = self.held_scoring_us[t].clone()
-            b_ussr = self.held_scoring_ussr[t].clone()
-            if blunder_window:
-                db = self.defcon_blunder[t]
-                b_us = b_us | (db == 1)
-                b_ussr = b_ussr | (db == -1)
-                arm = done_t & (b_us | b_ussr)
-            else:
-                arm = torch.zeros_like(done_t)
-
-            # A terminal step that is not a blunder clears any window instead of leaving
-            # a stale one armed across the episode boundary.
-            pending_hs_active = torch.where(done_t, arm, pending_hs_active)
-            pending_hs_us = torch.where(arm, b_us, pending_hs_us)
-            pending_hs_ussr = torch.where(arm, b_ussr, pending_hs_ussr)
-            pending_hs_turn = torch.where(arm, self.turns[t], pending_hs_turn)
-
-            # The window covers only the turn the blunder happened in.
-            in_window = pending_hs_active & (self.turns[t] == pending_hs_turn)
-            expired = pending_hs_active & (~in_window)
-            pending_hs_active = pending_hs_active & in_window
-            last_gae = torch.where(expired, torch.zeros_like(last_gae), last_gae)
-
-            # Inside the window: the blunderer eats -1, and the opponent is pinned to its
-            # own value so its advantage is exactly zero -- it did not earn the windfall.
-            is_blunderer = torch.where(curr_p == 1, pending_hs_us, pending_hs_ussr)
             v_t = self.values_win[t]
-            win_ret = torch.where(is_blunderer, -torch.ones_like(v_t), v_t)
-            win_adv = torch.where(is_blunderer, -1.0 - v_t, torch.zeros_like(v_t))
 
-            # Outside it: the ordinary zero-sum Bellman TD error and GAE recursion.
+            # The ordinary zero-sum Bellman TD error and GAE recursion.
             delta = self.rewards[t] + gamma * next_val * non_terminal - v_t
             if use_block:
                 # lambda = 1 only for a transition inside a block of one game (non_terminal
@@ -464,8 +406,8 @@ class RolloutBuffer:
             else:
                 std_gae = delta + gamma * gae_lambda * sign * non_terminal * last_gae
 
-            new_gae = torch.where(in_window, win_adv, std_gae)
-            ret_win = torch.where(in_window, win_ret, new_gae + v_t)
+            new_gae = std_gae
+            ret_win = new_gae + v_t
             if uses_hold:
                 # A held row is the next row's state again, same mover, reward 0: it passes the
                 # next row's advantage and returns through unchanged (at the buffer's last row
@@ -478,9 +420,6 @@ class RolloutBuffer:
             last_gae = new_gae
             self.advantages[t] = last_gae
             self.returns_win[t] = ret_win
-            # The blunder window is a deliberate override of both, and it outranks the estimator:
-            # per-player GAE below must not undo it.
-            window_mask[t] = in_window
 
             # DEFCON-risk label. defcon_blunder is non-zero only for a loss the losing
             # player chose (an unprovoked DEFCON-1, or a Cuban Missile Crisis coup), which
@@ -508,10 +447,9 @@ class RolloutBuffer:
             )
             if uses_hold:
                 self.returns_vp[t] = torch.where(self.held[t], next_ret_vp, self.returns_vp[t])
-        return window_mask
 
     def _gae_backward_graphed(self, key: Tuple[Any, ...], last_v_win: torch.Tensor,
-                              last_v_vp: torch.Tensor, last_players: torch.Tensor) -> torch.Tensor:
+                              last_v_vp: torch.Tensor, last_players: torch.Tensor) -> None:
         """`_gae_backward` as a CUDA-graph replay, captured on first use and again whenever the
         scalar settings change. The graph reads its bootstrap inputs from static copies and
         writes advantages and returns_win into tensors of its own; normalisation (which syncs
@@ -532,8 +470,7 @@ class RolloutBuffer:
             torch.cuda.current_stream(self.device).wait_stream(stream)
             graph = torch.cuda.CUDAGraph()
             with torch.cuda.graph(graph, stream=stream):
-                st["window_mask"] = self._gae_backward(
-                    key, st["last_v_win"], st["last_v_vp"], st["last_players"])
+                self._gae_backward(key, st["last_v_win"], st["last_v_vp"], st["last_players"])
             self._gae_graph, self._gae_graph_key = graph, key
         st["last_v_win"].copy_(last_v_win)
         st["last_v_vp"].copy_(last_v_vp)
@@ -542,7 +479,6 @@ class RolloutBuffer:
         # its own, so point them back before the replay.
         self.advantages, self.returns_win = st["advantages"], st["returns_win"]
         self._gae_graph.replay()
-        return st["window_mask"]
 
     def normalise_advantages(self) -> None:
         """Normalise the stored advantages in place (per seat under per_seat_adv_norm),

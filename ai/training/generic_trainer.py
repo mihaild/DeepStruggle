@@ -35,7 +35,7 @@ from ai.models.ladder_net import LadderNet, create_ladder_net
 from ai.models.mup import (base_shapes_for, combine_lr_mults, mup_lr_mults, policy_head_lr_mults,
                            zero_output_layers)
 from ai.rewards.region_reward import RegionTargetedReward
-from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, BlunderAwareRewardCalculator, UsefulActionsReward, VPPotentialShaping, EndingTargetedReward
+from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumReward, UsefulActionsReward, VPPotentialShaping, EndingTargetedReward
 from bindings.ts_env import (OBS_LAYOUT_NAME, TsVectorizedEnv, check_obs_width,
                              model_obs_features)
 from ai.training.active_search import ActiveSearch, gate_metrics
@@ -1999,8 +1999,6 @@ def train_pipeline(
     slice_turn_boundaries: Optional[bool] = None,
     same_perspective_bootstrap: bool = False,
     per_player_gae: bool = False,
-    blunder_window: bool = False,
-    held_scoring_blunder: bool = True,
     gamma: float = 1.0,
     priority_alpha: float = 0.0,
     defcon_coef: float = 0.0,
@@ -2660,8 +2658,11 @@ def train_pipeline(
         "gamma": float(gamma),
         "priority_alpha": float(priority_alpha),
         "defcon_coef": float(defcon_coef),
-        "no_blunder_window": not bool(blunder_window),
-        "no_held_scoring_blunder": not bool(held_scoring_blunder),
+        # Retired 2026-11-22 (the blunder window and the blunder-aware reward were removed), and still recorded at the
+        # values every run since 2026-11-06 has had, which is the behaviour now in force: launch_flags reads them, so
+        # a run with today's recipe keeps the codes of the runs before it (R169, ...).
+        "no_blunder_window": True,
+        "no_held_scoring_blunder": False,
         "slice_turn_boundaries": {None: "auto", True: "on", False: "off"}[slice_turn_boundaries],
         "eval_games_per_side": int(eval_games_per_side),
         "eval_max_snapshot_opponents": int(max_snapshot_opponents),
@@ -2764,15 +2765,14 @@ def train_pipeline(
     if target_endings and reward_scheme != "terminal":
         raise ValueError(f"--target-endings replaces the terminal scheme's payoff; --reward-scheme {reward_scheme} would "
                          "ignore it")
-    if decisiveness_turns and reward_scheme not in ("blunder_aware", "useful_actions", "curriculum"):
-        raise ValueError(f"--decisiveness-turns {decisiveness_turns:g} scales the blunder-aware terminal reward, "
-                         f"which --reward-scheme {reward_scheme} does not use; it applies to blunder_aware, "
-                         f"useful_actions and curriculum")
+    if decisiveness_turns and (reward_scheme not in ("terminal", "useful_actions", "curriculum")
+                               or target_region or target_endings):
+        raise ValueError(f"--decisiveness-turns {decisiveness_turns:g} scales the zero-sum terminal reward, which "
+                         f"--reward-scheme {reward_scheme}" + (" with a target" if reward_scheme == "terminal" else "")
+                         + " does not use; it applies to terminal (without --target-endings / --target-region), "
+                         "useful_actions and curriculum")
     if is_curriculum or reward_scheme == "useful_actions":
         reward_calc = UsefulActionsReward(decisiveness_turns=decisiveness_turns)
-    elif reward_scheme == "blunder_aware":
-        reward_calc = BlunderAwareRewardCalculator(decisiveness_turns=decisiveness_turns,
-                                                   held_scoring_blunder=held_scoring_blunder)
     elif reward_scheme == "shaped":
         reward_calc = ShapedZeroSumReward()
     elif target_region:
@@ -2794,7 +2794,7 @@ def train_pipeline(
         print(f"[reward] ending-targeted: +1 for the {opponent_lock_side or 'exploiter (both seats, drawn per game)'} seat's wins by {sorted(target_endings)}, "
               f"-1 for any loss, 0 for any other win or a draw", flush=True)
     else:
-        reward_calc = ZeroSumTerminalReward()
+        reward_calc = ZeroSumTerminalReward(decisiveness_turns=decisiveness_turns)
     if vp_potential:
         if is_curriculum:
             raise ValueError("--vp-potential does not combine with the curriculum scheme")
@@ -2880,7 +2880,7 @@ def train_pipeline(
             curriculum_switch_at = float(train_steps) * float(curriculum_switch_fraction)
         curriculum_switched = False
         print(f"[CURRICULUM] Active: Stage 1 = UsefulActionsReward (first "
-              f"{curriculum_switch_at:,.0f} steps), Stage 2 = BlunderAwareRewardCalculator",
+              f"{curriculum_switch_at:,.0f} steps), Stage 2 = ZeroSumTerminalReward",
               flush=True)
     else:
         curriculum_switch_at = float("inf")
@@ -2962,12 +2962,9 @@ def train_pipeline(
         clip_eps=float(clip_eps),
         ref_update_freq=ref_update_freq,
         max_grad_norm=1.0,
-        # "auto" (None) means: rely on per-episode blunder windowing, not the blunt
-        # global truncation. Global slicing measurably degrades the policy -- it strips
+        # "auto" (None) means off. Global slicing measurably degrades the policy -- it strips
         # the outcome signal from clean wins too -- so it is opt-in for ablations only.
         slice_turn_boundaries=(False if slice_turn_boundaries is None else slice_turn_boundaries),
-        blunder_window=blunder_window,
-        held_scoring_blunder=held_scoring_blunder,
         same_perspective_bootstrap=same_perspective_bootstrap,
         per_player_gae=per_player_gae,
         search_ce_coef=search_ce_coef,
@@ -3759,17 +3756,15 @@ def train_pipeline(
         if trainer.total_env_steps >= step_budget:
             break
 
-        # Curriculum stage switch from UsefulActionsReward to BlunderAwareRewardCalculator
+        # Curriculum stage switch from UsefulActionsReward to the zero-sum terminal reward
         if (is_curriculum and not curriculum_switched
                 and trainer.total_env_steps >= curriculum_switch_at):
             curriculum_switched = True
-            trainer.set_reward_calculator(
-                BlunderAwareRewardCalculator(decisiveness_turns=decisiveness_turns,
-                                             held_scoring_blunder=held_scoring_blunder))
+            trainer.set_reward_calculator(ZeroSumTerminalReward(decisiveness_turns=decisiveness_turns))
             trainer.set_slice_turn_boundaries(False if slice_turn_boundaries is None else slice_turn_boundaries)
             print(f"\n{'=' * 80}", flush=True)
             print(f"[CURRICULUM] STAGE 2 SWITCH: Replaced UsefulActionsReward with "
-                  f"BlunderAwareRewardCalculator at {trainer.total_env_steps:,} / "
+                  f"ZeroSumTerminalReward at {trainer.total_env_steps:,} / "
                   f"{step_budget:,} steps", flush=True)
             print(f"{'=' * 80}\n", flush=True)
 

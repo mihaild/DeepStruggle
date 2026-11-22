@@ -4,7 +4,6 @@ from bindings.ts_env import TsVectorizedEnv
 from ai.rewards.reward_calculator import (
     RewardCalculator,
     ZeroSumTerminalReward,
-    BlunderAwareRewardCalculator,
     ShapedZeroSumReward,
     UsefulActionsReward,
 )
@@ -14,7 +13,6 @@ __all__ = [
     "TsVectorizedEnv",
     "RewardCalculator",
     "ZeroSumTerminalReward",
-    "BlunderAwareRewardCalculator",
     "ShapedZeroSumReward",
     "UsefulActionsReward",
 ]

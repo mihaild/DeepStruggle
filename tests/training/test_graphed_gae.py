@@ -42,8 +42,6 @@ def _fill(b: RolloutBuffer, seed: int) -> _Last:
     b.rewards.copy_(torch.where(b.dones, torch.where(r(T, N) < 0.5, 1.0, -1.0), 0.0))
     b.values_win.copy_(r(T, N) * 2 - 1)
     b.vps.copy_(r(T, N) * 40 - 20)
-    b.held_scoring_us.copy_(r(T, N) < 0.05)
-    b.held_scoring_ussr.copy_(r(T, N) < 0.05)
     b.defcon_blunder.copy_(torch.where(r(T, N) < 0.05, torch.where(r(T, N) < 0.5, 1, -1), 0)
                            .to(torch.int8))
     b.next_values_own.copy_(r(T, N) * 2 - 1)
@@ -60,7 +58,6 @@ def _outputs(b: RolloutBuffer) -> Dict[str, Any]:
 
 @pytest.mark.parametrize("kw", [
     {},
-    {"blunder_window": False},
     {"same_perspective_bootstrap": True},
     {"per_player_gae": True},
     {"slice_turn_boundaries": True, "gae_lambda": 0.95},

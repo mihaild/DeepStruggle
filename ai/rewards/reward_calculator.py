@@ -35,9 +35,29 @@ class ZeroSumTerminalReward:
 
     - Non-terminal steps: reward = 0.0
     - Terminal step: reward = terminal_outcome * acting_player
-      (+1.0 if acting player won, -1.0 if acting player lost, 0.0 for draw).
+      (+1.0 if acting player won, -1.0 if acting player lost, 0.0 for draw), whatever the ending.
     - Zero-sum transition sign: sign = curr_player * next_player.
+
+    Optionally scales the terminal magnitude by how late the game ended, via `decisiveness_turns`
+    (K): a result on turn T is worth `max(0.05, 1 - T/K)` instead of 1 (0, the default, leaves it at 1).
+
+    This exists because with gamma = 1 and a terminal-only reward the objective is *indifferent* to
+    when you win: taking a forced win now returns +1, and so does declining it and winning three
+    turns later. The scale applies to losses as well, so a self-inflicted defeat on turn 3 costs
+    more than the same defeat on turn 9 -- a losing player should prolong the game. K is a slope,
+    not a threshold: at K = 40 a turn-3 result is worth 0.925 and a turn-10 result 0.75. (Until
+    2026-11-22 the scale lived on the blunder-aware scheme, which was removed: owner, "we tested
+    that it is not needed".)
     """
+
+    def __init__(self, decisiveness_turns: float = 0.0) -> None:
+        self.decisiveness_turns = float(decisiveness_turns)
+
+    def terminal_scale(self, state: Optional[ts.GameState]) -> float:
+        """Multiplier on the terminal magnitude; 1.0 when disabled or the turn is unknown."""
+        if self.decisiveness_turns <= 0.0 or state is None:
+            return 1.0
+        return max(0.05, 1.0 - float(state.turn) / self.decisiveness_turns)
 
     def compute_step_rewards(
         self,
@@ -48,8 +68,12 @@ class ZeroSumTerminalReward:
         curr_victory_points: np.ndarray,
         states: Optional[List[Optional[ts.GameState]]] = None,
     ) -> np.ndarray:
-        rewards = np.where(dones, terminal_utilities * acting_players, 0.0)
-        return rewards.astype(np.float32)
+        rewards = np.where(dones, terminal_utilities * acting_players, 0.0).astype(np.float32)
+        if self.decisiveness_turns > 0.0 and states is not None:
+            for i in np.flatnonzero(dones):
+                st = states[i] if i < len(states) else None
+                rewards[i] *= self.terminal_scale(st)
+        return rewards
 
     def compute_zero_sum_sign(
         self,
@@ -124,114 +148,6 @@ class EndingTargetedReward:
             st = states[int(i)] if states is not None else None
             u_us = self.payoff(float(terminal_utilities[i]), st, int(sides[i])) * int(sides[i])
             rewards[i] = u_us * float(acting_players[i])
-        return rewards
-
-    def compute_zero_sum_sign(
-        self,
-        curr_players: torch.Tensor,
-        next_players: torch.Tensor,
-    ) -> torch.Tensor:
-        return (curr_players * next_players).float()
-
-
-class BlunderAwareRewardCalculator:
-    """Blunder-Aware Reward Strategy with Spurious Reward Shielding and Credit Slicing.
-
-    1. Rule 4.4 Held Scoring Card Blunder:
-       - Blundering loser receives r = -1.0 on the blunder step.
-       - Winner receives r = 0.0 (shielded from spurious +1.0 value inflation).
-    2. Voluntary DEFCON Coup Suicide:
-       - Blundering player receives r = -1.0.
-       - Winner receives r = 0.0.
-    3. Strategic Wins (Europe Control, Milestone VP, Final Scoring, Wargames, Event Traps):
-       - Full zero-sum terminal outcome: Winner +1.0, Loser -1.0.
-
-    Optionally scales the terminal magnitude by how late the game ended, via
-    `decisiveness_turns` (K): a result on turn T is worth `1 - T/K` instead of 1.
-
-    This exists because with gamma = 1 and a terminal-only reward the objective is
-    *indifferent* to when you win. Taking a forced win now returns +1; declining it and
-    winning three turns later also returns +1, so the policy gradient sees no difference
-    between them and only risk separates the two. In practice a trained policy leaves a steady
-    fraction of engine-verified forced wins on the table, at a rate that stops improving, with
-    the misses concentrated where the critic is already optimistic. Perfect-information search
-    does not fix it either, which is expected: search maximises the same indifferent objective.
-
-    The scale applies to losses as well, so a self-inflicted defeat on turn 3 costs more than
-    the same defeat on turn 9. That is deliberate -- a losing player should prolong the game
-    rather than end it, and the sampled replays show turn-3 DEFCON-1 suicides.
-
-    K is a slope, not a threshold: at K = 40 a turn-3 result is worth 0.925 and a turn-10
-    result 0.75. Too steep a slope biases against legitimate build-to-final-scoring play, so
-    the ending mix is the guardrail to watch.
-    """
-
-    def __init__(self, decisiveness_turns: float = 0.0, held_scoring_blunder: bool = True) -> None:
-        self.decisiveness_turns = float(decisiveness_turns)
-        #: Rule 4.4 held-scoring losses as blunders (the holder -1, the winner shielded at 0). False
-        #: (--no-held-scoring-blunder) scores them as any other loss: winner +1, loser -1.
-        self.held_scoring_blunder = bool(held_scoring_blunder)
-
-    def terminal_scale(self, state: Optional[ts.GameState]) -> float:
-        """Multiplier on the terminal magnitude; 1.0 when disabled or the turn is unknown."""
-        if self.decisiveness_turns <= 0.0 or state is None:
-            return 1.0
-        turn = float(state.turn)
-        return max(0.05, 1.0 - turn / self.decisiveness_turns)
-
-    def compute_step_rewards(
-        self,
-        acting_players: np.ndarray,
-        dones: np.ndarray,
-        terminal_utilities: np.ndarray,
-        prev_victory_points: np.ndarray,
-        curr_victory_points: np.ndarray,
-        states: Optional[List[Optional[ts.GameState]]] = None,
-    ) -> np.ndarray:
-        N = len(acting_players)
-        rewards = np.zeros(N, dtype=np.float32)
-
-        for i in range(N):
-            if not dones[i]:
-                continue
-
-            term_util = float(terminal_utilities[i])
-            p_act = int(acting_players[i])
-
-            if term_util == 0.0:
-                rewards[i] = 0.0
-                continue
-
-            # Check if this was a blunder if state is available
-            st = states[i] if states is not None and i < len(states) else None
-            scale = self.terminal_scale(st)
-
-            if st is not None:
-                if st.defcon <= 1:
-                    # Unprovoked DEFCON suicide is a blunder (acting_player == phasing_player).
-                    # Provoked DEFCON suicide (event trap where opponent executed coup) is a strategic win (acting_player != phasing_player).
-                    p_phasing = int(st.phasing_player)
-                    is_provoked = (p_phasing != 0 and p_act != p_phasing)
-                    if is_provoked:
-                        # Strategic win via event trap: acting player provoked opponent DEFCON suicide (+1.0)
-                        rewards[i] = term_util * p_act * scale
-                    else:
-                        # Unprovoked DEFCON suicide: acting player dropped DEFCON to 1 on their own turn (-1.0)
-                        rewards[i] = -1.0 * scale
-                    continue
-                else:
-                    # Check Rule 4.4 held scoring cards at game end (strictly after end of turn)
-                    if self.held_scoring_blunder and ts.Engine.is_held_scoring_game_over(st):
-                        p_enum = ts.Player.US if p_act == 1 else (ts.Player.USSR if p_act == -1 else ts.Player.NONE)
-                        if ts.Engine.is_held_scoring_loss(st, p_enum):
-                            rewards[i] = -1.0 * scale
-                        else:
-                            rewards[i] = 0.0
-                        continue
-
-            # Standard strategic win: Winner +1.0, Loser -1.0, scaled by decisiveness.
-            rewards[i] = term_util * p_act * scale
-
         return rewards
 
     def compute_zero_sum_sign(
@@ -317,12 +233,13 @@ class VPPotentialShaping:
         return self.base.compute_zero_sum_sign(curr_players, next_players)
 
 
-class UsefulActionsReward(BlunderAwareRewardCalculator):
+class UsefulActionsReward(ZeroSumTerminalReward):
     """Reward calculator encouraging usually useful actions via strategic potential shaping.
 
-    Inherits endgame blunder-shielded terminal rewards from BlunderAwareRewardCalculator,
-    and augments intermediate steps with the potential difference Delta Phi defined
-    strictly from the US perspective:
+    Terminal steps take ZeroSumTerminalReward's payoff (winner +1, loser -1, scaled by
+    `decisiveness_turns`; the blunder shielding it inherited before 2026-11-22 was removed),
+    and intermediate steps the potential difference Delta Phi defined strictly from the US
+    perspective:
         Phi(s) in [-1.0, 1.0] from US perspective
         Delta_Phi_US = Phi(s') - Phi(s)
         R_step = p_act * Delta_Phi_US * potential_scale
@@ -362,7 +279,7 @@ class UsefulActionsReward(BlunderAwareRewardCalculator):
         states: Optional[List[Optional[ts.GameState]]] = None,
     ) -> np.ndarray:
         N = len(acting_players)
-        # 1. Terminal rewards from BlunderAwareRewardCalculator
+        # 1. Terminal rewards: the zero-sum outcome
         rewards = super().compute_step_rewards(
             acting_players=acting_players,
             dones=dones,
