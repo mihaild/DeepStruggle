@@ -14,6 +14,18 @@ So: do not copy a template. Print what a healthy run actually used, and diff.
 
 Defaults come from `build_parser()` in `ai/training/train.py`, so a flag added to the CLI tomorrow
 is handled without touching this file.
+
+Two readings of "non-default", kept apart:
+
+* `non_default` -- against each setting's default *in the run's own epoch* (`_EPOCH_DEFAULTS`,
+  `_CODE_BASELINE`): what the A / R codes name (tools/scripts/run_codes.py) and what `--diff` compares.
+* `launch_settings` / `command_flags` -- against *today's* `train.py` defaults, written with the
+  parser's own option strings: the command that relaunches the run as recorded. It is parsed back with
+  `build_parser()` (and the ladder's required axes checked) before it is printed; a setting today's CLI
+  cannot express is an error, never a flag train.py would reject or a silently dropped one (2026-11-22:
+  the printed command had `--no-ladder-card-self-attention`, which no parser defines, and lacked the
+  required `--ladder-head-context` / `--ladder-head-static`, whose defaults were read off their
+  `--no-` twins' store_false).
 """
 
 from __future__ import annotations
@@ -22,8 +34,10 @@ import argparse
 import json
 import os
 import re
+import shlex
 import sys
-from typing import List, Optional, Tuple
+from collections import defaultdict
+from typing import Any, Dict, List, Optional, Tuple
 
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if _ROOT not in sys.path:
@@ -31,7 +45,7 @@ if _ROOT not in sys.path:
 
 from ai.training.run_name import LEGACY_RUN_NAME_RE, is_run_name, parse_run_name  # noqa: E402
 from ai.training.generic_trainer import RULE_FEATURES, VIEW_RULE_FEATURES  # noqa: E402
-from ai.training.train import build_parser  # noqa: E402
+from ai.training.train import _ladder_config, build_parser  # noqa: E402
 
 #: metadata keys that describe the outcome rather than the request, so they are never flags.
 _NOT_FLAGS = {
@@ -261,8 +275,10 @@ def defaults_for(run_dir: str) -> dict:
     return dflt
 
 
-def recorded(run_dir: str) -> dict:
-    """{dest: value} for every CLI setting the run's metadata records, under the CLI's own names."""
+def recorded(run_dir: str, split: bool = True) -> dict:
+    """{dest: value} for every CLI setting the run's metadata records, under the CLI's own names. `split`: the rule and
+    view bits of `obs_features` apart (`obs_rules`, `obs_view`, as the codes read them); False keeps the one list the
+    run was launched with."""
     meta, dflt = _metadata(run_dir), _defaults()
     out = {}
     for k, known in _BEFORE_RECORDED.items():
@@ -300,7 +316,7 @@ def recorded(run_dir: str) -> dict:
     # was the sharpening bands; since then the bands actually used are always recorded.
     if "rollout_temps" in meta and meta["rollout_temps"] is None:
         out["rollout_temps"] = [0.15, 0.50, 0.10, 0.35]
-    return _split_rules(out)
+    return _split_rules(out) if split else out
 
 
 def unmapped_ladder_keys(run_dir: str) -> List[str]:
@@ -355,6 +371,117 @@ def as_flags(settings: dict) -> list:
     return parts
 
 
+def parser_defaults() -> Dict[str, Any]:
+    """Today's `train.py` defaults as argparse applies them (`parse_args([])`): the first action of a dest sets its
+    default, so `--ladder-head-context`'s None is not overwritten by its `--no-` twin's store_false True."""
+    return vars(build_parser().parse_args([]))
+
+
+def _actions(parser: argparse.ArgumentParser) -> Dict[str, List[argparse.Action]]:
+    by: Dict[str, List[argparse.Action]] = defaultdict(list)
+    for a in parser._actions:
+        if a.option_strings and a.dest != "help":
+            by[a.dest].append(a)
+    return by
+
+
+def _stores(a: argparse.Action, v: Any) -> Optional[str]:
+    """The option string of flag action `a` that sets its dest to the constant `v`, or None."""
+    if isinstance(a, argparse.BooleanOptionalAction):
+        pos = [s for s in a.option_strings if not s.startswith("--no-")]
+        neg = [s for s in a.option_strings if s.startswith("--no-")]
+        return (pos or [None])[0] if v is True else (neg or [None])[0] if v is False else None
+    if a.nargs == 0 and getattr(a, "const", None) is not None and a.const == v and type(a.const) is type(v):
+        return a.option_strings[0]   # store_true / store_false / store_const
+    return None
+
+
+def _equivalent(v: Any, default: Any, acts: List[argparse.Action]) -> bool:
+    """`v` (recorded) is what today's default gives: equal; an empty list where the default is None (the trainer
+    records `list(x or [])`); or False for a store_true flag defaulting to None with no way to say False, which the
+    trainer reads as bool(None)."""
+    if v == default:
+        return True
+    if default is None and isinstance(v, (list, tuple)) and len(v) == 0:
+        return True
+    return default is None and v is False and not any(_stores(a, False) for a in acts)
+
+
+#: Flags retired with no effect (2026-11-22) but still accepted for older commands: whatever a run recorded for them,
+#: today's train.py does the same thing, so they are not part of a relaunch.
+_RETIRED_NO_EFFECT = frozenset({"no_blunder_window", "no_held_scoring_blunder"})
+
+
+def launch_settings(run_dir: str) -> Dict[str, Any]:
+    """{dest: value} today's `train.py` must be given, beyond its own defaults, to relaunch the run as its metadata
+    records it (settings outside an RL run's training, `UNCHECKED_BY_DESIGN`, and no-effect retired flags excluded)."""
+    dflt, acts = parser_defaults(), _actions(build_parser())
+    return {k: v for k, v in recorded(run_dir, split=False).items()
+            if k in dflt and k not in UNCHECKED_BY_DESIGN | _RETIRED_NO_EFFECT
+            and not _equivalent(v, dflt[k], acts.get(k, []))}
+
+
+def command_flags(settings: Dict[str, Any]) -> Tuple[List[str], List[str]]:
+    """`settings` as `train.py` flags, one string per flag, with the parser's own option strings, and every setting
+    today's CLI cannot express (a retired value, a bool with no flag for it), which no flag is printed for."""
+    acts = _actions(build_parser())
+    parts: List[str] = []
+    bad: List[str] = []
+    for k in sorted(settings):
+        v, cands = settings[k], acts.get(k, [])
+        flag = next((s for a in cands for s in [_stores(a, v)] if s), None)
+        if flag is not None:
+            parts.append(flag)
+            continue
+        store = next((a for a in cands if a.nargs != 0), None)
+        if store is None or v is None or isinstance(v, bool) and store.type is not None:
+            bad.append(f"{k}={v!r}")
+            continue
+        opt = store.option_strings[0]
+        if isinstance(v, (list, tuple)):
+            if not v and store.nargs not in ("*", "?"):
+                bad.append(f"{k}={v!r}")
+                continue
+            parts.append(" ".join([opt] + [shlex.quote(str(x)) for x in v]))
+        elif store.choices is not None and v not in store.choices:
+            bad.append(f"{k}={v!r} (not one of {sorted(map(str, store.choices))})")
+        else:
+            parts.append(f"{opt} {shlex.quote(str(v))}")
+    return parts, bad
+
+
+def check_command(flags: List[str], settings: Dict[str, Any]) -> List[str]:
+    """Parse `flags` back with `build_parser()` and list what does not round-trip to `settings` (and the ladder's
+    required structural axes, which train.py checks after parsing). Empty: the command relaunches the run."""
+    argv = [tok for part in flags for tok in shlex.split(part)]
+    try:
+        ns = build_parser().parse_args(argv)
+    except SystemExit:
+        return [f"train.py refuses: {' '.join(argv)}"]
+    acts, out = _actions(build_parser()), []
+    for k, v in settings.items():
+        got = getattr(ns, k)
+        same = got == v or (isinstance(v, (list, tuple)) and list(got or []) == list(v))
+        if not same and not _equivalent(v, got, acts.get(k, [])):
+            out.append(f"{k}: recorded {v!r}, the command gives {got!r}")
+    if ns.arch == "ladder":
+        try:
+            _ladder_config(ns)
+        except SystemExit as e:
+            out.append(str(e))
+    return out
+
+
+def _flag_name(dest: str) -> str:
+    """How `--diff` names a setting: its train.py option (the positive one of a pair), or, for the rule and view bits
+    recorded apart from `--obs-features`, that flag and which bits."""
+    if dest in _DERIVED:
+        return f"--{_DERIVED[dest].replace('_', '-')} ({ {'obs_rules': 'rule', 'obs_view': 'view'}.get(dest, dest)} bits)"
+    opts = [s for a in _actions(build_parser()).get(dest, []) for s in a.option_strings]
+    pos = [s for s in opts if not s.startswith("--no-")]
+    return (pos or opts or ["--" + dest.replace("_", "-")])[0]
+
+
 def _blind_spots(runs: List[Tuple[str, str]]) -> bool:
     """Print what the runs' metadata does not let a diff check; True if a ladder key is unmapped.
 
@@ -386,10 +513,22 @@ def main() -> int:
     a = non_default(args.run_dir)
     if not args.diff:
         name = os.path.basename(args.run_dir.rstrip("/"))
-        print(f"# non-default flags used by {name}")
-        for p in as_flags(a):
+        settings = launch_settings(args.run_dir)
+        flags, bad = command_flags(settings)
+        problems = check_command(flags, {k: v for k, v in settings.items() if all(not b.startswith(k + "=") for b in bad)})
+        print(f"# flags today's train.py needs, beyond its defaults, to relaunch {name}")
+        for p in flags:
             print(f"  {p}")
-        return 2 if _blind_spots([(name, args.run_dir)]) else 0
+        failed = False
+        if bad:
+            failed = True
+            print(f"launch_flags: ERROR: {name}: today's train.py cannot express these recorded settings, so the "
+                  f"command above does not relaunch the run: " + ", ".join(bad), file=sys.stderr)
+        if problems:
+            failed = True
+            print(f"launch_flags: ERROR: {name}: the command does not round-trip: " + "; ".join(problems),
+                  file=sys.stderr)
+        return 2 if _blind_spots([(name, args.run_dir)]) or failed else 0
 
     b = non_default(args.diff)
     keys = sorted(set(a) | set(b))
@@ -403,7 +542,7 @@ def main() -> int:
     else:
         print(f"{'flag':28s}{na:>30s}{nb:>30s}")
         for k, va, vb in rows:
-            print(f"{'--' + k.replace('_', '-'):28s}{str(va):>30s}{str(vb):>30s}")
+            print(f"{_flag_name(k):28s}{str(va):>30s}{str(vb):>30s}")
     if _blind_spots([(na, args.run_dir), (nb, args.diff)]):
         return 2
     return 1 if rows else 0

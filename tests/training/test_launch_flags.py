@@ -7,11 +7,14 @@ and E4-54-36, launched with --entropy-coef 0.0076, diffed as identical to their 
 
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import json
 import os
+import sys
 import tempfile
 from types import ModuleType
+from typing import Any
 
 from ai.training.train import build_parser
 
@@ -166,3 +169,99 @@ def test_the_retired_blunder_flags_keep_old_runs_codes_and_commands() -> None:
     # A run from before the window was switched off (the baseline: window on) shows neither.
     base = lf.non_default(_run({"no_blunder_window": False, "reward_scheme": "blunder_aware"}))
     assert not {"no_blunder_window", "no_held_scoring_blunder", "reward_scheme"} & set(base)
+
+
+# ---- The printed command relaunches the run (2026-11-22): today's train.py parses it back to the recorded settings ----
+
+_FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures", "launch_flags")
+#: Copies of real runs' metadata.json (outcome keys dropped; `_copied_from` names the run), so the test does not read
+#: data/. The two older runs used the retired blunder_aware reward, which today's CLI cannot say.
+_CURRENT = ("E9-A8-R169-S45", "E8.1-A8-R169-S45", "E8.1-A8-R132-S45", "R158_exploiter")
+_RETIRED = ("E8-A30-R95-S44", "E6-03-44")
+
+
+def _fixture(name: str) -> str:
+    return os.path.join(_FIXTURES, f"{name}.json")
+
+
+def test_the_command_of_a_real_run_parses_and_round_trips() -> None:
+    lf = _lf()
+    for name in _CURRENT:
+        settings = lf.launch_settings(_fixture(name))
+        flags, bad = lf.command_flags(settings)
+        assert bad == [], (name, bad)
+        assert lf.check_command(flags, settings) == [], name
+        argv = [tok for part in flags for tok in part.split()]
+        # The two flags the old printer wrote that no parser defines, and the required axes it left out.
+        assert "--no-ladder-card-self-attention" not in argv and "--no-ladder-cross-attention" not in argv
+        assert {"--ladder-head-context", "--ladder-head-static", "--arch"} <= set(argv), name
+        ns = build_parser().parse_args(argv)
+        for k, v in settings.items():
+            assert getattr(ns, k) == v or (v == [] and getattr(ns, k) is None), (name, k, v, getattr(ns, k))
+    flags, _ = lf.command_flags(lf.launch_settings(_fixture("R158_exploiter")))
+    assert "--target-region europe" in flags and "--region-scale-ussr 11.0" in flags
+
+
+def test_a_retired_setting_is_reported_not_printed() -> None:
+    lf = _lf()
+    for name in _RETIRED:
+        settings = lf.launch_settings(_fixture(name))
+        flags, bad = lf.command_flags(settings)
+        assert [b.split("=")[0] for b in bad] == ["reward_scheme"], (name, bad)
+        assert not any(f.startswith("--reward-scheme") for f in flags)
+        rest = {k: v for k, v in settings.items() if k != "reward_scheme"}
+        assert lf.check_command(flags, rest) == [], name
+
+
+def test_defaults_are_argparses_own_not_the_last_actions() -> None:
+    """--ladder-head-context's default is None (name it or train.py refuses the ladder); reading defaults off the
+    actions took its --no- twin's store_false True, so a run's True was never printed."""
+    lf = _lf()
+    d = lf.parser_defaults()
+    assert d["ladder_head_context"] is None and d["ladder_head_static"] is None
+
+
+def test_every_flag_is_written_with_the_parsers_own_option_strings() -> None:
+    """Each train.py setting, set alone to a value its own action produces, is printed as a flag the parser takes back
+    to that value -- whatever its dest is called, store_true / store_false pairs and BooleanOptionalAction included."""
+    lf = _lf()
+    parser, dflt = build_parser(), lf.parser_defaults()
+    checked = 0
+    for a in parser._actions:
+        if not a.option_strings or a.dest == "help" or a.dest in lf.UNCHECKED_BY_DESIGN:
+            continue
+        if isinstance(a, argparse.BooleanOptionalAction):
+            values = [True, False]
+        elif a.nargs == 0:
+            values = [a.const]
+        elif a.choices is not None:
+            values = [c for c in a.choices if c != dflt[a.dest]][:1]
+            if a.nargs in ("*", "+"):
+                values = [[c] for c in values]
+        elif a.type in (int, float):
+            one = a.type(1) if dflt[a.dest] != 1 else a.type(2)
+            values = [[one] * a.nargs if isinstance(a.nargs, int) else [one] if a.nargs in ("*", "+") else one]
+        else:
+            continue
+        for v in values:
+            if v == dflt[a.dest]:
+                continue
+            flags, bad = lf.command_flags({a.dest: v})
+            assert bad == [], (a.dest, v, bad)
+            assert lf.check_command(flags, {a.dest: v}) == [], (a.dest, v, flags)
+            checked += 1
+    assert checked > 200
+
+
+def test_diff_names_each_setting_by_its_flag(capsys: Any, monkeypatch: Any) -> None:
+    lf = _lf()
+    monkeypatch.setattr(sys, "argv", ["launch_flags.py", _fixture("E8.1-A8-R132-S45"), "--diff",
+                                      _fixture("R158_exploiter")])
+    assert lf.main() == 1
+    out = capsys.readouterr().out
+    for flag in ("--target-region", "--region-scale", "--adv-norm-learner-only", "--opponent-frac"):
+        assert any(line.startswith(flag) for line in out.splitlines()), (flag, out)
+    monkeypatch.setattr(sys, "argv", ["launch_flags.py", _fixture("R158_exploiter")])
+    assert lf.main() == 0
+    out = capsys.readouterr().out
+    assert "  --ladder-head-context" in out.splitlines() and "  --target-region europe" in out.splitlines()
