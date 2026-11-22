@@ -1299,7 +1299,10 @@ def ladder_config_from_state_dict(sd: Dict[str, Any]) -> Dict[str, Any] | None:
     if not (has_country or has_card):
         head_entities, head_context, head_static = "both", True, True
     if has_country or has_card:
-        tok_w = (identity_dim + token_dim) if input_mode != "entity" else entity_dim
+        # The identity embedding is in the head's input in every mode: beside the token in flat / grouped, and in the
+        # entity encoder's input -- which the head reads raw -- in entity mode (audit M-3.1: leaving it out there
+        # misdetected head_static on every entity checkpoint with an identity, and the reload failed).
+        tok_w = (identity_dim + token_dim) if input_mode != "entity" else (entity_dim + identity_dim)
         ctx_w = per_entity_heads if head_context else 0
         if has_country:
             raw_w = int(sd["pe_country.0.weight"].shape[1]) - tok_w - ctx_w

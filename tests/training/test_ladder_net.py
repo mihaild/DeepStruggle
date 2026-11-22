@@ -17,7 +17,7 @@ import pytest
 import torch
 
 from ai.models.coldwar_net_v2 import ColdWarNetV2, create_like
-from ai.models.ladder_net import AGGREGATIONS, INPUT_MODES, LadderNet
+from ai.models.ladder_net import AGGREGATIONS, INPUT_MODES, LadderNet, ladder_config_from_state_dict
 from bindings.action_encoder import ActionEncoder
 
 BASE: Dict[str, Any] = dict(hidden_dim=128, num_res_blocks=1, entity_proj_dim=64,
@@ -427,3 +427,15 @@ def test_head_axes_refused_without_heads() -> None:
     """They are inert without a head, so a non-canonical value means a misunderstanding."""
     with pytest.raises(ValueError, match="only mean anything"):
         rung(input_mode="grouped", per_entity_heads=0, head_context=False)
+
+
+@pytest.mark.parametrize("head_static", [True, False])
+@pytest.mark.parametrize("head_entities", ["country", "card", "both"])
+def test_an_entity_rung_with_identity_and_heads_is_recovered_from_its_weights(head_static: bool,
+                                                                              head_entities: str) -> None:
+    """Audit M-3.1: in entity mode the identity embedding reaches the per-entity heads through the encoder's input;
+    the detection left it out and misread head_static, so such a checkpoint failed to reload."""
+    model = rung(per_entity_heads=16, identity_dim=8, head_static=head_static, head_entities=head_entities)
+    cfg = ladder_config_from_state_dict(model.state_dict())
+    assert cfg is not None and cfg["head_static"] == head_static
+    LadderNet(**cfg).load_state_dict(model.state_dict(), strict=True)
