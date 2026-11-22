@@ -198,7 +198,9 @@ are cited from elsewhere; keep them.
   (`ai/training/afterstate_critic.py`; in the runner since 2026-11-20, 2x the trainer's speed at every decision):
   for the envs `set_afterstate_envs(pick)` names before a `step_flat_all`, it walks its own game one node at a time
   after the decider's action and keeps each moment -- right after the action, before and after each die roll, not
-  the decider's own next real decision or a finished game -- observed from the decider's side in its feature set;
+  the decider's own next real decision or a finished game -- observed from the decider's side in its feature set (a
+  die rolled right after another keeps the first roll's after-state again as its own before-roll row, so each roll
+  has one and its luck is dropped; fix verification V-4, 2026-11-22);
   `get_afterstates()` returns `(envs, sides, kinds, observations, walks cut)`. The stream is unchanged (the bulk
   advance is the same single steps), and `tests/training/test_afterstate_critic.py` holds the rows to the Python
   reference walk (`walk_afterstates`) bit for bit. `get_afterstates_into(out)` writes the same rows into a buffer

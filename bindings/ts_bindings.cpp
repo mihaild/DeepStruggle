@@ -1916,6 +1916,10 @@ NB_MODULE(ts_engine, m) {
         static bool at_chance(const ts::GameState& g) {
             return g.ctx().decision_player == ts::Player::NONE && g.ctx().decision_type == ts::DecisionType::ROLL_DIE;
         }
+        // A chance node that rolls a die, the ones roll_outcomes enumerates (turn cleanup draws, it rolls nothing).
+        static bool rolls_a_die(const ts::GameState& g) {
+            return at_chance(g) && g.ctx().pending_roll != ts::RollType::NONE && g.ctx().pending_roll != ts::RollType::TURN_CLEANUP;
+        }
         void keep_afterstate(size_t idx, ts::Player side, uint8_t kind, bool forced) {
             const ts::GameState& g = st(idx);
             if (ts::Engine::is_terminal(g)) return;
@@ -1945,6 +1949,15 @@ NB_MODULE(ts_engine, m) {
                     bool before_row = false;
                     if (!fresh) { const size_t n0 = kinds.size(); keep_afterstate(idx, side, kBeforeRoll, forced); before_row = kinds.size() > n0; }
                     else if (!kinds.empty() && kinds.back() == kAfterDecision) { kinds.back() = kBeforeRoll; before_row = true; }
+                    // A die rolled right after another (an Ops-first coup on Korean War then the war's own roll,
+                    // two immediate-roll headlines, a coup then the Summit): the previous roll's after-state is
+                    // this one's before-state too, kept again as a before-roll row so its luck is paired and
+                    // dropped like any later roll's (fix verification V-4, 2026-11-22). The previous roll's row
+                    // stays its after-roll (node_tensors reads it as that roll's result). A chance node that
+                    // rolls nothing (turn cleanup) is not one.
+                    else if (!kinds.empty() && kinds.back() == kAfterRoll && rolls_a_die(st(idx))) {
+                        const size_t n0 = kinds.size(); keep_afterstate(idx, side, kBeforeRoll, forced); before_row = kinds.size() > n0;
+                    }
                     if (before_row && capture_roll_faces) add_roll_faces(idx, side, static_cast<int32_t>(kinds.size() - 1));
                     if (forced) {
                         if (capture_predeal && ts::rollout::at_turn_cleanup(st(idx))) record_predeal(idx);

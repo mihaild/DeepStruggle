@@ -242,3 +242,11 @@ gap in the table above.
   target, which is a change of the observation and the owner's alone; nothing here asks for it.
 * **Anything that reads the critic at a before-roll moment is reading a blind value:** the critic's-best-move
   player and a search leaf that stops there should take the outcomes' average too.
+
+> **Walk fix, 2026-11-22 (fix verification V-4).** A die rolled right after another -- an Ops-first coup or
+> realignment on Korean War or Arab-Israeli War followed by the war's own roll, two immediate-roll headlines back to
+> back, a coup then the Summit -- had no before-roll row and no outcomes of its own: the walk kept a before-roll
+> moment only after a forced step or at the decision itself, so the second roll's luck stayed in the advantage (about
+> 1% of die rolls, despite audit T-1's later-roll term). Both walks (the runner's and `walk_afterstates`) now keep
+> the first roll's after-state again as the second roll's before-roll row, with its outcomes, and `node_tensors`
+> pairs it as any later roll. The numbers above and pair 1's runs were taken before it, with that 1% left in.

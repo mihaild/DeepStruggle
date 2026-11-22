@@ -8,7 +8,8 @@ those positions. This module adds them to the value loss:
 * **after the decision**: the state the engine is in right after the side's action is applied,
   before anything else happens;
 * **before a die roll**: each chance node the engine then reaches on the way to the next decision
-  (the same state as the previous one when the roll comes at once);
+  (the same state as the previous one when the roll comes at once: the decision's own row is relabelled,
+  and a die right after another is kept again as a before-roll row next to the first roll's after-roll);
 * **after a die roll**: the state each roll leaves.
 
 Each is observed from the deciding side's perspective. Positions that are that side's own next
@@ -107,6 +108,11 @@ def walk_afterstates(state: Any, action: int, side: Any, merged: bool = False, m
                 # The decision's own state is this roll's "before": record it under both readings
                 # once, as before-roll (the more specific).
                 out[-1] = (BEFORE_ROLL, out[-1][1])
+            elif out and out[-1][0] == AFTER_ROLL and _rolls_a_die(st):
+                # A die right after another: the previous roll's after-state is this one's before-state too, kept
+                # again as before-roll so node_tensors pairs it as a later roll and drops its luck (fix verification
+                # V-4, 2026-11-22). The after-roll row stays (the previous roll's result); turn cleanup rolls nothing.
+                keep(BEFORE_ROLL, st)
             ts.Engine.auto_advance_step(st, 1)
             keep(AFTER_ROLL, st)
             fresh = True
@@ -115,6 +121,11 @@ def walk_afterstates(state: Any, action: int, side: Any, merged: bool = False, m
             break                    # a decision the runner presents: the walk is over
         fresh = False
     return out, st
+
+
+def _rolls_a_die(state: Any) -> bool:
+    """A chance node that rolls a die (the runner's roll_outcomes enumerates it); turn cleanup rolls nothing."""
+    return _is_chance(state) and state.ctx().pending_roll_type not in (ts.RollType.NONE, ts.RollType.TURN_CLEANUP)
 
 
 def _settled(state: Any) -> bool:

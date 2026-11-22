@@ -12,7 +12,8 @@ import torch
 import ts_engine as ts
 
 from ai.models.ladder_net import LadderNet, create_ladder_net
-from ai.training.afterstate_critic import (AFTER_ROLL, BEFORE_ROLL, AfterstateRows, last_moment_values, node_tensors,
+from ai.training.afterstate_critic import (AFTER_ROLL, BEFORE_ROLL, AfterstateCapture, AfterstateRows,
+                                           last_moment_values, node_tensors,
                                            read_all_node_values, read_node_values, walk_afterstates)
 from ai.training.nash_pg import NashPGTrainer, _value_only
 from ai.training.rollout_buffer import RolloutBuffer
@@ -340,6 +341,68 @@ def test_the_node_drops_every_rolls_luck() -> None:
     assert abs(float(u[0, 3]) - 0.25) < 1e-6 and abs(float(post[0, 3]) - 0.25) < 1e-6
     # env 4: no decision captured
     assert math.isnan(float(u[0, 4]))
+
+
+def test_a_die_right_after_another_gets_its_own_before_roll_row() -> None:
+    """Fix verification V-4: a die rolled right after another (an Ops-first coup or realignment on Korean War or
+    Arab-Israeli War, then the war's roll) has a before-roll row of its own -- the first roll's after-state kept again
+    -- with that die's outcomes, in the runner and in the reference walk alike, and node_tensors drops both rolls'
+    luck: U is the first roll's average, U_post the value after it, and the second roll adds (after - average)."""
+    ne = 32
+    env = TsVectorizedEnv(num_envs=ne, base_seed=7)
+    obs, masks, _ = env.reset_all()
+    r = env.runner
+    cap = AfterstateCapture(1.0, 0, obs.shape[1], forced=bool(env._auto_advance), seed=3, roll_faces=True)
+    rng = np.random.default_rng(3)
+    proj = torch.from_numpy(np.random.default_rng(0).normal(size=obs.shape[1]).astype(np.float32)) * 0.01
+    found = 0
+    for _ in range(4000):
+        acts = np.array([rng.choice(np.flatnonzero(m)) for m in np.asarray(masks)])
+        dp = np.asarray(r.get_decision_players())
+        walks = {}
+        for e in np.flatnonzero(dp != 0):
+            side = ts.Player.US if dp[e] == 1 else ts.Player.USSR
+            walks[int(e)] = (side, walk_afterstates(r.get_state(int(e)), int(acts[e]), side)[0])
+        cap.before(r, np.ones(ne, bool), dp)
+        obs, masks, _, _, _ = env.step(acts)
+        rows = cap.after(r, 0, np.zeros(ne, bool), "cpu")
+        if rows is None:
+            continue
+        read_node_values(rows, lambda o: o @ proj)
+        assert rows.values is not None and rows.avg is not None and rows.face_row is not None
+        assert rows.face_prob is not None
+        vals, avg = rows.values.numpy(), rows.avg.numpy()
+        u, post, ex, nt = node_tensors([rows], 1, ne, torch.device("cpu"))
+        for e, (side, moments) in walks.items():
+            sel = np.flatnonzero(rows.envs == e)
+            kinds = list(rows.kinds[sel])
+            assert kinds == [k for k, _ in moments], "the runner and the reference walk keep the same rows"
+            pairs = [i for i in range(1, len(sel)) if kinds[i - 1] == AFTER_ROLL and kinds[i] == BEFORE_ROLL]
+            if not pairs:
+                continue
+            i = pairs[0]
+            a, b = sel[i - 1], sel[i]
+            st = moments[i][1]
+            assert st.ctx().pending_roll_type not in (ts.RollType.NONE, ts.RollType.TURN_CLEANUP)
+            assert torch.equal(rows.obs[a], rows.obs[b]), "the first roll's after-state is the second's before-state"
+            faces = np.flatnonzero(rows.face_row == b)
+            assert faces.size and abs(float(rows.face_prob[faces].sum()) - 1.0) < 1e-5, "the second roll has outcomes"
+            _, p_ref, _, _ = ts.roll_outcomes(st, side, 0)
+            assert np.allclose(sorted(p_ref), sorted(rows.face_prob[faces]), atol=1e-6)
+            rolls = [j for j in range(len(sel)) if kinds[j] == BEFORE_ROLL and np.isfinite(avg[sel[j]])]
+            if len(rolls) != 2 or rolls[1] != i:
+                continue                      # the walk's first two rolls are the pair
+            f = sel[rolls[0]]
+            assert abs(float(u[0, e]) - float(avg[f])) < 1e-6
+            assert abs(float(post[0, e]) - float(vals[f + 1])) < 1e-6
+            if i + 1 < len(sel) and kinds[i + 1] == AFTER_ROLL:
+                assert abs(float(ex[0, e]) - float(vals[b + 1] - avg[b])) < 1e-5 and float(nt[0, e]) == 0.0
+            else:
+                assert abs(float(ex[0, e]) + float(avg[b])) < 1e-5 and float(nt[0, e]) == 1.0
+            found += 1
+        if found >= 3:
+            break
+    assert found >= 3, found
 
 
 def test_the_side_not_to_move_bootstraps_from_its_own_last_moment() -> None:
