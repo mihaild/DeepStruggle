@@ -82,7 +82,9 @@ def _losses(student: nn.Module, o: torch.Tensor, m: torch.Tensor, t_logits: torc
     s_logp = torch.log_softmax(s_logits.float(), dim=-1)
     p = t_logp.exp()
     kl = (p * (t_logp - s_logp)).masked_fill(~m, 0.0).sum(-1)
-    v = F.mse_loss(s_win.float().view(-1), t_win) + F.mse_loss(s_vp.float().view(-1) / 20.0, t_vp / 20.0)
+    # v_vp is already normalised to [-1, 1] (the networks' contract; returns_vp is stored so), so it is compared as it
+    # is: a further / 20 made this term 400x too small (audit T-16).
+    v = F.mse_loss(s_win.float().view(-1), t_win) + F.mse_loss(s_vp.float().view(-1), t_vp)
     agree = (s_logits.masked_fill(~m, -1e9).argmax(-1) == t_logits.argmax(-1)).float()
     return kl.mean() + value_coef * v, {"kl": kl.mean().detach(), "value_mse": v.detach(), "agree": agree.mean()}
 

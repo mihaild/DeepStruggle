@@ -36,6 +36,17 @@ def test_the_loss_is_zero_when_the_student_is_the_teacher() -> None:
     assert float(loss) == pytest.approx(0.0, abs=1e-5) and float(parts["agree"]) == 1.0
 
 
+def test_the_vp_value_term_is_the_plain_mse_of_the_normalised_values() -> None:
+    """Audit T-16: v_vp is already in [-1, 1]; the value term is MSE(win) + MSE(vp) with no further / 20."""
+    student = _net(seed=4)
+    obs, mask = torch.rand(8, 3824), torch.ones(8, 220, dtype=torch.bool)
+    with torch.no_grad():
+        lg, s_win, s_vp = student(obs, mask)
+        t_win, t_vp = s_win.view(-1).float(), s_vp.view(-1).float() + 0.5
+        _, parts = _losses(student, obs, mask, lg.float(), t_win, t_vp, 1.0)
+    assert float(parts["value_mse"]) == pytest.approx(0.25, rel=1e-4)
+
+
 def test_a_short_run_writes_a_loadable_best_student(tmp_path: Any) -> None:
     teacher_path = os.path.join(str(tmp_path), "teacher.pt")
     torch.save(_net(seed=1).state_dict(), teacher_path)
