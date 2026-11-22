@@ -169,6 +169,17 @@
     "main": [
       "E8.1-A8-R132-S45@11160M+(S45,46,47)@11520..11600M"
     ],
-    "also_accepts": []
+    "also_accepts": [
+      {
+        "behaviour": {
+          "version": 3,
+          "runner": "800df1ef9c00fdb44af6d17555488019eab6694ed69e896a66e74043e36f97f7",
+          "state": "f6e865333322b3c80ad6f1d5807b631e37b5c33de8942b7a0da69e0c376ff495",
+          "rollout": "794a54f9108e4dceb9e9a4bb485ab6ffc50af882900d5e404aa7520b3da051d5",
+          "mcts": "37cbbc4a6f617b44b851a236fbdada91f8e9b2e73357bc52d5fc99706a195fc8"
+        },
+        "why": "Fix verification V-1 / V-2 (engine/AGENTS.md section 24, owner 2026-11-22): Missile Envy handed over by its own Event is no longer hidden from the recipient's hand by the pending Ops card it left behind -- Grain Sales can draw it, Terrorism, Five Year Plan, Blockade and Latin American Debt Crisis see it, and a headline that hands it over keeps it in the USSR hand with the forced Ops play. Runner, state and rollout move; only games reaching that Missile Envy path differ (rare: one human game in 300). Kept in E9 as a minor fix, like E8's entries; the four E9 records played before it are kept."
+      }
+    ]
   }
 }
