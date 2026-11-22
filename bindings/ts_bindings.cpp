@@ -1205,7 +1205,10 @@ NB_MODULE(ts_engine, m) {
             "The policy-likelihood belief over the opponent's unseen hand (bindings/belief.hpp, shared with "
             "the browser): observe() every decision of the games; at root decisions prepare(), evaluate the "
             "rows it lists (rows_patch or rows_full) at every temperature, set_log_likelihoods(), worlds().")
-            .def(nb::init<uint32_t, bool, uint64_t, bool>(), nb::arg("particles") = 2048, nb::arg("all_decisions") = true,
+            .def("__init__", [](BT* self, uint32_t particles, bool all_decisions, uint64_t seed, bool reveal) {
+                     if (particles == 0) throw std::invalid_argument("a belief needs at least one particle");
+                     new (self) BT(particles, all_decisions, seed, reveal);
+                 }, nb::arg("particles") = 2048, nb::arg("all_decisions") = true,
                  nb::arg("seed") = 0ull, nb::arg("reveal") = false)
             .def_static("temperatures", []() {
                 std::vector<float> t(ts::belief::kTemperatures, ts::belief::kTemperatures + ts::belief::kTemps);
@@ -1221,6 +1224,8 @@ NB_MODULE(ts_engine, m) {
                  }, nb::arg("game"), nb::arg("state"), nb::arg("decider"), nb::arg("action"))
             .def("prepare", [](BT& self, const std::vector<size_t>& games, const std::vector<const ts::GameState*>& states) {
                      if (games.size() != states.size()) throw std::invalid_argument("games and states differ in length");
+                     for (const ts::GameState* st : states)
+                         if (st == nullptr) throw std::invalid_argument("prepare: a state is None");
                      return self.prepare(games, states);
                  }, nb::arg("games"), nb::arg("states"))
             .def("job_count", [](const BT& self) { return self.jobs().size(); })
@@ -1242,6 +1247,7 @@ NB_MODULE(ts_engine, m) {
                      return nb::ndarray<nb::numpy, uint8_t, nb::ndim<2>>(buf, 2, sh, own);
                  }, nb::arg("job"))
             .def("rows_patch", [](const BT& self, uint32_t features) {
+                     if (features & ~ts::obs_features::ALL) throw std::invalid_argument("unknown obs_features bit");
                      // Every job's recorded decisions as one block each: the decision's own observation from
                      // the opponent's side, its hidden pool then, the cards departed since, its job, the move,
                      // and each hand's legal mask bit-packed (np.packbits order) -- the device builds the rows.
@@ -1321,6 +1327,7 @@ NB_MODULE(ts_engine, m) {
                      size_t R = 0;
                      for (const auto& j : self.jobs()) R += j.decisions.size();
                      if (lp.shape(1) != R) throw std::invalid_argument("one block per recorded decision of every job");
+                     require_no_nan(lp.data(), lp.size(), "set_log_likelihoods");
                      self.set_log_likelihoods(lp.data(), R);
                  }, nb::arg("log_likelihoods"))
             .def("worlds", [](const BT& self, size_t p, size_t n) -> nb::object {

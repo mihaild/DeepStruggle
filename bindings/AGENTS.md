@@ -316,7 +316,14 @@ are cited from elsewhere; keep them.
   log-probabilities at every temperature of `kTemperatures`, weighs the hands and the temperatures
   (model averaging by each side's evidence of its opponent across the game) and resamples the root's
   worlds. Belief state is per (game, side). The rollout spec's `:belief<N>` and the player id's
-  `belief=<N>` name it.
+  `belief=<N>` name it. A decision leaves the record when a card entered the decider's hidden pool
+  since, a card the opponent held then is in the decider's hand now (a Missile Envy gift; the count
+  test alone passed when that matched a deck discard -- audit S-3, 2026-11-22), or the hand count
+  does not close; a record that loses a decision the turn's evidence weighs folds that evidence into
+  the finished turns' and does not weigh those decisions again, so a reshuffle or an event's draw no
+  longer erases it from the temperature weights. A job `prepare` listed deals no world until
+  `set_log_likelihoods` weighs it. The binding refuses 0 particles, a `None` state, an unknown
+  feature bit and NaN log-likelihoods (S-11).
 - [`gomp_parallel.hpp`](gomp_parallel.hpp): `gomp_parallel_for`, the one OpenMP pool (§3).
 - [`settle.py`](settle.py): `SettleMode`, the one rule for how far past decisions nobody controls
   the engine is advanced. Settlers that stop at different depths put two components on different

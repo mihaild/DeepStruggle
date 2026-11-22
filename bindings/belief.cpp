@@ -50,12 +50,20 @@ bool left_since(const Decision& d, Player me, const std::array<uint8_t, 111>& no
         const bool pool_now = now[c] == kDeck || now[c] == ou;
         if (pool_now && !pool_then) return false;          // a card entered the pool since
         const bool mine = now[c] == mu || now[c] == mk;
+        // A card the opponent held at d that `me` holds now (a Missile Envy gift, a Grain Sales draw kept):
+        // `me` saw where it came from. Without this the count test below reduces to "cards gone opponent
+        // -> me == cards gone deck -> elsewhere + cards gone deck -> opponent" and passes whenever the two
+        // sides happen to match (a gift and an Our Man in Tehran discard in one turn), with the deck's
+        // discards dealt into the hand at d and the gift left out of it.
+        if (mine && d.locs[c] == ou) return false;
         left[c - 1] = (pool_then && !pool_now && !mine) ? 1 : 0;
         n_left += left[c - 1];
         hand_now += now[c] == ou;
         unknown_then += d.locs[c] == ou;
     }
-    return unknown_then == n_left + hand_now;               // else the hand changed some other way
+    // With nothing gone opponent -> me, exact: unknown_then = hand_now - (deck -> opponent) + n_left -
+    // (deck -> elsewhere), so equality holds only when neither happened (an event's draw or discard).
+    return unknown_then == n_left + hand_now;
 }
 
 void Tracker::observe(size_t game, const GameState& s, Player decider, uint16_t action) {
@@ -67,6 +75,8 @@ void Tracker::observe(size_t game, const GameState& s, Player decider, uint16_t 
                 for (size_t t = 0; t < kTemps; ++t) sd.done[t] += sd.current[t];
             }
             sd.has_current = false;
+            sd.current_decisions.clear();
+            sd.spent.clear();
             sd.cached_record = SIZE_MAX;
         }
         g.log.clear();
@@ -82,6 +92,7 @@ std::vector<bool> Tracker::prepare(const std::vector<size_t>& games, const std::
     position_key_.assign(games.size(), 0);
     position_me_.assign(games.size(), Player::NONE);
     std::vector<bool> has(games.size(), false);
+    if (particles_ == 0) return has;
     for (size_t p = 0; p < games.size(); ++p) {
         const GameState& s = *states[p];
         const Player me = s.ctx().decision_player;
@@ -118,6 +129,7 @@ std::vector<bool> Tracker::prepare(const std::vector<size_t>& games, const std::
         for (uint32_t i = 0; i < g.log.size(); ++i) {
             const Decision& d = g.log[i];
             if (d.decider != other(me)) continue;
+            if (i < sd.spent.size() && sd.spent[i]) continue;   // its evidence is in done already
             const DecisionType t = d.state.ctx().decision_type;
             if (headline_hidden && d.state.current_phase == Phase::HEADLINE && d.state.headline_stage == 0 &&
                 t == DecisionType::SELECT_CARD && d.state.ctx().resolving_card == 0) continue;
@@ -126,6 +138,29 @@ std::vector<bool> Tracker::prepare(const std::vector<size_t>& games, const std::
             if (!left_since(d, me, now, left)) continue;
             job.decisions.push_back(i);
             job.lefts.push_back(left);
+        }
+        // The record lost a decision the current evidence weighs (a reshuffle, an event's draw since): that
+        // evidence is final. Fold it into done and spend its decisions; any of them still on the record
+        // leave it, so the next evidence does not count them twice.
+        if (sd.has_current && !std::includes(job.decisions.begin(), job.decisions.end(),
+                                             sd.current_decisions.begin(), sd.current_decisions.end())) {
+            for (size_t t = 0; t < kTemps; ++t) sd.done[t] += sd.current[t];
+            sd.has_current = false;
+            for (uint32_t i : sd.current_decisions) {
+                if (sd.spent.size() <= i) sd.spent.resize(i + 1, false);
+                sd.spent[i] = true;
+            }
+            sd.current_decisions.clear();
+            sd.cached_record = SIZE_MAX;
+            size_t w = 0;
+            for (size_t r = 0; r < job.decisions.size(); ++r) {
+                if (sd.spent[job.decisions[r]]) continue;
+                job.decisions[w] = job.decisions[r];
+                job.lefts[w] = job.lefts[r];
+                ++w;
+            }
+            job.decisions.resize(w);
+            job.lefts.resize(w);
         }
         if (sd.cached_record == job.decisions.size() && sd.cached_locs == now && !sd.mixture.empty()) continue;
 
@@ -151,6 +186,8 @@ std::vector<bool> Tracker::prepare(const std::vector<size_t>& games, const std::
         }
         sd.cached_record = SIZE_MAX;   // invalid until set_log_likelihoods weighs this job
         sd.cached_locs = now;
+        sd.hands.clear();              // and no world is dealt from the last belief meanwhile
+        sd.mixture.clear();
         jobs_.push_back(std::move(job));
     }
     return has;
@@ -199,6 +236,7 @@ void Tracker::set_log_likelihoods(const float* lp, size_t blocks) {
         }
         g.current = j.evidence;
         g.has_current = true;
+        g.current_decisions = j.decisions;
         g.cached_record = D;
         g.hands = j.hands;
         g.mixture = j.mixture;

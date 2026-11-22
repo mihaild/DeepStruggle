@@ -163,6 +163,8 @@ def left_since(d: Decision, s: Sample) -> Optional[np.ndarray]:
     if not pool_tau[s.pool > 0.5].all():
         return None
     in_my_hand = (s.locs == UNKNOWN[me]) | (s.locs == KNOWN[me])
+    if (in_my_hand & (d.locs == UNKNOWN[opp])).any():
+        return None   # a card the opponent held then is the decider's now (bindings/belief.cpp left_since)
     left = pool_tau & (s.pool < 0.5) & ~in_my_hand
     if int((d.locs == UNKNOWN[opp]).sum()) != int(left.sum()) + int(s.label.sum()):
         return None

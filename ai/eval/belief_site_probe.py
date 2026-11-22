@@ -246,7 +246,7 @@ class Prober:
         return out
 
     def _prior(self, state: ts.GameState, me: int) -> _Belief:
-        now = Now.of(state, me)
+        now = Now.of(state, me, self.reveal)
         n = int(now.pool.sum())
         return _Belief(np.where(now.pool, now.hand / max(n, 1), 0.0), now.pool, now.hand, 0.0, float(self.particles), 0,
                        now.locs)
@@ -263,7 +263,7 @@ class Prober:
         mixture /= mixture.sum()
         marginal = mixture @ hands
         me = side(1 if state.ctx().decision_player == ts.Player.US else -1)
-        now = Now.of(state, me)
+        now = Now.of(state, me, self.reveal)
         pool = now.pool.copy()
         revealed = hands.min(0) > 0.5                                             # in every hand: box 4's
         pool &= ~revealed

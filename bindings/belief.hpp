@@ -69,8 +69,8 @@ public:
     // The decision about to be applied in `game`: the position before it, who decides, the move.
     void observe(size_t game, const GameState& s, Player decider, uint16_t action);
 
-    // Positions the caller is about to search (each its game's current state, `me` to move). Clears
-    // the previous call's jobs. Returns, per position, whether it has a belief: false where there is
+    // Positions the caller is about to search (each its game's current state, `me` to move; no null
+    // states). Clears the previous call's jobs. A tracker of 0 particles believes nothing. Returns, per position, whether it has a belief: false where there is
     // nothing to believe (no hidden opposing hand, a transient location) -- the root redeals at random.
     // Positions whose game has not seen the opponent move since the last call reuse its weights and
     // make no job; the rest make one, listed by jobs().
@@ -84,7 +84,8 @@ public:
     // order; R blocks in all). Weighs the hands and the temperatures and updates each game's evidence.
     void set_log_likelihoods(const float* lp, size_t blocks);
 
-    // `n` hands (n x 110) resampled from position `p`'s belief into `out`; false where it has none.
+    // `n` hands (n x 110) resampled from position `p`'s belief into `out`; false where it has none --
+    // including a job prepare() listed that set_log_likelihoods has not weighed (no stale hands).
     bool worlds(size_t p, size_t n, uint8_t* out) const;
 
     // The temperature weights of position p's game after the last set_log_likelihoods (for reports).
@@ -96,6 +97,11 @@ private:
         std::array<float, kTemps> done{};   // finished turns' evidence, summed
         std::array<float, kTemps> current{};// this turn's latest evidence
         bool has_current = false;
+        std::vector<uint32_t> current_decisions;  // the log indices `current` weighs
+        // Decisions of this turn whose evidence is already in `done`: a record that lost a decision `current`
+        // weighs (a card entered the pool, an event's draw) folds `current` into `done` and spends its
+        // decisions, so nothing is lost from the temperature weights and nothing is counted twice.
+        std::vector<bool> spent;
         // the last belief: valid while the record and the board are unchanged
         size_t cached_record = SIZE_MAX;
         std::array<uint8_t, 111> cached_locs{};

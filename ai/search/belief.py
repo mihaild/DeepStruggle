@@ -75,22 +75,29 @@ class Now:
     headline_hidden: bool = False   # an opposing headline chosen now is not revealed to the decider
 
     @staticmethod
-    def of(st: ts.GameState, me: int) -> "Now":
+    def of(st: ts.GameState, me: int, reveal: bool = False) -> "Now":
+        """`reveal` (the root's box4, `ts.BeliefTracker`'s `reveal`): an opposing headline Space Race box 4
+        has shown the decider is not hidden, as in the tracker's `prepare`. The card stays in the pool and
+        the hand count, which is where `left_since` needs it."""
         locs = card_locations(st)
         opp = 3 - me
+        revealed = reveal and int(ts.revealed_headline(st, player(me))) != 0
         return Now(me, locs, (locs == DECK) | (locs == UNKNOWN[opp]), int((locs == UNKNOWN[opp]).sum()),
-                   st.current_phase == ts.Phase.HEADLINE and int(st.headline_stage) == 0)
+                   st.current_phase == ts.Phase.HEADLINE and int(st.headline_stage) == 0 and not revealed)
 
 
 def left_since(d: Decision, now: Now) -> Optional[np.ndarray]:
     """The cards that were in the decider's hidden pool at `d` and have left it since, for anywhere but
     the decider's own hand: with the opponent's unseen hand now, its unseen hand at `d`. None when `d`
-    is not on this hand's record (a card entered the pool since, or the hand changed by other means)."""
+    is not on this hand's record (a card entered the pool since, a card the opponent held then is in the
+    decider's hand now, or the hand changed by other means) -- `ts.BeliefTracker`'s rule (bindings/belief.cpp)."""
     me, opp = now.me, 3 - now.me
     pool_tau = (d.locs == DECK) | (d.locs == UNKNOWN[opp])
     if not pool_tau[now.pool].all():
         return None
     in_my_hand = (now.locs == UNKNOWN[me]) | (now.locs == KNOWN[me])
+    if (in_my_hand & (d.locs == UNKNOWN[opp])).any():
+        return None   # else the count test passes when such cards match the deck's draws and discards
     left = pool_tau & ~now.pool & ~in_my_hand
     if int((d.locs == UNKNOWN[opp]).sum()) != int(left.sum()) + now.hand:
         return None
@@ -98,7 +105,9 @@ def left_since(d: Decision, now: Now) -> Optional[np.ndarray]:
 
 
 def record(log: Sequence[Decision], now: Now, all_decisions: bool) -> List[Tuple[Decision, np.ndarray]]:
-    """The opponent's decisions this turn that the belief conditions on, each with `left_since`."""
+    """The opponent's decisions this turn that the belief conditions on, each with `left_since`. The
+    tracker also leaves out decisions whose evidence it already folded into the finished turns' (a record
+    that lost a decision: bindings/belief.cpp `prepare`), which this stateless rebuild cannot see."""
     opp = 3 - now.me
     out: List[Tuple[Decision, np.ndarray]] = []
     for d in log:
