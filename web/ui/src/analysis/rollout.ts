@@ -120,8 +120,18 @@ export async function rolloutRoot(engine: WasmEngine, model: Model, spec: Rollou
   if (decider === 0) return null;
   const t0 = performance.now();
   const act = engine.actionSize;
+  // The batch seats both sides of every root it is given with the model's rule bits
+  // (RolloutBatch::add), so a candidate must be legal under those rules; it must also be legal for
+  // whoever really decides here -- a person plays every rule bit, an older save none. The root's
+  // mask is the moves legal under both (audit S-9.1: a candidate from the position's own seats
+  // alone was refused by the batch). This engine holds a restored copy of the position for this
+  // search alone, so seating it changes nothing the page shows.
+  const own = engine.mask(false);
+  engine.seat(1, model.obsFeatures);
+  engine.seat(-1, model.obsFeatures);
+  const seated = engine.mask(false);
+  const mask = own.map((m, i) => (m && seated[i] ? 1 : 0));
   // The root: the network's logits at the real position, from the decider's side.
-  const mask = engine.mask(false);
   const root = await model.run(engine.observation(decider, model.obsFeatures), mask, 1);
   let rows = 1;
   const logits = root.logits.slice(0, act);

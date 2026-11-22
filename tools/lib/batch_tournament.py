@@ -213,14 +213,14 @@ def _choose_actions(
                 give_run_priorities(runner, full, rows=indices)
         actions[indices] = act_t.cpu().numpy()
     elif isinstance(agent, BatchActor):
-        refuse_learned_order(getattr(agent, "obs_features", 0), "an ONNX agent")
+        refuse_learned_order(_agent_features(agent), "an ONNX agent")
         # A network outside torch (OnnxAgent): the same observations and masks, one call.
         sel_obs = np.asarray(obs[indices])
         _assert_width(agent, sel_obs)
         actions[indices] = agent.act_batch(sel_obs[:, :agent.obs_size], masks[indices],
                                            temperature, greedy)
     elif isinstance(agent, BatchSelector):
-        refuse_learned_order(getattr(agent, "obs_features", 0), "a searcher")
+        refuse_learned_order(_agent_features(agent), "a searcher")
         # A searcher pays for batching: one call over every game waiting on it,
         # rather than one call per game. Measured at 64 simulations, a batch of
         # 256 roots runs at 103 decisions/s against roughly 0.4/s one at a time.

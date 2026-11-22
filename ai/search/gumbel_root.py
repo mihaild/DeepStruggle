@@ -273,7 +273,7 @@ class GumbelRoot:
                     world = st.clone()
                     seat_tree(world, mcts.features)
                     if cfg.determinize and not ts.Engine.is_terminal(world):
-                        world = determinize(world, ts.Player(movers[i]), mcts._rng)
+                        world = determinize(world, ts.Player(movers[i]), mcts._rng, keep_revealed=cfg.box4)
                     world.rng_state = mcts._rng.getrandbits(64) % _UINT64
                     world_mask = np.asarray(ActionEncoder.get_legal_mask(world))
                     for a in alive[i]:

@@ -132,8 +132,10 @@ def test_a_job_not_yet_weighed_deals_no_stale_worlds() -> None:
     assert tr.job_count() == 1
     assert tr.worlds(0, 4) is None        # the earlier position's hands, until set_log_likelihoods
     _set(tr, favour_first=False)
-    hands = tr.worlds(0, 4)
-    assert hands is not None and not hands[:, played - 1].any()
+    got = tr.worlds(0, 4)
+    assert got is not None
+    hands = np.asarray(got)
+    assert not hands[:, played - 1].any()
 
 
 def test_the_bindings_refuse_what_would_crash() -> None:

@@ -35,6 +35,8 @@ class CriticArgmaxAgent:
         self.device = torch.device(device)
         self.worlds = int(worlds)
         self.features = model_obs_features(model)
+        #: The feature set its seat is observed and ruled in (bindings.ts_env.agent_view): its network's.
+        self.obs_features = self.features
         self.rng = np.random.default_rng(seed)
         self.decisions = 0
         self.agreed_with_policy = 0

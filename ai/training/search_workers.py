@@ -16,7 +16,7 @@ import os
 import multiprocessing as mp
 import queue as _queue
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Dict, List, Sequence, Tuple
 
 import numpy as np
@@ -31,18 +31,18 @@ Answer = Tuple[int, List[int], np.ndarray]
 
 @dataclass(frozen=True)
 class WorkerRolloutConfig:
-    """The `RolloutConfig` fields a worker process builds its root from (picklable, sent at spawn)."""
-    k: int
-    worlds: int
-    horizon: int
-    rule: str
-    stop: str
-    leaf_side: str
+    """The `RolloutConfig` a worker process builds its root from (picklable, sent at spawn): the whole of it,
+    so a worker searches exactly what the trainer would. It used to carry six fields and silently drop the
+    rest -- keyed, keyed2, aligned, box4, oracle, cuda_graphs (audit S-9.4, 2026-11-22)."""
+    config: RolloutConfig
 
     @classmethod
     def of(cls, config: RolloutConfig) -> WorkerRolloutConfig:
-        return cls(k=int(config.k), worlds=int(config.worlds), horizon=int(config.horizon), rule=str(config.rule),
-                   stop=str(config.stop), leaf_side=str(config.leaf_side))
+        return cls(replace(config))
+
+    def build(self, **overrides: Any) -> RolloutConfig:
+        """The config, with `overrides` (a worker's own seed) replaced."""
+        return replace(self.config, **overrides)
 
 
 def _worker_main(jobs: Any, results: Any, model_bytes: bytes, cfg: WorkerRolloutConfig,
@@ -51,9 +51,7 @@ def _worker_main(jobs: Any, results: Any, model_bytes: bytes, cfg: WorkerRollout
     parent = os.getppid()
     dev = torch.device(device)
     net = torch.load(io.BytesIO(model_bytes), map_location=dev, weights_only=False).eval()
-    teacher = RolloutTeacher(net, RolloutConfig(k=cfg.k, worlds=cfg.worlds, horizon=cfg.horizon, rule=cfg.rule,
-                                                stop=cfg.stop, leaf_side=cfg.leaf_side),
-                             device=dev, subsample=1.0, seed=seed)
+    teacher = RolloutTeacher(net, cfg.build(), device=dev, subsample=1.0, seed=seed)
     while True:
         try:
             msg = jobs.get(timeout=30.0)

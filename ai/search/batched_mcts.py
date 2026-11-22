@@ -172,6 +172,12 @@ class BatchedMCTSConfig(PIMCTSConfig):
     #: default for that reason; what it buys is the CPU time to issue each forward (0.74 ms eager,
     #: 0.06 ms replayed, at 1,900 rows), on the thread every round waits for.
     cuda_graphs: bool = False
+    #: Space Race box 4 (as the rollout root's RolloutConfig.box4): with `determinize`, at the headline
+    #: choice of the side holding Man in Earth Orbit alone, the opponent's headline -- chosen first and
+    #: revealed -- stays chosen and in its hand in every world, the rest of the hand redealt around it.
+    #: Off (the default, every measured searcher): the world forgets it and asks it again, information the
+    #: searching side has thrown away (audit S-9.5, 2026-11-22).
+    box4: bool = False
 
 
 #: CUDA graphs are captured at batch sizes that are multiples of this, and a batch is padded up.
@@ -524,10 +530,13 @@ class BatchedMCTS:
                 inherited.append(True)
                 continue
             s = st.clone()
+            # Both sides of the tree under the network's rules, as the C++ backend seats its roots
+            # (_root_states); the Python tree used to play the caller's seats (audit S-9.6).
+            seat_tree(s, self.features)
             if cfg.advance_root:
                 settle(s, cfg.auto_advance)
             if cfg.determinize and not ts.Engine.is_terminal(s):
-                s = determinize(s, acting_player(s), self._rng)
+                s = determinize(s, acting_player(s), self._rng, keep_revealed=cfg.box4)
                 s.rng_state = self._rng.getrandbits(64) % _UINT64
             roots.append(self._make_node(s, int(searchers[i]) if searchers is not None else 0))
             inherited.append(False)
@@ -586,7 +595,7 @@ class BatchedMCTS:
             if self.cfg.advance_root:
                 settle(s, self.cfg.auto_advance)
             if self.cfg.determinize and not ts.Engine.is_terminal(s):
-                s = determinize(s, acting_player(s), self._rng)
+                s = determinize(s, acting_player(s), self._rng, keep_revealed=self.cfg.box4)
                 s.rng_state = self._rng.getrandbits(64) % _UINT64
             out.append(s)
         return out
@@ -838,6 +847,8 @@ class BatchedMCTSAgent:
         # time, which `_featurise` notes costs ~10x more than letting the runner do the batch.
         self.mcts = BatchedMCTS(model, device=device, config=config,
                                 featurise_capacity=featurise_capacity)
+        #: The feature set its seat is observed and ruled in (bindings.ts_env.agent_view): its network's.
+        self.obs_features = self.mcts.features
 
     def reseed(self, seed: int) -> None:
         """Restart the search's own random streams at `seed` (`BatchedMCTS.reseed`)."""
@@ -918,20 +929,13 @@ class BatchedMCTSAgent:
         return out
 
     def select_action(self, state: ts.GameState, player, temperature: float = 0.1) -> int:
-        seat_decider(state, self.mcts.features)
-        action = int(self.mcts.best_actions([state])[0])
-        # Fail loudly rather than hand back something the caller will have rejected. The engine
-        # already returns False for a mismatched action and leaves the state untouched, so a
-        # caller that ignores the return value loops on the same node forever -- which is exactly
-        # how this surfaced: 1,355 rejected actions at one POINT_NODE.
-        mask = np.asarray(ActionEncoder.get_legal_mask(state))
-        if not (0 <= action < len(mask)) or not mask[action]:
-            raise RuntimeError(
-                f"search returned action {action}, which is not legal in the caller's state "
-                f"(decision_type={int(state.ctx().decision_type)}). This means the tree was "
-                f"rooted at a different decision -- set advance_root=False when the caller does "
-                f"not settle the state itself.")
-        return action
+        """One position through the batch path, so a single match plays what a tournament plays: the
+        same coverage, and the Cambridge Five fallback (a determinized world's pick illegal in the real
+        state replaced by the greedy policy), which this path used to skip and crash on (audit S-9.6).
+        An action illegal after the fallback still fails loudly: the engine returns False for it and
+        leaves the state untouched, so a caller that ignores that loops on the same node forever --
+        how this surfaced, 1,355 rejected actions at one POINT_NODE."""
+        return self.select_actions_batch([state])[0]
 
     def reset(self) -> None:
         self.mcts.reset()

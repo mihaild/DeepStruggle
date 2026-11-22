@@ -56,7 +56,7 @@ from ai.search.belief import BeliefTracker
 from ai.search.gumbel_root import sigma_completed
 from ai.search.pimcts import acting_player
 from bindings.action_encoder import ActionEncoder
-from bindings.ts_env import model_obs_features, observe, seat_decider
+from bindings.ts_env import model_obs_features, observe, seat_decider, seat_tree
 
 #: A playout that has not met its horizon in this many plies is an error, not a leaf: reading an
 #: unfinished rollout where it stands would value it silently at a depth nobody asked for.
@@ -272,9 +272,20 @@ class RolloutRoot:
         return np.concatenate(lgs), np.concatenate(vs)
 
     def _forward(self, states: Sequence[ts.GameState]) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Logits, masks and each position's value for its own acting player."""
-        obs = np.stack([observe(s, acting_player(s), self.features) for s in states])
-        masks = np.stack([np.asarray(ActionEncoder.get_legal_mask(s), dtype=np.uint8) for s in states])
+        """Logits, masks and each position's value for its own acting player. RolloutBatch.add seats both
+        sides of every root with the network's rule bits, so the network reads each position seated so and
+        its mask is the moves legal under those rules AND under the caller's own seats -- a candidate is
+        then legal in the batch and for whoever really decides (audit S-9.1, 2026-11-22: a mask from the
+        caller's seats alone could hold a move the batch refused)."""
+        seated = []
+        for s in states:
+            c = s.clone()
+            seat_tree(c, self.features)
+            seated.append(c)
+        obs = np.stack([observe(s, acting_player(s), self.features) for s in seated])
+        masks = np.stack([np.asarray(ActionEncoder.get_legal_mask(s), dtype=np.uint8)
+                          & np.asarray(ActionEncoder.get_legal_mask(c), dtype=np.uint8)
+                          for s, c in zip(states, seated)])
         lg, v = self._net(obs, masks)
         return lg, masks, v
 
@@ -490,6 +501,8 @@ class RolloutRootAgent:
         self.model = model
         self.name = name
         self.root = RolloutRoot(model, config, device=device, leaf_model=leaf_model)
+        #: The feature set its seat is observed and ruled in (bindings.ts_env.agent_view): its network's.
+        self.obs_features = self.root.features
         self.belief: Optional[BeliefTracker] = (
             BeliefTracker(model, self.root.device, particles=config.belief, seed=config.seed, reveal=config.box4)
             if config.belief else None)
@@ -588,7 +601,67 @@ def is_entry_decision(st: ts.GameState) -> bool:
     return st.current_phase == ts.Phase.ACTION_ROUND
 
 
-class EntryRolloutAgent:
+class _InnerRolloutAgent:
+    """What a wrapper around a `RolloutRootAgent` shows the harness: the inner agent's network, feature
+    set and game hooks, so its seat plays the network's rule bits (bindings.ts_env.agent_view) and a belief
+    inside sees every decision. Audit S-9.2 (2026-11-22): without them `entry:` / `sparse:` seated an E8.1
+    network with feature set 0 -- its unsearched moves played under E8's rules -- and a belief crashed."""
+
+    inner: RolloutRootAgent
+    searched: int
+    decisions: int
+
+    @property
+    def model(self) -> Any:
+        return self.inner.model
+
+    @property
+    def obs_features(self) -> int:
+        return self.inner.obs_features
+
+    def reseed(self, seed: int) -> None:
+        self.inner.reseed(seed)
+
+    def new_games(self) -> None:
+        self.inner.new_games()
+
+    def observe(self, games: Sequence[int], states: Sequence[ts.GameState], actions: Sequence[int],
+                players: Sequence[int]) -> None:
+        self.inner.observe(games, states, actions, players)
+
+    def _chosen(self, states: List[ts.GameState]) -> List[int]:
+        raise NotImplementedError
+
+    def _decide(self, games: Optional[Sequence[int]], states: Sequence[ts.GameState]) -> List[int]:
+        """The network's greedy move (in its own rules: RolloutRoot._forward) everywhere, the inner root's at
+        the positions `_chosen` picks -- through the game hook when the games are known."""
+        states = list(states)
+        lg, masks, _ = self.inner.root._forward(states)
+        if not masks.any(axis=1).all():
+            raise RuntimeError(f"{self.inner.name}: asked to move at a position with no legal action")
+        picks = [int(np.argmax(np.where(masks[i].astype(bool), lg[i], -np.inf))) for i in range(len(states))]
+        chosen = self._chosen(states)
+        if chosen:
+            sub = [states[i] for i in chosen]
+            got = (self.inner.select_actions_games([games[i] for i in chosen], sub) if games is not None
+                   else self.inner.select_actions_batch(sub))
+            for i, a in zip(chosen, got):
+                picks[i] = a
+        self.decisions += len(states)
+        self.searched += len(chosen)
+        return picks
+
+    def select_actions_games(self, games: Sequence[int], states: Sequence[ts.GameState]) -> List[int]:
+        return self._decide(games, states)
+
+    def select_actions_batch(self, states: Sequence[ts.GameState]) -> List[int]:
+        return self._decide(None, states)
+
+    def select_action(self, state: ts.GameState, *_: Any, **__: Any) -> int:
+        return self.select_actions_batch([state])[0]
+
+
+class EntryRolloutAgent(_InnerRolloutAgent):
     """A rollout root applied only at entry decisions (`is_entry_decision`: a headline card choice or an
     action round's card play), the network's greedy move everywhere else -- what P36's active search and
     P40 Arm S's searched opponent search, where `rollout:` alone searches every decision with two or more
@@ -600,26 +673,11 @@ class EntryRolloutAgent:
         self.searched = 0
         self.decisions = 0
 
-    def reseed(self, seed: int) -> None:
-        self.inner.reseed(seed)
-
-    def select_actions_batch(self, states: Sequence[ts.GameState]) -> List[int]:
-        states = list(states)
-        lg, masks, _ = self.inner.root._forward(states)
-        picks = [int(np.argmax(np.where(masks[i].astype(bool), lg[i], -np.inf))) for i in range(len(states))]
-        chosen = [i for i in range(len(states)) if is_entry_decision(states[i])]
-        if chosen:
-            for i, a in zip(chosen, self.inner.select_actions_batch([states[i] for i in chosen])):
-                picks[i] = a
-        self.decisions += len(states)
-        self.searched += len(chosen)
-        return picks
-
-    def select_action(self, state: ts.GameState, *_: Any, **__: Any) -> int:
-        return self.select_actions_batch([state])[0]
+    def _chosen(self, states: List[ts.GameState]) -> List[int]:
+        return [i for i in range(len(states)) if is_entry_decision(states[i])]
 
 
-class SparseRolloutAgent:
+class SparseRolloutAgent(_InnerRolloutAgent):
     """A rollout root applied at a random `frac` of decisions, the network's greedy move at the rest -- to
     measure whether its corrections help one at a time (the network following up) or only in sequence (the
     search following up). `sparse:<frac>:rollout:...` in tournament specs."""
@@ -638,22 +696,8 @@ class SparseRolloutAgent:
         self.inner.reseed(seed)
         self._rng = random.Random(seed + 1)
 
-    def select_actions_batch(self, states: Sequence[ts.GameState]) -> List[int]:
-        states = list(states)
-        lg, masks, _ = self.inner.root._forward(states)
-        if not masks.any(axis=1).all():
-            raise RuntimeError(f"{self.name}: asked to move at a position with no legal action")
-        picks = [int(np.argmax(np.where(masks[i].astype(bool), lg[i], -np.inf))) for i in range(len(states))]
-        chosen = [i for i in range(len(states)) if self._rng.random() < self.frac]
-        if chosen:
-            for i, a in zip(chosen, self.inner.select_actions_batch([states[i] for i in chosen])):
-                picks[i] = a
-        self.decisions += len(states)
-        self.searched += len(chosen)
-        return picks
-
-    def select_action(self, state: ts.GameState, *_: Any, **__: Any) -> int:
-        return self.select_actions_batch([state])[0]
+    def _chosen(self, states: List[ts.GameState]) -> List[int]:
+        return [i for i in range(len(states)) if self._rng.random() < self.frac]
 
 
 def _spec_tail(spec: str) -> Tuple[str, Optional[str], bool]:

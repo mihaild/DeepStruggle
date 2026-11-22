@@ -428,6 +428,10 @@ web/ui/
      (the evidence about the opponent's style then restarts). The page builds each hypothesis row in
      full in WebAssembly and runs it through onnxruntime in chunks of 256: slow at 2,048 hands, but
      the leaderboard's player (`tests/web/test_wasm_engine.py` holds the tracker equal to Python's).
+     The root's candidates come from the moves legal under both the position's own seats and the
+     model's rule bits, which the batch seats on both sides of every root (`rollout.ts` seats its
+     restored copy: audit S-9.1, 2026-11-22 -- a candidate legal only under the position's seats, a
+     person's or an older save's, was refused by the batch).
      The panel shows each candidate's mean value and paired lead and marks the pick; the favourite
      and auto-play take the pick and wait for it. A model in the merged (E4.1) or macro (P42) view is
      refused for search.

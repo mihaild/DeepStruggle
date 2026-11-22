@@ -39,8 +39,7 @@ def _worker_main(control: Any, results: Any, model_bytes: bytes, cfg: WorkerRoll
     dev = torch.device(device)
     try:
         net = torch.load(io.BytesIO(model_bytes), map_location=dev, weights_only=False).eval()
-        root = RolloutRoot(net, RolloutConfig(k=cfg.k, worlds=cfg.worlds, horizon=cfg.horizon, rule=cfg.rule,
-                                              seed=seed, stop=cfg.stop, leaf_side=cfg.leaf_side), device=dev)
+        root = RolloutRoot(net, cfg.build(seed=seed), device=dev)
         feats = model_obs_features(net)
         runner = ts.VectorizedBatchRunner(envs, seed)
         if feats:

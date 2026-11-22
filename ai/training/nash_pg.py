@@ -567,6 +567,10 @@ class BaseNashPGTrainer:
         self.action_view = 1 if self.merged_influence else 2 if self.macro_influence else 0
         # R49 (P33): the rollout root's greedy-continuation value as v_win's target, with no policy target.
         rollout_values = search_rollout_horizon > 0 and search_value_beta > 0.0 and search_ce_coef <= 0.0
+        #: The rollout teacher's root, one config for the in-process teacher and its worker processes alike.
+        teacher_cfg = RolloutConfig(k=int(search_rollout_k), worlds=int(search_rollout_worlds),
+                                    horizon=int(search_rollout_horizon), rule="z2", stop=str(search_rollout_stop),
+                                    cuda_graphs=bool(cuda_graphs), leaf_side=str(search_rollout_leaf_side))
         if rollout_values and (search_gumbel_k > 0 or search_workers > 0 or search_teacher_policy):
             raise ValueError("rollout-root value targets (--search-value-beta with --search-rollout-horizon) "
                              "take no --search-gumbel-k, --search-workers or --search-teacher-policy")
@@ -659,10 +663,7 @@ class BaseNashPGTrainer:
                 # The rollout root as the teacher's search (R32's mechanics, another searcher): its
                 # candidates' rollout values give the improved policy (ai/search/rollout_root.py).
                 self._searcher = RolloutTeacher(
-                    search_teacher_net if search_teacher_net is not None else active_net,
-                    RolloutConfig(k=int(search_rollout_k), worlds=int(search_rollout_worlds),
-                                  horizon=int(search_rollout_horizon), rule="z2", stop=str(search_rollout_stop),
-                                  cuda_graphs=bool(cuda_graphs), leaf_side=str(search_rollout_leaf_side)),
+                    search_teacher_net if search_teacher_net is not None else active_net, teacher_cfg,
                     device=self.device, subsample=search_subsample, node_filter=search_node_filter)
             else:
                 self._searcher = BatchedMCTS(
@@ -695,11 +696,9 @@ class BaseNashPGTrainer:
         #: at its end, so the targets land on this rollout's rows as before (ai/training/search_workers.py).
         self._search_pool: Optional[SearchWorkers] = None
         if search_workers > 0:
-            self._search_pool = SearchWorkers(
-                int(search_workers), search_teacher_net,
-                RolloutConfig(k=int(search_rollout_k), worlds=int(search_rollout_worlds),
-                              horizon=int(search_rollout_horizon), rule="z2", stop=str(search_rollout_stop),
-                              leaf_side=str(search_rollout_leaf_side)), self.device)
+            # The same config as the in-process teacher's, whole (audit S-9.4: the workers' copy had
+            # dropped cuda_graphs, and WorkerRolloutConfig every field past six).
+            self._search_pool = SearchWorkers(int(search_workers), search_teacher_net, teacher_cfg, self.device)
             print(f"[X4b] the rollout-root targets are priced by {search_workers} worker processes "
                   f"beside the rollout", flush=True)
         self.search_saturated_frac = 0.0

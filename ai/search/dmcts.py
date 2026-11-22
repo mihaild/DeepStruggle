@@ -68,25 +68,35 @@ def hidden_pool(state: ts.GameState, me: ts.Player) -> Tuple[List[int], List[int
     return opp_hand, deck, len(opp_hand)
 
 
-def determinize(state: ts.GameState, me: ts.Player, rng: random.Random) -> ts.GameState:
+def determinize(state: ts.GameState, me: ts.Player, rng: random.Random, keep_revealed: bool = False) -> ts.GameState:
     """Return a clone with the unseen cards reshuffled between opponent hand and draw deck.
 
     Counts are preserved exactly, so the sampled world is consistent with everything `me` can
     observe: the opponent holds the same number of cards, the deck holds the same number, and
-    every card `me` has seen stays where it was.
+    every card `me` has seen stays where it was. `keep_revealed` (the searchers' box4) keeps an
+    opposing headline Space Race box 4 has shown `me` (`ts.revealed_headline`) chosen and in the
+    hand, as `ts.determinize(..., keep_revealed=True)` does.
     """
     out = state.clone()
+    # A forced next deal (a replay's) names cards by where they were; once the unseen cards are
+    # redealt those need not be in the deck, so the world deals at random (ts.determinize does too).
+    out.set_forced_deal(ts.Player.US, [])
+    out.set_forced_deal(ts.Player.USSR, [])
+    revealed = int(ts.revealed_headline(state, me)) if keep_revealed else 0
     # A headline the opponent has chosen but not revealed is hidden too. The engine asks the US
     # first and keeps the choice in `headline_us_card` while the card stays in the hand, so a
     # redeal alone left every sampled world resolving the opponent's TRUE headline: a search at
     # the USSR's headline knew what the US had headlined. Forget the choice; the engine then asks
     # the opponent again after `me` has chosen, from the hand this world dealt it.
-    if state.current_phase == ts.Phase.HEADLINE and state.headline_stage == 0:
+    if not revealed and state.current_phase == ts.Phase.HEADLINE and state.headline_stage == 0:
         if int(me) == int(ts.Player.USSR) and state.headline_us_card:
             out.headline_us_card = 0
         elif int(me) == int(ts.Player.US) and state.headline_ussr_card:
             out.headline_ussr_card = 0
     opp_hand, deck, n_hand = hidden_pool(state, me)
+    if revealed in opp_hand:
+        opp_hand.remove(revealed)           # stays where it is; the rest of the hand is redealt around it
+        n_hand -= 1
     pool = opp_hand + deck
     if not pool:
         return out
