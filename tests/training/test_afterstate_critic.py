@@ -151,7 +151,9 @@ def test_the_targets_of_every_row_follow_the_scalar_rule() -> None:
             rows.append(AfterstateRows(t, envs, sides, kinds, obs))
             for j in range(k):
                 tg = next_decision_target(t, int(envs[j]), int(sides[j]), players, dones, rewards, rets, learner)
-                if tg is not None:
+                # Only a learner decision's walk is trained on (fix verification V-5: --per-player-gae captures
+                # every decision's walk for its last moment alone).
+                if tg is not None and learner[t, int(envs[j])]:
                     want.append((obs[j], tg, int(kinds[j])))
         got_obs, got_tgt, got_kind = build_targets(rows, players, dones, rewards, rets, learner, "cpu")
         if not want:
