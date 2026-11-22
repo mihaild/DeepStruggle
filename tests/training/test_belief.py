@@ -4,6 +4,7 @@ until the opponent moves, and a belief root plays a tournament through the game 
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
@@ -18,7 +19,7 @@ from ai.search.belief import (DECK, UNKNOWN, BeliefTracker, Decision, Now, _hypo
 from ai.search.rollout_root import RolloutConfig, RolloutRootAgent, rollout_spec_config
 from bindings.ts_env import model_obs_features
 from tests.training.test_ladder_tokens import SHALLOW
-from tools.lib.batch_tournament import BatchMatchRunner
+from tools.lib.batch_tournament import BatchMatchRunner, _refuse_foreign_views
 
 
 def _model() -> torch.nn.Module:
@@ -300,3 +301,58 @@ def test_a_belief_root_plays_a_tournament_through_the_game_hooks() -> None:
     assert res["total_games"] == 2
     assert belief.belief is not None
     assert belief.belief.stats["positions"] > 20 and belief.belief.stats["jobs"] > 0
+
+
+def _impossible_record() -> Tuple[ts.GameState, int]:
+    """A US action-round position and a move no USSR hand makes legal there (a country slot at a card choice),
+    to be recorded as the USSR's: a record no hand fits."""
+    seed = 4
+    runner = ts.VectorizedBatchRunner(1, seed)
+    rng = np.random.default_rng(seed)
+    for _ in range(20000):
+        st = runner.get_state(0)
+        if runner.get_terminals()[0]:
+            seed += 1000
+            runner = ts.VectorizedBatchRunner(1, seed)
+            continue
+        locs = card_locations(st)
+        if (st.current_phase == ts.Phase.ACTION_ROUND and st.ctx().decision_player == ts.Player.US
+                and int(st.turn) >= 2 and int((locs == UNKNOWN[2]).sum()) >= 2
+                and not np.isin(locs, [int(ts.CardLocation.PEEKED_TEMP), int(ts.CardLocation.HEADLINE_COMMITTED)]).any()):
+            m = np.asarray(ts.ActionMask.generate_flat_mask(st))
+            return st, int([a for a in np.flatnonzero(m == 0) if a >= 112][0])
+        runner.step_flat_all([int(rng.choice(np.flatnonzero(np.asarray(runner.get_action_masks())[0])))], True)
+    raise AssertionError("no such position")
+
+
+def test_a_belief_with_no_consistent_hand_logs_it_and_plays_on_the_uniform_prior(caplog: pytest.LogCaptureFixture) -> None:
+    """The owner's rule (2026-11-22): the root plays people and never refuses; it says so and plays the prior."""
+    st, bad = _impossible_record()
+    tr = BeliefTracker(_model(), torch.device("cpu"), particles=16, seed=1)
+    tr.new_games(True)
+    tr.observe([0], [st], [bad], [-1])
+    with caplog.at_level("WARNING", logger="ai.search.belief"):
+        hands = tr.worlds([0], [st], 8)
+    assert hands[0] is not None and hands[0].shape == (8, 110)
+    assert tr.stats["exhausted"] == 1 and "no USSR hand" in caplog.text and f"action {bad}" in caplog.text
+    assert np.allclose(np.asarray(tr.tracker.mixture(0)), 1.0 / 16)
+    strict = BeliefTracker(_model(), torch.device("cpu"), particles=16, seed=1, strict=True)
+    strict.new_games(True)
+    strict.observe([0], [st], [bad], [-1])
+    with pytest.raises(RuntimeError, match="no USSR hand"):
+        strict.worlds([0], [st], 8)
+    agent = RolloutRootAgent(_model(), "belief", RolloutConfig(k=2, worlds=4, horizon=0, belief=16))
+    agent.new_games(True)
+    agent.observe([0], [st], [bad], [-1])
+    a = agent.select_actions_games([0], [st])[0]
+    assert np.asarray(ts.ActionMask.generate_flat_mask(st))[a]
+    assert agent.belief is not None and agent.belief.stats["exhausted"] == 1
+
+
+def test_a_belief_refuses_an_opponent_in_another_action_view() -> None:
+    belief = RolloutRootAgent(_model(), "belief", RolloutConfig(k=2, worlds=2, horizon=0, belief=16))
+    plain = RolloutRootAgent(_model(), "plain", RolloutConfig(k=2, worlds=2, horizon=0))
+    merged = SimpleNamespace(name="merged", obs_features=0, merged_influence=True)
+    _refuse_foreign_views([(belief, plain), (plain, merged)])          # no belief reads the merged actions
+    with pytest.raises(ValueError, match="merged"):
+        _refuse_foreign_views([(merged, belief)])

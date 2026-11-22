@@ -41,7 +41,7 @@ if(EMSCRIPTEN)
         _ts_rollout_candidates _ts_rollout_decide
         _ts_belief_reset _ts_belief_temperatures _ts_belief_temperature _ts_belief_particles _ts_belief_observe
         _ts_belief_prepare _ts_belief_decisions _ts_belief_action _ts_belief_rows _ts_belief_set_log_likelihoods
-        _ts_belief_temperature_weights _ts_belief_worlds _ts_rollout_add_belief
+        _ts_belief_temperature_weights _ts_belief_worlds _ts_rollout_add_belief _ts_belief_exhausted
         _ts_rollout_race _ts_rollout_in_race _ts_obs_size_for _ts_observation_features _ts_click_event_tracks_json
         _ts_seat_obs_features _ts_seat_rules _ts_obs_features_rules
         _ts_step_dice _ts_first_headline_json _ts_card_location _ts_set_card_location _ts_set_rng

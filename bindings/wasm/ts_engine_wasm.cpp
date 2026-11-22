@@ -822,6 +822,8 @@ TS_API int ts_rollout_add(const int32_t* candidates, int k, int worlds) {
 // ts_belief_set_log_likelihoods; then ts_rollout_add_belief deals the root's worlds from it.
 
 // `reveal`: every hand holds the opponent's headline revealed by Space Race box 4 (the root's box4).
+// The page records every move, single-choice ones included, so the tracker assumes nothing about which
+// decisions were asked beyond the engine's own hand-gated questions (Tracker::set_auto_advanced off).
 TS_API void ts_belief_reset(uint32_t particles, int all_decisions, uint32_t seed_lo, uint32_t seed_hi, int reveal) {
     g_belief = std::make_unique<ts::belief::Tracker>(particles, all_decisions != 0,
                                                      (static_cast<uint64_t>(seed_hi) << 32) | seed_lo, reveal != 0);
@@ -855,11 +857,17 @@ TS_API int ts_belief_observe(int decision_type, int primary, int secondary, int 
 
 // The belief for the position held: 1 if it has one (then ts_belief_decisions() rows blocks to
 // evaluate, 0 when its weights are reused), 0 where there is nothing to believe.
+// Where no opposing hand consistent with the record is found the belief falls back to the uniform prior and
+// still plays; ts_belief_exhausted() then says why (else "").
 TS_API int ts_belief_prepare() {
     if (!g_belief) return 0;
     const std::vector<size_t> games{0};
     const std::vector<const ts::GameState*> states{&g_state};
     return g_belief->prepare(games, states)[0] ? 1 : 0;
+}
+TS_API const char* ts_belief_exhausted() {
+    if (!g_belief || g_belief->exhausted().empty()) return "";
+    return g_belief->exhausted()[0].second.c_str();
 }
 TS_API int ts_belief_decisions() {
     return (g_belief && !g_belief->jobs().empty()) ? static_cast<int>(g_belief->jobs()[0].decisions.size()) : 0;
@@ -879,6 +887,7 @@ TS_API int ts_belief_rows(int d, int lo, int n, uint32_t features) {
         g_error = "no such decision or hands";
         return 0;
     }
+    if (features & ~ts::obs_features::ALL) { g_error = "unknown obs_features bit"; return 0; }
     const auto& left = job.lefts[static_cast<size_t>(d)];
     g_belief_held.assign(static_cast<size_t>(n) * 110, 0);
     for (int k = 0; k < n; ++k)
@@ -895,11 +904,12 @@ TS_API int ts_belief_rows(int d, int lo, int n, uint32_t features) {
 // lp: temperatures x decisions x particles floats, the log-probability of each recorded decision's move.
 TS_API int ts_belief_set_log_likelihoods(const float* lp) {
     if (!g_belief || g_belief->jobs().empty()) { g_error = "ts_belief_prepare made no job"; return 0; }
-    if (any_nan(lp, ts::belief::kTemps * g_belief->jobs()[0].decisions.size() * g_belief->particles())) {
-        g_error = "a log-likelihood is NaN";
+    // Every hand is consistent with every recorded move, so each value is finite; anything else (NaN, an
+    // infinity) is refused by the tracker, as in the Python binding.
+    if (const char* err = g_belief->set_log_likelihoods(lp, g_belief->jobs()[0].decisions.size())) {
+        g_error = err;
         return 0;
     }
-    g_belief->set_log_likelihoods(lp, g_belief->jobs()[0].decisions.size());
     return 1;
 }
 // The temperature weights of the position prepared (ts_belief_temperatures() floats into `out`).

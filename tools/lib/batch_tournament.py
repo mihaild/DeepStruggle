@@ -173,6 +173,32 @@ def _observers(agents: Sequence[Any]) -> List[Any]:
     return list(seen.values())
 
 
+def _refuse_foreign_views(pairs: Sequence[Tuple[Any, Any]]) -> None:
+    """A belief reads its opponent's flat actions as E4 actions (its hypothesis masks are the E4 view's,
+    ai/search/belief.py), so an opponent deciding in the merged or macro view would feed it actions of another
+    meaning -- a move one view's slot names is not the E4 move in that slot. Refused, not decoded: a merged or
+    macro action is several E4 steps, never one."""
+    for a, b in pairs:
+        for ob, opp in ((a, b), (b, a)):
+            if getattr(ob, "reads_opponent_actions", False) and _action_view_code(opp) != 0:
+                raise ValueError(
+                    f"{getattr(ob, 'name', ob)} keeps a belief over its opponent's hand, which reads E4 actions; its "
+                    f"opponent {getattr(opp, 'name', opp)} decides in the "
+                    f"{'merged (E4.1)' if _action_view_code(opp) == 1 else 'macro'} view")
+
+
+def _report_beliefs(observers: Sequence[Any]) -> None:
+    """Each belief's fallbacks to the uniform prior (positions with no opposing hand consistent with the
+    record; each was also logged as it happened), printed with the positions it believed."""
+    for ob in observers:
+        bt = getattr(ob, "belief", None) or getattr(getattr(ob, "inner", None), "belief", None)
+        if bt is None:
+            continue
+        st = bt.stats
+        print(f"  belief of {getattr(ob, 'name', ob)}: {int(st["positions"]):,} positions so far, "
+              f"{int(st['exhausted'])} fell back to the uniform prior (no consistent hand found)", flush=True)
+
+
 def _report_decisions(observer: Any, rows: npt.NDArray[np.int64], runner: "ts.VectorizedBatchRunner",
                       actions: npt.NDArray[np.int32], d_players: npt.NDArray[Any]) -> None:
     """Show `observer` the decisions about to be applied in its games `rows`: each position before the
@@ -723,8 +749,9 @@ class BatchMatchRunner:
             active = np.ones(cur_games, dtype=bool)
             steps = 0
             observers = _observers([agent_a, agent_b])
+            _refuse_foreign_views([(agent_a, agent_b)])
             for ob in observers:
-                ob.new_games()
+                ob.new_games(auto_advance)
             open_a = getattr(agent_a, "forced_opening", None)
             open_b = getattr(agent_b, "forced_opening", None)
             setup_override = ScriptedSetupOverride(cur_games) if (open_a or open_b) else None
@@ -904,6 +931,7 @@ class BatchMatchRunner:
                         }
                         f_log.write(json.dumps(entry) + "\n")
 
+        _report_beliefs(_observers([agent_a, agent_b]))
         choice: Optional[ChoiceStats] = None
         if track_choices:
             choice = _choice_stats(
@@ -985,8 +1013,9 @@ class BatchMatchRunner:
 
         temps = [_agent_temperature(ag, temperature, deterministic) for ag in agents]
         observers = _observers(agents)
+        _refuse_foreign_views(pairs)
         for ob in observers:
-            ob.new_games()
+            ob.new_games(auto_advance)
         openings = [getattr(ag, "forced_opening", None) for ag in agents]
         setup_override = ScriptedSetupOverride(n) if any(openings) else None
         active = np.ones(n, dtype=bool)
@@ -1098,6 +1127,7 @@ class BatchMatchRunner:
                 avg_ply=float(np.mean(plies[sl])), avg_vp_margin_a=float(np.mean(v_margin)),
                 # The pack's wall time is shared; each pairing reports its share.
                 elapsed_seconds=elapsed / max(1, P)))
+        _report_beliefs(observers)
         return out
 
 

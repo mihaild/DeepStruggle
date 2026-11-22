@@ -35,9 +35,15 @@ bits per position, hit rate and lift, joint bits, and the temperature weights; o
 * Then one leaderboard match decides deployment: the adopted belief root against today's on E9, 1,000 deals a
   side -- self-play strength must not drop by more than its error; the site's games are the reason, not Elo.
 
-Also counted in every arm: decisions where every sampled hand gives the person's move zero probability (the
-−1e9 path, audit S-1). The owner ruled them impossible in a game; on the site a non-zero count would mean the
-record or the seating disagrees with the person's real move, which is a finding in itself.
+Also counted in every arm: positions where no hand consistent with the person's recorded moves is found. Since
+2026-11-22 (audit S-1) the tracker draws only consistent hands -- legality, plus "asked with a choice" at the
+engine's hand-gated questions -- by rejection, then a stratified proposal with importance weights, so the old
+−1e9 path (every *uniform* hand ruling the move out, which a trap's scoring escape with seven cards nearly always
+did) is gone; the probe prints the fallbacks (`exhausted`) and its joint bits now add the hands' importance
+weights and the consistent hands' prior mass. A non-zero count on the site would mean the record or the seating
+disagrees with the person's real move, which is a finding in itself. The site's games record every move, so the
+probe's site tracker runs with `auto_advanced` off; its self-play control runs auto-advanced. Beliefs measured
+before the change (P35's numbers) are the uniform sampler's.
 
 ## Cost
 

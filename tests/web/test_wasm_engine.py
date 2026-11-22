@@ -350,6 +350,9 @@ def test_the_belief_tracker_is_the_same_in_both_builds(seed: int, plies: int, tm
     assert "error" not in wasm, wasm.get("error")
     assert wasm["observed"] == len(actions), "the page found a flat action for every click"
     assert (bool(wasm["has"]), wasm["decisions"]) == (bool(has), D)
+    assert wasm["exhausted"] == "" and tracker.exhausted() == []          # a real game's record always fits a hand
+    if D:
+        assert "not finite" in wasm["refused_inf"] and "unknown obs_features bit" in wasm["bad_features"]
     assert wasm["actions"] == rows_actions
     assert wasm["digest"] == h.hexdigest(), "the two builds' hypothesis rows differ"
     assert np.allclose(np.asarray(wasm["weights"], dtype=np.float32), np.asarray(weights, dtype=np.float32), atol=1e-6)

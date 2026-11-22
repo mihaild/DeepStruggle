@@ -156,6 +156,9 @@ class Prober:
     particles: int
     seed: int
     reveal: bool
+    #: whether the games are stepped with the engine's auto-advance (self-play: True; the site's games record
+    #: every move: False) -- bindings/belief.hpp's `auto_advanced`
+    auto_advanced: bool
     tracker: ts.BeliefTracker = field(init=False)
     logs: Dict[int, List[Decision]] = field(default_factory=dict)
     turns: Dict[int, int] = field(default_factory=dict)
@@ -163,9 +166,11 @@ class Prober:
     temperatures: List[float] = field(init=False)
     temp_weight_sum: np.ndarray = field(init=False)
     joint_mismatch: int = 0
+    #: positions with no opposing hand consistent with the record (the uniform prior is scored there)
+    exhausted: int = 0
 
     def __post_init__(self) -> None:
-        self.tracker = ts.BeliefTracker(self.particles, True, self.seed, self.reveal)
+        self.tracker = ts.BeliefTracker(self.particles, True, self.seed, self.reveal, auto_advanced=self.auto_advanced)
         self.temperatures = list(ts.BeliefTracker.temperatures())
         self.temp_weight_sum = np.zeros(len(self.temperatures))
 
@@ -209,6 +214,9 @@ class Prober:
 
     def _score_group(self, games: List[int], states: List[ts.GameState]) -> List[Optional[Tuple[_Belief, np.ndarray]]]:
         has = self.tracker.prepare(games, states)
+        for _, why in self.tracker.exhausted():
+            self.exhausted += 1
+            print(f"  {why}", flush=True)
         jobs = int(self.tracker.job_count())
         fresh: Dict[int, _Belief] = {}
         if jobs:
@@ -255,7 +263,8 @@ class Prober:
         """Job j's mixture over its hands -- the tracker's `set_log_likelihoods`, rebuilt -- and its scores."""
         hands = np.asarray(self.tracker.job_hands(j), dtype=np.float64)          # N x 110
         tw = np.asarray(self.tracker.temperature_weights(int(self.tracker.job_position(j))), dtype=np.float64)
-        lw = logw.cpu().numpy()                                                   # T x N
+        # The hands' importance weights (normalized; all equal unless the prior did not fill the particles).
+        lw = logw.cpu().numpy() + np.asarray(self.tracker.job_log_weights(j))[None, :]   # T x N
         mx = lw.max(1, keepdims=True)
         e = np.exp(lw - mx)
         per_t = e / e.sum(1, keepdims=True)
@@ -276,7 +285,8 @@ class Prober:
             joint = math.nan
         else:
             log_l = lp_true.sum(1)                                                  # T
-            log_z = mx[:, 0] + np.log(e.mean(1))
+            # The evidence over the prior: the weighted sum over the consistent hands times their prior mass.
+            log_z = mx[:, 0] + np.log(e.sum(1)) + float(self.tracker.job_log_mass(j))
             r = log_l - log_z
             top = r.max()
             joint = float((top + np.log((tw * np.exp(r - top)).sum())) / math.log(2))
@@ -493,16 +503,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             games = games[:a.limit]
         print("site games: " + ", ".join(f"{k} {v}" for k, v in counts.items())
               + f"; seated {sum(g.seated for g in games)}, unseated {sum(not g.seated for g in games)}", flush=True)
-        pr = Prober(ev.model, dev, ev.features, a.particles, a.seed, not a.no_reveal)
+        pr = Prober(ev.model, dev, ev.features, a.particles, a.seed, not a.no_reveal, False)
         rows += run_site(pr, games)
         tw_site, mismatch = pr.temp_weight_sum / max(pr.temp_weight_sum.sum(), 1e-9), pr.joint_mismatch
-        print(f"site: {len(rows):,} positions", flush=True)
+        print(f"site: {len(rows):,} positions, {pr.exhausted} with no consistent hand found (scored at the prior)",
+              flush=True)
     if a.selfplay_games:
-        pr = Prober(ev.model, dev, ev.features, a.particles, a.seed + 1, not a.no_reveal)
+        pr = Prober(ev.model, dev, ev.features, a.particles, a.seed + 1, not a.no_reveal, True)
         n0 = len(rows)
         rows += run_selfplay(pr, a.selfplay_games, a.seed)
         tw_self, mismatch = pr.temp_weight_sum / max(pr.temp_weight_sum.sum(), 1e-9), mismatch + pr.joint_mismatch
-        print(f"self-play: {len(rows) - n0:,} positions", flush=True)
+        print(f"self-play: {len(rows) - n0:,} positions, {pr.exhausted} with no consistent hand found", flush=True)
     print(f"joint bits not computed (the Python record is not the tracker's) at {mismatch} beliefs")
     np.savez(a.output, rows=np.asarray(rows, dtype=np.float64), label=a.label or a.checkpoint,
              temps=np.asarray(ts.BeliefTracker.temperatures()), tw_site=tw_site, tw_self=tw_self)

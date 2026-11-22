@@ -520,9 +520,15 @@ class RolloutRootAgent:
             self.belief.reseed(seed)
 
     # The tournament's game hooks (tools/lib/batch_tournament.py), for the belief's record.
-    def new_games(self) -> None:
+    def new_games(self, auto_advance: bool) -> None:
         if self.belief is not None:
-            self.belief.new_games()
+            self.belief.new_games(auto_advance)
+
+    @property
+    def reads_opponent_actions(self) -> bool:
+        """Whether it reads the opponent's flat actions as E4 actions (a belief's hypothesis masks are the E4
+        view's): the harness refuses an opponent deciding in another view."""
+        return self.belief is not None
 
     def observe(self, games: Sequence[int], states: Sequence[ts.GameState], actions: Sequence[int],
                 players: Sequence[int]) -> None:
@@ -629,8 +635,12 @@ class _InnerRolloutAgent:
     def reseed(self, seed: int) -> None:
         self.inner.reseed(seed)
 
-    def new_games(self) -> None:
-        self.inner.new_games()
+    def new_games(self, auto_advance: bool) -> None:
+        self.inner.new_games(auto_advance)
+
+    @property
+    def reads_opponent_actions(self) -> bool:
+        return self.inner.reads_opponent_actions
 
     def observe(self, games: Sequence[int], states: Sequence[ts.GameState], actions: Sequence[int],
                 players: Sequence[int]) -> None:

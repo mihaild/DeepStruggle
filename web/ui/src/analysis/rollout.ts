@@ -43,6 +43,11 @@ export interface SearchResult {
   ms: number;
   /** With a belief: the temperature weights it settled on for this opponent (bindings/belief.hpp). */
   temperature_weights?: number[];
+  /**
+   * With a belief: set where no opposing hand consistent with the opponent's recorded moves was found, so the
+   * worlds were dealt from the uniform prior instead (the engine's diagnostic). A correct record never does this.
+   */
+  belief_warning?: string;
 }
 
 /** Play the batch's live rows to their horizons and value its leaves; the network rows spent. */
@@ -94,8 +99,9 @@ async function weighBelief(engine: WasmEngine, model: Model, width: number): Pro
           for (let i = 0; i < act; i++) if (rows.masks[base + i]) mx = Math.max(mx, out.logits[base + i] / temps[t]);
           let s = 0;
           for (let i = 0; i < act; i++) if (rows.masks[base + i]) s += Math.exp(out.logits[base + i] / temps[t] - mx);
-          const v = rows.masks[base + a] ? out.logits[base + a] / temps[t] - mx - Math.log(s) : -Infinity;
-          lp[(t * D + d) * N + lo + k] = Number.isFinite(v) ? v : -1e9;
+          // Every hand the tracker lists is consistent with the move (bindings/belief.hpp), so its mask allows
+          // it and the value is finite; anything else is a bug the tracker refuses (beliefSetLogLikelihoods).
+          lp[(t * D + d) * N + lo + k] = rows.masks[base + a] ? out.logits[base + a] / temps[t] - mx - Math.log(s) : -Infinity;
         }
       }
     }
@@ -154,7 +160,11 @@ export async function rolloutRoot(engine: WasmEngine, model: Model, spec: Rollou
   // Racing: the first `race` worlds for every candidate, the rest after the trailing ones leave.
   const first = spec.race || spec.worlds;
   let belief = false;
+  let beliefWarning: string | undefined;
   if (spec.belief > 0 && engine.beliefParticles() === spec.belief && engine.beliefPrepare()) {
+    // No consistent hand found: the engine weighs the uniform prior and the search still plays; said here.
+    beliefWarning = engine.beliefExhausted() || undefined;
+    if (beliefWarning) console.warn(beliefWarning);
     rows += await weighBelief(engine, model, width);
     temperatureWeights = engine.beliefTemperatureWeights();
     engine.rolloutAddBelief(candidates, first, spec.worlds);
@@ -173,5 +183,6 @@ export async function rolloutRoot(engine: WasmEngine, model: Model, spec: Rollou
   const d = engine.rolloutDecide(0, candidates, logits, mask, spec.rule);
   const dropped = spec.race ? candidates.filter((_, c) => !engine.rolloutInRace(0, c)) : undefined;
   return { kind: "rollout", spec, candidates, pick: d.pick, worlds: d.worlds, q: d.q, lead: d.lead, lead_se: d.lead_se,
-           dropped, rows, ms: Math.round(performance.now() - t0), temperature_weights: temperatureWeights };
+           dropped, rows, ms: Math.round(performance.now() - t0), temperature_weights: temperatureWeights,
+           belief_warning: beliefWarning };
 }

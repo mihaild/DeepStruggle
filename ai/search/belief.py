@@ -17,10 +17,20 @@ out, not approximated. Earlier turns are not used: the deal mixes the held cards
 The weights are the network's own: exact in self-play, a model of the opponent otherwise. The hands
 are importance-sampled, so their number (`particles`) sets the noise: P35a's log loss was 0.353 at
 256 and 0.336 at 2,048 on the same positions.
+
+Consistency (audit S-1, 2026-11-22). The tracker draws only hands consistent with every opposing decision on
+the record -- the move legal with the hand placed, and a choice where the decision would not have been asked
+otherwise (bindings/belief.hpp) -- by rejection from the prior, then a stratified proposal with importance
+weights; a hand inconsistent with any decision has weight zero. Where none is found (a correct record never
+does that) the position falls back to the uniform prior: `BeliefTracker` logs a warning naming it and counts it
+(`stats["exhausted"]`), or raises with `strict=True` (tests, offline measurement). The stateless helpers below
+(`sample_hands`, `log_weights`, `posterior`) are the probes' prior path: a hand illegal for a recorded move gets
+log-likelihood -inf there, i.e. weight exactly zero.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
@@ -30,6 +40,8 @@ import torch
 import ts_engine as ts
 from bindings.action_encoder import ActionEncoder
 from bindings.ts_env import model_obs_features
+
+logger = logging.getLogger(__name__)
 
 DECK = int(ts.CardLocation.DRAW_DECK)
 UNKNOWN = {1: int(ts.CardLocation.HAND_US_UNKNOWN), 2: int(ts.CardLocation.HAND_USSR_UNKNOWN)}
@@ -98,6 +110,8 @@ def left_since(d: Decision, now: Now) -> Optional[np.ndarray]:
     in_my_hand = (now.locs == UNKNOWN[me]) | (now.locs == KNOWN[me])
     if (in_my_hand & (d.locs == UNKNOWN[opp])).any():
         return None   # else the count test passes when such cards match the deck's draws and discards
+    if ((now.locs == DECK) & (d.locs == UNKNOWN[opp])).any():
+        return None   # back in the deck through a reshuffle (Our Man in Tehran): the same false match
     left = pool_tau & ~now.pool & ~in_my_hand
     if int((d.locs == UNKNOWN[opp]).sum()) != int(left.sum()) + now.hand:
         return None
@@ -105,9 +119,9 @@ def left_since(d: Decision, now: Now) -> Optional[np.ndarray]:
 
 
 def record(log: Sequence[Decision], now: Now, all_decisions: bool) -> List[Tuple[Decision, np.ndarray]]:
-    """The opponent's decisions this turn that the belief conditions on, each with `left_since`. The
-    tracker also leaves out decisions whose evidence it already folded into the finished turns' (a record
-    that lost a decision: bindings/belief.cpp `prepare`), which this stateless rebuild cannot see."""
+    """The opponent's decisions this turn that the belief's likelihood conditions on, each with
+    `left_since`: exactly the tracker's record (bindings/belief.cpp `prepare`). Its legality constraints are
+    every opposing decision on the record, whatever `all_decisions` says."""
     opp = 3 - now.me
     out: List[Tuple[Decision, np.ndarray]] = []
     for d in log:
@@ -127,7 +141,8 @@ def record(log: Sequence[Decision], now: Now, all_decisions: bool) -> List[Tuple
 
 def sample_hands(now: Now, n: int, rng: np.random.Generator) -> np.ndarray:
     """`n` hands of the opponent's unknown size drawn uniformly from the decider's hidden pool, as an
-    n x 110 uint8 membership array."""
+    n x 110 uint8 membership array: the prior, so some may be illegal for a recorded move (weight zero in
+    `log_weights`). The tracker draws only consistent hands."""
     pool = np.flatnonzero(now.pool)
     member = np.zeros((n, 110), dtype=np.uint8)
     if now.hand:
@@ -200,8 +215,10 @@ def device_log_probs(model: Any, device: torch.device, rows: Tuple[np.ndarray, .
             lg = model(obs, m)[0].float().masked_fill(m == 0, float("-inf"))
             a = act_t[sl].repeat_interleave(n)[:, None]
             for ti, t in enumerate(temperatures):
-                lp = torch.log_softmax(lg / t, -1).gather(1, a).squeeze(1)
-                out[ti, sl] = torch.where(torch.isfinite(lp), lp, torch.full_like(lp, -1e9)).reshape(-1, n)
+                # A move the hand makes illegal is -inf (weight zero), never a finite sentinel that can tie:
+                # the tracker's hands are all consistent and refuse it (set_log_likelihoods), the probes'
+                # prior hands keep it.
+                out[ti, sl] = torch.log_softmax(lg / t, -1).gather(1, a).squeeze(1).reshape(-1, n)
     return out
 
 
@@ -242,9 +259,17 @@ def log_weights(model: Any, device: torch.device, jobs: Sequence[Tuple[Now, np.n
 
 
 def posterior(hands: np.ndarray, logw: np.ndarray) -> Tuple[np.ndarray, float]:
-    """The per-card posterior (110) and the effective number of hands."""
+    """The per-card posterior (110) and the effective number of hands. A hand of log weight -inf (a recorded
+    move illegal with it) has weight zero; raises when every hand does (`consistent_any` first to count)."""
+    if not consistent_any(logw):
+        raise ValueError("posterior: every hand makes a recorded move illegal")
     w = np.exp(logw - logw.max())
     return (w[:, None] * hands).sum(0) / w.sum(), float(w.sum() ** 2 / (w ** 2).sum())
+
+
+def consistent_any(logw: np.ndarray) -> bool:
+    """Whether any hand of `log_weights` is consistent with every recorded move (has a finite log weight)."""
+    return bool(np.isfinite(logw).any())
 
 
 class BeliefTracker:
@@ -256,22 +281,29 @@ class BeliefTracker:
     applied; `worlds` for the decisions the agent is about to search."""
 
     def __init__(self, model: Any, device: torch.device, particles: int = 2048, all_decisions: bool = True,
-                 seed: int = 0, reveal: bool = False) -> None:
-        """`reveal` (the root's box4): every hand holds the opponent's headline revealed by Space Race box 4."""
+                 seed: int = 0, reveal: bool = False, strict: bool = False) -> None:
+        """`reveal` (the root's box4): every hand holds the opponent's headline revealed by Space Race box 4.
+        `strict`: a position with no hand consistent with the record raises instead of falling back to the
+        uniform prior with a warning (tests, offline measurement; never in a game people play)."""
         self.model = model
         self.device = device
-        self.tracker = ts.BeliefTracker(int(particles), bool(all_decisions), int(seed), bool(reveal))
+        self.tracker = ts.BeliefTracker(int(particles), bool(all_decisions), int(seed), bool(reveal), strict=bool(strict))
         self.temperatures = list(ts.BeliefTracker.temperatures())
         self.features = model_obs_features(model)
-        #: positions given a belief, jobs weighed, decisions conditioned on, and summed temperature weights
-        self.stats: Dict[str, float] = {"positions": 0, "jobs": 0, "decisions_sum": 0}
+        #: positions given a belief, jobs weighed, decisions conditioned on, fallbacks to the uniform prior
+        #: (no consistent hand found: each also logged), and summed temperature weights
+        self.stats: Dict[str, float] = {"positions": 0, "jobs": 0, "decisions_sum": 0, "exhausted": 0}
         self.temperature_weight_sum = np.zeros(len(self.temperatures))
 
     def reseed(self, seed: int) -> None:
         self.tracker.reseed(int(seed))
 
-    def new_games(self) -> None:
+    def new_games(self, auto_advance: bool) -> None:
+        """A new set of games. `auto_advance`: whether they are stepped with the engine's auto-advance (no
+        single-choice decision is ever asked, so every recorded decision had a choice -- the tracker then
+        conditions on that too); False assumes nothing, which is sound for any stream."""
         self.tracker.new_games()
+        self.tracker.auto_advanced = bool(auto_advance)
 
     def observe(self, games: Sequence[int], states: Sequence[ts.GameState], actions: Sequence[int],
                 players: Sequence[int]) -> None:
@@ -284,6 +316,9 @@ class BeliefTracker:
         resampled from the belief, or None where there is nothing to believe (no hidden hand, a
         transient location) -- the root then redeals at random as before."""
         has = self.tracker.prepare([int(g) for g in games], list(states))
+        for p, why in self.tracker.exhausted():
+            self.stats["exhausted"] += 1
+            logger.warning("game %d: %s", int(games[p]), why)
         jobs = self.tracker.job_count()
         if jobs:
             rows = self.tracker.rows_patch(self.features)

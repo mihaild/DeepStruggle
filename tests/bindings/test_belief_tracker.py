@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
 from ai.search.belief import Decision, Now, card_locations, left_since, record
 from tests.bindings.test_rollout_batch import _box4_headline
 
@@ -38,6 +39,12 @@ def _us_to_move(seed: int = 4) -> ts.GameState:
     raise AssertionError("no such position")
 
 
+def _legal(st: ts.GameState) -> int:
+    """A move legal at `st` whatever the USSR holds (the US's own card choice): the decisions these tests record
+    as the USSR's must be consistent with some hand, or the tracker draws none (bindings/belief.hpp)."""
+    return int(np.flatnonzero(np.asarray(ActionEncoder.get_legal_mask(st)))[0])
+
+
 def _cards(st: ts.GameState, loc: ts.CardLocation) -> list:
     return [c for c in range(1, 111) if st.get_card_location(c) == loc]
 
@@ -61,7 +68,7 @@ def test_a_gift_matched_by_a_deck_discard_takes_the_decision_off_the_record() ->
     st = _us_to_move()
     now_state, gift, tehran = _gift_and_deck_discard(st)
     tr = ts.BeliefTracker(16, True, 1)
-    tr.observe(0, st, ts.Player.USSR, 0)
+    tr.observe(0, st, ts.Player.USSR, _legal(st))
     assert tr.prepare([0], [now_state]) == [True]
     # Before the fix: one decision, with the Tehran discard dealt into the USSR's hand at d and the gift not.
     assert tr.job_count() == 0
@@ -81,7 +88,7 @@ def test_a_played_card_stays_on_the_record() -> None:
     left = left_since(d, Now.of(now_state, 1))
     assert left is not None and np.flatnonzero(left).tolist() == [played - 1]
     tr = ts.BeliefTracker(16, True, 1)
-    tr.observe(0, st, ts.Player.USSR, 0)
+    tr.observe(0, st, ts.Player.USSR, _legal(st))
     tr.prepare([0], [now_state])
     assert tr.job_count() == 1 and tr.job_decisions(0) == 1
     assert np.flatnonzero(tr.rows_patch(0)[2][0]).tolist() == [played - 1]
@@ -100,7 +107,7 @@ def test_evidence_of_decisions_dropped_from_the_record_stays_in_the_weights() ->
     evidence must stay in the temperature weights, not be overwritten by the new record's."""
     st = _us_to_move()
     tr = ts.BeliefTracker(16, True, 2)
-    tr.observe(0, st, ts.Player.USSR, 0)
+    tr.observe(0, st, ts.Player.USSR, _legal(st))
     tr.prepare([0], [st])
     assert tr.job_count() == 1
     _set(tr, favour_first=True)
@@ -109,10 +116,10 @@ def test_evidence_of_decisions_dropped_from_the_record_stays_in_the_weights() ->
     # A card of the US's hand goes back to the deck: the first decision drops, a second one is recorded.
     back = _cards(st, US_UNKNOWN)[0] if _cards(st, US_UNKNOWN) else _cards(st, ts.CardLocation.HAND_US_KNOWN)[0]
     after = _move(st, back, ts.CardLocation.DRAW_DECK)
-    tr.observe(0, after, ts.Player.USSR, 1)
+    tr.observe(0, after, ts.Player.USSR, _legal(after))
     assert tr.prepare([0], [after]) == [True]
     assert tr.job_count() == 1 and tr.job_decisions(0) == 1
-    assert tr.rows_patch(0)[4].tolist() == [1]
+    assert tr.rows_patch(0)[4].tolist() == [_legal(after)]
     _set(tr, favour_first=False)          # the new decision says nothing about the temperature
     w = np.asarray(tr.temperature_weights(0))
     assert w[0] > 0.99, w                 # before the fix: uniform, the first decision's evidence lost
@@ -121,13 +128,13 @@ def test_evidence_of_decisions_dropped_from_the_record_stays_in_the_weights() ->
 def test_a_job_not_yet_weighed_deals_no_stale_worlds() -> None:
     st = _us_to_move()
     tr = ts.BeliefTracker(16, True, 3)
-    tr.observe(0, st, ts.Player.USSR, 0)
+    tr.observe(0, st, ts.Player.USSR, _legal(st))
     tr.prepare([0], [st])
     _set(tr, favour_first=False)
     assert tr.worlds(0, 4) is not None
     played = _cards(st, USSR_UNKNOWN)[0]
     later = _move(st, played, ts.CardLocation.DISCARD_PILE)
-    tr.observe(0, later, ts.Player.USSR, 2)
+    tr.observe(0, later, ts.Player.USSR, _legal(later))
     tr.prepare([0], [later])
     assert tr.job_count() == 1
     assert tr.worlds(0, 4) is None        # the earlier position's hands, until set_log_likelihoods
@@ -145,7 +152,7 @@ def test_the_bindings_refuse_what_would_crash() -> None:
     tr = ts.BeliefTracker(4, True, 0)
     with pytest.raises((TypeError, ValueError)):
         tr.prepare([0], [None])           # type: ignore[list-item]
-    tr.observe(0, st, ts.Player.USSR, 0)
+    tr.observe(0, st, ts.Player.USSR, _legal(st))
     tr.prepare([0], [st])
     with pytest.raises(ValueError):
         tr.rows_patch(1 << 30)
@@ -160,10 +167,10 @@ def test_the_python_view_of_a_box4_headline_is_the_trackers() -> None:
     choice at this same position (its filter reads the phase, the stage and the decision type)."""
     st = _box4_headline(5)
     assert ts.revealed_headline(st, ts.Player.US) != 0
-    log = [Decision(st, 2, 0, card_locations(st))]
+    log = [Decision(st, 2, _legal(st), card_locations(st))]
     for reveal in (False, True):
         tr = ts.BeliefTracker(8, True, 1, reveal)
-        tr.observe(0, st, ts.Player.USSR, 0)
+        tr.observe(0, st, ts.Player.USSR, _legal(st))
         assert tr.prepare([0], [st]) == [True]
         want = tr.job_decisions(0) if tr.job_count() else 0
         assert want == (1 if reveal else 0)

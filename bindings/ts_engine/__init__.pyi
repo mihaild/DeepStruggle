@@ -1015,7 +1015,19 @@ class BeliefTracker:
     The policy-likelihood belief over the opponent's unseen hand (bindings/belief.hpp, shared with the browser): observe() every decision of the games; at root decisions prepare(), evaluate the rows it lists (rows_patch or rows_full) at every temperature, set_log_likelihoods(), worlds().
     """
 
-    def __init__(self, particles: int = 2048, all_decisions: bool = True, seed: int = 0, reveal: bool = False) -> None: ...
+    def __init__(self, particles: int = 2048, all_decisions: bool = True, seed: int = 0, reveal: bool = False, auto_advanced: bool = False, strict: bool = False) -> None:
+        """
+        `auto_advanced`: the decisions observed come from an auto-advanced stream (no single-choice decision is ever asked), so every recorded one had a choice -- stronger, and sound only for such a stream. `strict`: prepare() raises where no hand consistent with the record is found, instead of falling back to the uniform prior with a diagnostic (exhausted()).
+        """
+
+    @property
+    def auto_advanced(self) -> bool: ...
+
+    @auto_advanced.setter
+    def auto_advanced(self, arg: bool, /) -> None: ...
+
+    @property
+    def strict(self) -> bool: ...
 
     @staticmethod
     def temperatures() -> list[float]: ...
@@ -1029,7 +1041,39 @@ class BeliefTracker:
 
     def observe(self, game: int, state: GameState, decider: Player, action: int) -> None: ...
 
-    def prepare(self, games: Sequence[int], states: Sequence[GameState]) -> list[bool]: ...
+    def prepare(self, games: Sequence[int], states: Sequence[GameState]) -> list[bool]:
+        """
+        Per position, whether it has a belief. A position where no hand consistent with the record is found falls back to the uniform prior and is listed by exhausted() (raises when strict).
+        """
+
+    def exhausted(self) -> list:
+        """
+        The last prepare()'s fallbacks: (position, what could not be satisfied).
+        """
+
+    def stats(self) -> dict:
+        """Counters over the tracker's life (bindings/belief.hpp Stats)."""
+
+    def job_log_weights(self, job: int) -> list[float]:
+        """Job j's per-particle log importance weights (logsumexp 0)."""
+
+    def job_log_mass(self, job: int) -> float:
+        """
+        Job j's log of the estimated prior probability that a hand is consistent.
+        """
+
+    def hands(self, position: int) -> object:
+        """
+        Position p's particles (particles x 110), or None where it has no belief.
+        """
+
+    def mixture(self, position: int) -> list[float]:
+        """Position p's particle weights (empty where it has none)."""
+
+    def consistent(self, position: int, hand: Annotated[NDArray[numpy.uint8], dict(shape=(None,), order='C', device='cpu', writable=False)]) -> bool:
+        """
+        Whether `hand` (110 bytes, the opponent's unseen hand now) is consistent with every opposing decision position p's belief conditions on (bindings/belief.hpp).
+        """
 
     def job_count(self) -> int: ...
 

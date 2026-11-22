@@ -1239,11 +1239,21 @@ NB_MODULE(ts_engine, m) {
             "The policy-likelihood belief over the opponent's unseen hand (bindings/belief.hpp, shared with "
             "the browser): observe() every decision of the games; at root decisions prepare(), evaluate the "
             "rows it lists (rows_patch or rows_full) at every temperature, set_log_likelihoods(), worlds().")
-            .def("__init__", [](BT* self, uint32_t particles, bool all_decisions, uint64_t seed, bool reveal) {
+            .def("__init__", [](BT* self, uint32_t particles, bool all_decisions, uint64_t seed, bool reveal,
+                                bool auto_advanced, bool strict) {
                      if (particles == 0) throw std::invalid_argument("a belief needs at least one particle");
                      new (self) BT(particles, all_decisions, seed, reveal);
+                     self->set_auto_advanced(auto_advanced);
+                     self->set_strict(strict);
                  }, nb::arg("particles") = 2048, nb::arg("all_decisions") = true,
-                 nb::arg("seed") = 0ull, nb::arg("reveal") = false)
+                 nb::arg("seed") = 0ull, nb::arg("reveal") = false, nb::arg("auto_advanced") = false,
+                 nb::arg("strict") = false,
+                 "`auto_advanced`: the decisions observed come from an auto-advanced stream (no single-choice "
+                 "decision is ever asked), so every recorded one had a choice -- stronger, and sound only for such a "
+                 "stream. `strict`: prepare() raises where no hand consistent with the record is found, instead of "
+                 "falling back to the uniform prior with a diagnostic (exhausted()).")
+            .def_prop_rw("auto_advanced", &BT::auto_advanced, &BT::set_auto_advanced)
+            .def_prop_ro("strict", &BT::strict)
             .def_static("temperatures", []() {
                 std::vector<float> t(ts::belief::kTemperatures, ts::belief::kTemperatures + ts::belief::kTemps);
                 return t;
@@ -1260,8 +1270,63 @@ NB_MODULE(ts_engine, m) {
                      if (games.size() != states.size()) throw std::invalid_argument("games and states differ in length");
                      for (const ts::GameState* st : states)
                          if (st == nullptr) throw std::invalid_argument("prepare: a state is None");
-                     return self.prepare(games, states);
-                 }, nb::arg("games"), nb::arg("states"))
+                     std::vector<bool> has;
+                     {
+                         nb::gil_scoped_release release;
+                         has = self.prepare(games, states);
+                     }
+                     if (self.strict() && !self.exhausted().empty()) {
+                         std::string msg;
+                         for (const auto& [p, why] : self.exhausted())
+                             msg += (msg.empty() ? "" : "\n") + ("position " + std::to_string(p) + ": " + why);
+                         throw std::runtime_error(msg);
+                     }
+                     return has;
+                 }, nb::arg("games"), nb::arg("states"),
+                 "Per position, whether it has a belief. A position where no hand consistent with the record is "
+                 "found falls back to the uniform prior and is listed by exhausted() (raises when strict).")
+            .def("exhausted", [](const BT& self) {
+                     nb::list out;
+                     for (const auto& [p, why] : self.exhausted()) out.append(nb::make_tuple(p, why));
+                     return out;
+                 }, "The last prepare()'s fallbacks: (position, what could not be satisfied).")
+            .def("stats", [](const BT& self) {
+                     const auto& st = self.stats();
+                     nb::dict d;
+                     d["positions"] = st.positions;
+                     d["sampled"] = st.sampled;
+                     d["draws"] = st.draws;
+                     d["prior_short"] = st.prior_short;
+                     d["first_round_empty"] = st.first_round_empty;
+                     d["guided"] = st.guided;
+                     d["exhausted"] = st.exhausted;
+                     return d;
+                 }, "Counters over the tracker's life (bindings/belief.hpp Stats).")
+            .def("job_log_weights", [](const BT& self, size_t j) {
+                     if (j >= self.jobs().size()) throw std::out_of_range("job");
+                     return self.jobs()[j].log_weight;
+                 }, nb::arg("job"), "Job j's per-particle log importance weights (logsumexp 0).")
+            .def("job_log_mass", [](const BT& self, size_t j) {
+                     if (j >= self.jobs().size()) throw std::out_of_range("job");
+                     return self.jobs()[j].log_mass;
+                 }, nb::arg("job"), "Job j's log of the estimated prior probability that a hand is consistent.")
+            .def("hands", [](const BT& self, size_t p) -> nb::object {
+                     const auto& h = self.hands(p);
+                     if (h.empty()) return nb::none();
+                     size_t sh[2] = { h.size() / 110, 110 };
+                     uint8_t* buf = new uint8_t[h.size()];
+                     std::copy(h.begin(), h.end(), buf);
+                     nb::capsule own(buf, [](void* q) noexcept { delete[] static_cast<uint8_t*>(q); });
+                     return nb::cast(nb::ndarray<nb::numpy, uint8_t, nb::ndim<2>>(buf, 2, sh, own));
+                 }, nb::arg("position"), "Position p's particles (particles x 110), or None where it has no belief.")
+            .def("mixture", [](const BT& self, size_t p) { return self.mixture(p); }, nb::arg("position"),
+                 "Position p's particle weights (empty where it has none).")
+            .def("consistent", [](const BT& self, size_t p, nb::ndarray<const uint8_t, nb::ndim<1>, nb::c_contig, nb::device::cpu> hand) {
+                     if (hand.shape(0) != 110) throw std::invalid_argument("hand must have 110 entries");
+                     return self.consistent(p, hand.data());
+                 }, nb::arg("position"), nb::arg("hand"),
+                 "Whether `hand` (110 bytes, the opponent's unseen hand now) is consistent with every opposing "
+                 "decision position p's belief conditions on (bindings/belief.hpp).")
             .def("job_count", [](const BT& self) { return self.jobs().size(); })
             .def("job_decisions", [](const BT& self, size_t j) {
                      if (j >= self.jobs().size()) throw std::out_of_range("job");
@@ -1361,8 +1426,7 @@ NB_MODULE(ts_engine, m) {
                      size_t R = 0;
                      for (const auto& j : self.jobs()) R += j.decisions.size();
                      if (lp.shape(1) != R) throw std::invalid_argument("one block per recorded decision of every job");
-                     require_no_nan(lp.data(), lp.size(), "set_log_likelihoods");
-                     self.set_log_likelihoods(lp.data(), R);
+                     if (const char* err = self.set_log_likelihoods(lp.data(), R)) throw nb::value_error(err);
                  }, nb::arg("log_likelihoods"))
             .def("worlds", [](const BT& self, size_t p, size_t n) -> nb::object {
                      uint8_t* buf = new uint8_t[std::max<size_t>(1, n * 110)];

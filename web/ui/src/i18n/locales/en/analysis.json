@@ -63,7 +63,8 @@
     "policyTag": "(policy)",
     "qTitle": "mean value from the mover's side",
     "summaryStays": "{{worlds}} worlds · {{rows}} network rows · {{ms}} ms · stays with the policy",
-    "summaryDeparts": "{{worlds}} worlds · {{rows}} network rows · {{ms}} ms · departs from the policy"
+    "summaryDeparts": "{{worlds}} worlds · {{rows}} network rows · {{ms}} ms · departs from the policy",
+    "beliefFallback": "Belief: no opposing hand fits every recorded move, so the worlds were dealt from the uniform prior (hover for details)"
   },
   "next": {
     "label": "NEXT DECISION",

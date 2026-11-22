@@ -433,6 +433,13 @@ web/ui/
      (the evidence about the opponent's style then restarts). The page builds each hypothesis row in
      full in WebAssembly and runs it through onnxruntime in chunks of 256: slow at 2,048 hands, but
      the leaderboard's player (`tests/web/test_wasm_engine.py` holds the tracker equal to Python's).
+     The tracker draws only hands consistent with every recorded move (audit S-1, `bindings/AGENTS.md`), so
+     each log-probability `weighBelief` hands back is finite (a non-finite one is refused as a bug, never
+     clamped). The page records every move, so its tracker assumes nothing about which decisions were asked
+     beyond the engine's hand-gated questions (`auto_advanced` off). Where no consistent hand is found the
+     search still plays on the uniform prior: `rollout.ts` `console.warn`s the engine's diagnostic
+     (`ts_belief_exhausted`), puts it in `SearchResult.belief_warning`, and the analysis panel shows a line
+     under the search's summary (`analysis:search.beliefFallback`, the diagnostic on hover).
      The root's candidates come from the moves legal under both the position's own seats and the
      model's rule bits, which the batch seats on both sides of every root (`rollout.ts` seats its
      restored copy: audit S-9.1, 2026-11-22 -- a candidate legal only under the position's seats, a

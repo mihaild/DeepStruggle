@@ -619,6 +619,9 @@ export class AnalysisPanel {
         parts.push(`<div class="analysis-choices">${rows.join("")}</div>`);
         parts.push(`<div class="trace-note trace-hint">${t(s.pick === s.candidates[0] ? "analysis:search.summaryStays" : "analysis:search.summaryDeparts",
           { worlds: s.worlds, rows: s.rows, ms: s.ms })}</div>`);
+        if (s.belief_warning) {
+          parts.push(`<div class="trace-note analysis-error" title="${esc(s.belief_warning)}">${t("analysis:search.beliefFallback")}</div>`);
+        }
       }
     }
 

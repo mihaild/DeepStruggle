@@ -137,6 +137,7 @@ if (mode === "belief") {
     }
   }
   const has = M._ts_belief_prepare();
+  const exhausted = M.UTF8ToString(M._ts_belief_exhausted());
   const D = M._ts_belief_decisions();
   const P = spec.particles;
   const ACT = M._ts_action_size();
@@ -152,9 +153,13 @@ if (mode === "belief") {
     hash.update(new Uint8Array(M.HEAPU8.buffer, M._ts_rollout_buf_obs(), P * W * 4).slice());
     hash.update(new Uint8Array(M.HEAPU8.buffer, M._ts_rollout_buf_masks(), P * ACT).slice());
   }
+  // An unknown feature bit is refused, as in the Python binding (rows_patch).
+  const badFeatures = D > 0 ? (M._ts_belief_rows(0, 0, P, 0x40000000) === 0 ? M.UTF8ToString(M._ts_last_error()) : "")
+                            : null;
   const T = M._ts_belief_temperatures();
   let weights = [];
   let worlds = null;
+  let refusedInf = null;
   if (D > 0) {
     const lp = new Float32Array(T * D * P);
     for (let t = 0; t < T; t++)
@@ -162,6 +167,11 @@ if (mode === "belief") {
         for (let k = 0; k < P; k++)
           lp[(t * D + d) * P + k] = -(((k * 2654435761 + d * 40503 + t * 7) % 1000) / 250);
     const lpPtr = M._malloc(4 * lp.length);
+    // A non-finite value is refused (and changes nothing), as in the Python binding.
+    const bad = lp.slice();
+    bad[0] = Infinity;
+    M.HEAPF32.set(bad, lpPtr >> 2);
+    refusedInf = M._ts_belief_set_log_likelihoods(lpPtr) === 0 ? M.UTF8ToString(M._ts_last_error()) : "";
     M.HEAPF32.set(lp, lpPtr >> 2);
     M._ts_belief_set_log_likelihoods(lpPtr);
     const wPtr = M._malloc(4 * T);
@@ -195,8 +205,8 @@ if (mode === "belief") {
               leaves: play.leaves, digest: rhash.digest("hex"),
               in_race: cands.map((_, c) => M._ts_rollout_in_race(0, c)) };
   }
-  console.log(JSON.stringify({ observed, has, decisions: D, actions, digest: hash.digest("hex"), weights, worlds,
-                               raced }));
+  console.log(JSON.stringify({ observed, has, exhausted, decisions: D, actions, digest: hash.digest("hex"), weights,
+                               worlds, raced, refused_inf: refusedInf, bad_features: badFeatures }));
   process.exit(0);
 }
 

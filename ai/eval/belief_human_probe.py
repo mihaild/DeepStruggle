@@ -33,7 +33,8 @@ import torch
 
 import ts_engine as ts
 from ai.eval.belief_history_probe import collect
-from ai.search.belief import TRANSIENT, Decision, Now, card_locations, log_weights, posterior, record, sample_hands
+from ai.search.belief import (TRANSIENT, Decision, Now, card_locations, consistent_any, log_weights, posterior, record,
+                              sample_hands)
 from tools.lib.corpus_paths import distinct_corpus_files, missing_corpus_reason
 from ai.eval.loading import load_for_eval
 from tools.lib.ts_replayer_convert import convert_game
@@ -172,13 +173,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         post = np.zeros_like(prior)
         ess: List[float] = []
         all_logw[t] = []
+        empty = 0
         for lo in range(0, len(jobs), 256):
             chunk = jobs[lo:lo + 256]
             for k, (job, lw) in enumerate(zip(chunk, log_weights(model, dev, chunk, temperature=t))):
+                if not consistent_any(lw):
+                    # Every prior hand makes a recorded move illegal (sample_hands draws the prior; the
+                    # tracker draws consistent hands): scored at the prior, and counted.
+                    empty += 1
+                    post[lo + k] = prior[lo + k]
+                    ess.append(0.0)
+                    all_logw[t].append(np.zeros_like(lw))
+                    continue
                 p, e = posterior(job[1].astype(np.float64), lw)
                 post[lo + k] = p
                 ess.append(e)
                 all_logw[t].append(lw)
+        if empty:
+            print(f"  T={t:g}: {empty} positions where no drawn hand allows every recorded move (scored at the prior)")
         all_post[t] = post
         ll = log_loss(post, y, m)
         print(f"  posterior at T={t:<4g}                  log loss {ll:.4f} ({100 * (base - ll) / base:+5.1f}% vs the prior; "

@@ -338,12 +338,49 @@ are cited from elsewhere; keep them.
   worlds. Belief state is per (game, side). The rollout spec's `:belief<N>` and the player id's
   `belief=<N>` name it. A decision leaves the record when a card entered the decider's hidden pool
   since, a card the opponent held then is in the decider's hand now (a Missile Envy gift; the count
-  test alone passed when that matched a deck discard -- audit S-3, 2026-11-22), or the hand count
-  does not close; a record that loses a decision the turn's evidence weighs folds that evidence into
-  the finished turns' and does not weigh those decisions again, so a reshuffle or an event's draw no
-  longer erases it from the temperature weights. A job `prepare` listed deals no world until
-  `set_log_likelihoods` weighs it. The binding refuses 0 particles, a `None` state, an unknown
-  feature bit and NaN log-likelihoods (S-11).
+  test alone passed when that matched a deck discard -- audit S-3, 2026-11-22) or is back in the deck
+  (Our Man in Tehran's reshuffle, the same false match -- V-9), or the hand count does not close. A
+  record that loses a decision the turn's evidence weighs folds that evidence into the finished turns'
+  and spends its decisions: a spent decision still on the record keeps weighing the hands and only leaves
+  the temperature evidence (V-9: it used to leave both), so a reshuffle or an event's draw erases nothing
+  and counts nothing twice. Evidence is summed in double. A job `prepare` listed deals no world until
+  `set_log_likelihoods` weighs it.
+  **Every particle is consistent with the record** (audit S-1, 2026-11-22; owner: "every single
+  possible hand works correctly"). A hand is consistent with an opposing decision on the record (every one,
+  whatever `all_decisions` -- that only picks the likelihood's decisions) when, placed into the decision's
+  position, the engine's legal mask allows the move, and -- where the decision would not have been asked
+  otherwise -- offers two moves or more: at every decision when the stream is auto-advanced
+  (`auto_advanced`, the tournament's `auto_advance` through `new_games(auto_advance)`: a trapped discard
+  then shows the hand held another eligible card), and in any stream at Blockade's / Latin American Debt
+  Crisis's discard and Missile Envy's tie unless a seat plays `ALWAYS_ASK_DISCARD` (engine/AGENTS.md
+  §22). The real hand always is consistent; the information the engine gives by *not* asking (Blockade
+  resolved at once, Missile Envy exchanged at once, in a stream without `ALWAYS_ASK_DISCARD`) is not used --
+  a lost conditioning, not a wrong one. The sampler (belief.cpp `draw`) targets the uniform prior restricted
+  to consistent hands: rejection from the prior first (exact; its first round is the old uniform draw, so
+  beliefs where every prior hand was consistent are unchanged), and where that cannot fill the particles a
+  stratified proposal -- count vectors over scoring / 1 / 2 / 3 / 4+ effective Ops at the most rejecting
+  decision, each weighed by its prior mass times its tried consistent fraction plus a floor, so every hand
+  keeps positive probability -- with balance-heuristic importance weights over both steps (`Job::log_weight`,
+  `job_log_weights`; a duplicate's weight is split) and the estimated prior mass of consistent hands
+  (`job_log_mass`, in the evidence). A hand inconsistent with a decision is never a particle, so it has
+  weight exactly zero, and every log-likelihood the caller returns is finite: `set_log_likelihoods` refuses
+  NaN and +-inf (both builds), the callers no longer clamp to -1e9. If no consistent hand is found (a correct
+  record never does that) the position **falls back to the uniform prior and still plays** (owner,
+  2026-11-22: the root plays people on the site and must never refuse): `exhausted()` names the position and
+  the decisions no drawn hand satisfies, Python logs it (`ai.search.belief` logger) and counts it
+  (`BeliefTracker.stats["exhausted"]`, printed by the tournament per matchup), the page `console.warn`s it
+  and shows it under the search (`ts_belief_exhausted`); `strict=True` (the binding and the Python
+  wrapper) makes it an error, which the tests use. `stats()` counts positions, draws, guided positions and
+  `first_round_empty` (no consistent hand among the first `particles` prior draws: what the old sampler
+  weighed at -1e9 each). Measured 2026-11-22 on 160 self-play games of B6's soup (T = 1, 2,048 particles,
+  18,630 positions with a record): `first_round_empty` 0 -- the old sampler never exhausted there -- and 8
+  positions where the prior could not fill the particles (the guided proposal; none exhausted); the
+  auto-advanced choice rule rejects 0.8% more prior draws than legality alone. Tests: `tests/bindings/test_belief_consistency.py` (a trap's scoring escape with
+  seven cards; every belief over random self-play, both sides, both stream kinds, holds the real hand and
+  weighs only consistent hands; the fallback and strict; the record's edges). The binding refuses 0
+  particles, a `None` state, an unknown feature bit (both builds) and non-finite log-likelihoods; a belief
+  root refuses an opponent deciding in the merged or macro view (`tools/lib/batch_tournament.py`), whose
+  actions are not the E4 actions its hypothesis masks read.
 - [`gomp_parallel.hpp`](gomp_parallel.hpp): `gomp_parallel_for`, the one OpenMP pool (§3).
 - [`settle.py`](settle.py): `SettleMode`, the one rule for how far past decisions nobody controls
   the engine is advanced. Settlers that stop at different depths put two components on different

@@ -259,6 +259,8 @@ export class WasmEngine {
   }
   /** Whether the position held has a belief; then beliefDecisions() blocks to evaluate (0: reused). */
   beliefPrepare(): boolean { return this.M._ts_belief_prepare() !== 0; }
+  /** After beliefPrepare: why no opposing hand consistent with the record was found (the uniform prior is used), else "". */
+  beliefExhausted(): string { return this.M.UTF8ToString(this.M._ts_belief_exhausted()); }
   beliefDecisions(): number { return this.M._ts_belief_decisions(); }
   beliefAction(d: number): number { return this.M._ts_belief_action(d); }
   /** Recorded decision d under hands lo .. lo + n - 1: n observation rows and masks. */
