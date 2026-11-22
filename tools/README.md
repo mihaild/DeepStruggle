@@ -714,7 +714,7 @@ position id):
 ```bash
 # 1. a .pt for the searcher, rebuilt from the published ONNX
 .venv/bin/python tools/onnx_to_checkpoint.py --onnx newest.onnx --template <a .pt of that architecture> --out newest.pt
-# 2. every disagreement in the corpus; resumable in parts (BUGS.md BIND-1), searcher reseeded per game
+# 2. every disagreement in the corpus; resumable in parts, searcher reseeded per game
 .venv/bin/python tools/scripts/disagreement_bank.py --net newest.onnx --search "gumbel:newest.pt:32:4" \
     --part 1/3 --out part1.jsonl.gz --summary part1.json --resume
 # 3. clarity: a stronger search's pick and move values over redealt worlds

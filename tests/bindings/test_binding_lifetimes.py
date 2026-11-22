@@ -63,3 +63,19 @@ def test_ctx_stack_depth_is_read_only() -> None:
     assert int(st.ctx_stack_depth) == 0
     with pytest.raises(AttributeError):
         st.ctx_stack_depth = 6   # type: ignore[misc]
+
+
+def test_a_decision_context_keeps_its_state_alive() -> None:
+    """BIND-1: `GameState.ctx()` returns a reference into the state; until db5f79e it had no keep-alive, so a
+    context outliving a temporary state let nanobind hand the freed address to a new object (an instance
+    collision). The context must keep its state alive."""
+    def context() -> "ts.DecisionContext":
+        st = ts.GameState()
+        ts.Engine.init_game(st, 11)
+        return st.ctx()
+
+    ctxs = [context() for _ in range(64)]
+    gc.collect()
+    fresh = [ts.GameState() for _ in range(64)]      # would reuse the freed addresses
+    assert all(int(c.decision_player) == int(ctxs[0].decision_player) for c in ctxs)
+    assert len(fresh) == 64

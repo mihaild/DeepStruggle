@@ -41,21 +41,6 @@ spent by that turn, 7.1 on average, and the network observes the pile.
 
 ---
 
-## BIND-1 — a long disagreement-bank run can stop on a nanobind instance collision
-
-**Area:** bindings · **Severity:** low · **Status:** open, not reproduced
-
-A long `tools/scripts/disagreement_bank.py` scan occasionally stops on a nanobind instance
-collision (`tools/README.md` §7b); the scan was made resumable (`--resume`) rather than fixed. No
-traceback or reproducer was recorded. A collision means two Python objects claimed one C++
-address -- an object's lifetime, e.g. a `GameState` or runner slot freed while Python still names
-it -- and the same fault could corrupt a position silently instead of stopping the run.
-
-**Next.** Reproduce under the sanitizer build (`tools/scripts/run_asan.sh`) with a long scan, and
-record the traceback here.
-
----
-
 ## CONV-3 — from turn 4 the converted piles still drift from the log's
 
 **Area:** human replay conversion · **Severity:** low · **Status:** open
