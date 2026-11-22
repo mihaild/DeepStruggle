@@ -359,3 +359,98 @@ def test_t10_wargames_and_final_scoring_are_read_from_what_happened() -> None:
     advance_to(s, lambda s: s.ctx().resolving_card == wg and s.ctx().decision_type == DT.CHOOSE_BRANCH, 5)
     step(s, BR + 0)
     assert E.is_terminal(s) and str(ts.game_ending_reason(s)) == "wargames"
+
+
+# Fix verification V-1 / V-2 (2026-11-22): Missile Envy handed to the opponent by its own Event kept the
+# pending_op_card its selection set, which GameState::card_in_play reads as "being played for Ops", and stayed
+# invisible in their hand for the rest of the play (GameState::release_handed_over_card now unmarks it).
+
+ME = 49   # Missile Envy, neutral, 2 Ops
+
+
+def _missile_envy_hands_over(player: ts.Player, given: str, seed: int, containment: bool = False) -> ts.GameState:
+    """`player` plays Missile Envy as its Event; the opponent holds only `given`, which it hands over."""
+    opp = P.USSR if player == P.US else P.US
+    s = to_ar(seed, player, 4, 7)
+    set_hand(s, player, [ME, card("Duck and Cover") if player == P.US else card("Nasser")])
+    set_hand(s, opp, [card(given)])
+    if containment:
+        s.set_flag(ts.EffectBits.CONTAINMENT_ACTIVE)   # +1 to US cards: Missile Envy is a 3-Ops discard
+    step(s, CARD + ME - 1)
+    step(s, EVENT_FIRST)
+    assert ts.in_hand_of(s.get_card_location(card(given)), player) or \
+        s.get_card_location(card(given)) in (L.DISCARD_PILE, L.REMOVED_FROM_GAME)
+    return s
+
+
+def test_v1_grain_sales_draws_the_missile_envy_just_handed_over() -> None:
+    gs = card("Grain Sales to Soviets")
+    s = _missile_envy_hands_over(P.US, "Grain Sales to Soviets", 300)
+    # The USSR's hand is Missile Envy alone: Grain Sales draws it rather than finding the hand empty.
+    assert s.ctx().resolving_card == gs and s.ctx().decision_type == DT.SELECT_PLAY_MODE
+    assert s.ctx().pending_op_card == ME
+
+
+def test_v1_terrorism_discards_the_missile_envy_just_handed_over() -> None:
+    for k in range(5):
+        s = to_ar(300, P.US, 4, 7)
+        s.rng_state = 5000 + k
+        set_hand(s, P.US, [ME, card("Duck and Cover")])
+        set_hand(s, P.USSR, [card("Terrorism")])
+        step(s, CARD + ME - 1)
+        step(s, EVENT_FIRST)
+        assert s.get_card_location(ME) == L.DISCARD_PILE, k
+
+
+def test_v1_five_year_plan_discards_the_missile_envy_just_handed_over() -> None:
+    s = _missile_envy_hands_over(P.US, "Five Year Plan", 300)
+    assert s.get_card_location(ME) == L.DISCARD_PILE
+    assert hand(s, P.USSR) == []
+
+
+def test_v1_blockade_and_the_debt_crisis_offer_the_missile_envy_just_handed_over() -> None:
+    for given in ("Blockade", "Latin American Debt Crisis"):
+        s = _missile_envy_hands_over(P.USSR, given, 310, containment=True)
+        assert s.ctx().resolving_card == card(given) and s.ctx().decision_player == P.US, given
+        assert CARD + ME - 1 in mask(s), given
+
+
+def test_v2_missile_envy_played_off_a_headline_grain_sales_stays_with_its_recipient() -> None:
+    gs = card("Grain Sales to Soviets")
+    for granter in ("CIA Created", "ABM Treaty", "Junta"):
+        base = to_headline(900, 4)
+        for trial in range(200):
+            s = base.clone()
+            s.rng_state = 1000 + trial
+            set_hand(s, P.US, [gs, card("Duck and Cover"), card("NATO")])
+            set_hand(s, P.USSR, [ME, card(granter), card("Nasser")])
+            headline(s, gs, card("Nasser"))
+            advance_to(s, lambda s: (s.ctx().resolving_card == gs and s.ctx().decision_type == DT.SELECT_PLAY_MODE)
+                       or s.current_phase != ts.Phase.HEADLINE, 40)
+            if not (s.ctx().resolving_card == gs and s.ctx().pending_op_card == ME):
+                continue
+            step(s, EVENT_FIRST)   # Missile Envy as its Event: the USSR hands over `granter`, whose Ops follow
+            advance_to(s, lambda s: s.current_phase != ts.Phase.HEADLINE, 60)
+            assert ts.in_hand_of(s.get_card_location(ME), P.USSR), granter
+            assert s.forced_card_player == P.USSR and s.forced_card_id == ME, granter
+            break
+        else:
+            raise AssertionError(f"Grain Sales never drew Missile Envy ({granter})")
+
+
+def test_v1_the_tie_path_hands_missile_envy_over_visibly_too() -> None:
+    """The giver chooses between two 2-Ops cards; Terrorism's random discard then draws from Grain Sales and the Missile
+    Envy just handed over, both possible."""
+    terr, gs = card("Terrorism"), card("Grain Sales to Soviets")
+    discarded = set()
+    for k in range(20):
+        s = to_ar(300, P.US, 4, 7)
+        s.rng_state = 7000 + k
+        set_hand(s, P.US, [ME, card("Duck and Cover")])
+        set_hand(s, P.USSR, [terr, gs])
+        step(s, CARD + ME - 1)
+        step(s, EVENT_FIRST)
+        assert s.ctx().resolving_card == ME and s.ctx().decision_player == P.USSR   # the giver's choice
+        step(s, CARD + terr - 1)
+        discarded |= {c for c in (ME, gs) if s.get_card_location(c) == L.DISCARD_PILE}
+    assert discarded == {ME, gs}, discarded

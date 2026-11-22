@@ -432,6 +432,19 @@ struct alignas(64) GameState {
         }
         return false;
     }
+    // Nor is a card its own Event handed to the opponent. A card played as its Event keeps the
+    // pending_op_card its selection set (the observation's op-mode slot reads it), which is harmless
+    // while the card stays where the play put it -- but Missile Envy goes into the opponent's hand, and
+    // left marked it stayed invisible there for the rest of the play: Grain Sales could not draw it,
+    // Terrorism or Five Year Plan discard it, Blockade or Latin American Debt Crisis offer it (at turn 9
+    // AR6 of ts-replayer game 161 Five Year Plan discarded South America Scoring where the log has
+    // Missile Envy), and a headline Grain Sales that drew it discarded it at the headline's end (fix
+    // verification V-1 / V-2, 2026-11-22). Called where the card changes hands.
+    inline void release_handed_over_card(uint8_t card) noexcept {
+        for (uint8_t d = 0; d <= ctx_stack_depth && d < ctx_stack.size(); ++d) {
+            if (ctx_stack[d].pending_op_card == card) ctx_stack[d].pending_op_card = 0;
+        }
+    }
     // Returns false when the stack is full, which the caller must not ignore: running the next
     // event in the current frame is how the old silent version corrupted it.
     [[nodiscard]] inline bool push_context() noexcept {

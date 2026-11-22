@@ -748,10 +748,18 @@ default; no minor version). The leaderboard has an E9 epoch with its own behavio
 * **E-6** `GameState::card_in_play`: a card being played for its Ops on any open frame (`pending_op_card`) is never
   found by an event scanning a hand (Grain Sales, Five Year Plan, the random discards, Blockade and Latin American
   Debt Crisis, their masks too). A lower frame's resolving card is not excluded: Missile Envy hands itself over and
-  Five Year Plan may then discard it (game 206).
+  Five Year Plan may then discard it (game 206). **Fix verification V-1 (2026-11-22):** a card played as its own
+  Event keeps the `pending_op_card` its selection set (the observation's op-mode slot reads it, so it stays), and
+  Missile Envy handed to the opponent stayed marked in their hand -- Grain Sales, Terrorism, Five Year Plan, Blockade
+  and Latin American Debt Crisis could not find it (game 161, turn 9 AR6: Five Year Plan discarded South America
+  Scoring where the log has Missile Envy). `GameState::release_handed_over_card` unmarks it on every frame where
+  Missile Envy changes hands (the direct and the tie path).
 * **E-7** The headline card ids are cleared when both headlines resolve, and the in-hand test alone keeps a headline
   card out of the Ops cleanup; Missile Envy spent for Ops in a headline (drawn by Grain Sales) is relocated
-  (`Handover::Ignore` when it is in the spender's own hand). **E-13** an Ops decline in a headline goes through
+  (`Handover::Ignore`). **V-2:** the "in the spender's own hand" test that chose Ignore was tautological (the spender
+  is read off the hand holding the card), so Missile Envy drawn by a headline Grain Sales, played as its Event and
+  handed over was discarded out of its recipient's hand when the Ops its taken card granted were spent; with V-1's
+  release a handed-over Missile Envy holds no `pending_op_card` there, and the cleanup always ignores handovers. **E-13** an Ops decline in a headline goes through
   `advance_after_ops`, which relocates the card.
 * **E-8** Grain Sales' `allow_early_stop` goes with its frame when the drawn card is played.
 * **E-9** `fire_owed_event` clears the Ops' start-of-round influence snapshot and op mode: the opponent's "can place"

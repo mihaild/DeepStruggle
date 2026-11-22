@@ -163,6 +163,7 @@ bool trigger_missile_envy(GameState& state, Player p) noexcept {
         // receives Missile Envy in return, so each side has seen the other's new card.
         state.card_locations[chosen_card] = hand_of(p, /*known=*/true);
         state.card_locations[card_ids::MISSILE_ENVY] = hand_of(opp, /*known=*/true);
+        state.release_handed_over_card(card_ids::MISSILE_ENVY);   // fix verification V-1 / V-2
         state.forced_card_player = opp;
         state.forced_card_id = card_ids::MISSILE_ENVY;
 

@@ -519,16 +519,16 @@ void StateMachine::advance_after_ops(GameState& state) noexcept {
             // card was placed when its Event fired, by the site that knew whether the Event
             // could occur; re-deciding here on "it is an opponent's card" alone would throw
             // that answer away and remove a card whose Event never happened.
-            // Respect a card an Event handed over (Missile Envy in its recipient's hand) -- but Missile
-            // Envy still in the hand of the player whose Ops these are is the card they spent, not one
-            // handed to them: Grain Sales drawing it in a headline left it in the US hand, playable
-            // again (audit E-7, 2026-11-22).
+            // A handover is never respected here: this card was spent for its Ops. Missile Envy in a hand
+            // is the card they spent -- Grain Sales drawing it in a headline left it in the US hand,
+            // playable again (audit E-7, 2026-11-22). Missile Envy handed over by its own Event no longer
+            // holds pending_op_card (GameState::release_handed_over_card), so it cannot be mistaken for
+            // one; a "spent its own" test read off the hand holding it could not tell the two apart, which
+            // discarded it out of its recipient's hand (fix verification V-2).
             const Player spender = ops_spender(state, op_card);
-            const bool spent_own = op_card == card_ids::MISSILE_ENVY &&
-                                   in_hand_of(state.card_locations[op_card], spender);
             CardHandlers::relocate_played_card(state, op_card,
                                  event_occurred_on_ops_play(state, op_card, spender),
-                                 spent_own ? CardHandlers::Handover::Ignore : CardHandlers::Handover::Respect);
+                                 CardHandlers::Handover::Ignore);
         }
         advance_headline_step(state);
         return;
