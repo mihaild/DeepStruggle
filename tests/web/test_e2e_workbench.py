@@ -220,7 +220,8 @@ def test_the_page_searches_with_the_rollout_root_as_python_does(browser: Any, se
     a = page.evaluate("window.__wb.liveAnalysis")
     s = a["search"]
     assert s["kind"] == "rollout" and s["spec"] == {"k": 3, "worlds": 2, "horizon": 1, "rule": "z2", "stop": "earlier", "leaf": "own",
-                                                   "keyed": False, "keyed2": False, "aligned": False, "box4": False,
+                                                   "keyed": False, "keyed2": False, "keyedsym": False,
+                                                   "aligned": False, "box4": False,
                                                    "belief": 0, "race": 0}
     assert s["pick"] in s["candidates"] and s["candidates"][0] == a["policy"]["argmax_idx"]
     assert s["worlds"] == 2 and len(s["q"]) == len(s["candidates"]) == 3
@@ -914,7 +915,8 @@ def test_every_leaderboard_search_reads_in_the_workbench_as_python_wrote_it(brow
             assert isinstance(spec, Rollout)
             searches[ws] = {"k": spec.k, "worlds": spec.worlds, "horizon": spec.horizon, "rule": spec.rule,
                             "stop": spec.stop, "leaf": spec.leaf, "keyed": spec.chance == "keyed",
-                            "keyed2": spec.chance == "keyed2", "aligned": spec.aligned, "box4": spec.box4, "belief": spec.belief,
+                            "keyed2": spec.chance == "keyed2", "keyedsym": spec.chance == "keyedsym",
+                            "aligned": spec.aligned, "box4": spec.box4, "belief": spec.belief,
                             "race": spec.race}
     assert searches
     for ws, want in searches.items():

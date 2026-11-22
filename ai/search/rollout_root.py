@@ -98,6 +98,11 @@ class RolloutConfig:
     #: keyed2); implies keyed. `keyed` alone keeps the original packing, in which a USSR side hides
     #: the turn from the key, so every keyed player measured before keyed2 stays what it was.
     keyed2: bool = False
+    #: Keyed chance with any side in a player field packed as all ones (bindings/keyed_chance.hpp's
+    #: keyedsym): keyed's USSR accident on both sides -- neither side's draws see the turn or action
+    #: round, so a coup now and a coup later roll alike -- the sides keyed apart by their own word.
+    #: Implies keyed; exclusive with keyed2.
+    keyedsym: bool = False
     #: The oracle's worlds: the opponent's true hand kept, only the draw deck reshuffled. Not a
     #: deployable player -- the ceiling on what a belief over the opponent's hand could give the root.
     oracle: bool = False
@@ -193,6 +198,8 @@ def _stop_kw(cfg: RolloutConfig) -> Dict[str, Any]:
         kw["keyed"] = True
     if cfg.keyed2:
         kw["keyed2"] = True
+    if cfg.keyedsym:
+        kw["keyedsym"] = True
     if cfg.oracle:
         kw["oracle"] = True
     if cfg.aligned:
@@ -718,7 +725,7 @@ def _spec_tail(spec: str) -> Tuple[str, Optional[str], bool]:
             continue                                   # rollout_spec_config reads the leaf side
         elif p == "graphs":
             graphs = True
-        elif p in ("keyed", "keyed2", "oracle", "aligned", "box4") or re.fullmatch(r"belief\d*|race\d+", p):
+        elif p in ("keyed", "keyed2", "keyedsym", "oracle", "aligned", "box4") or re.fullmatch(r"belief\d*|race\d+", p):
             continue                                   # rollout_spec_config reads them
         elif p.endswith(".pt") or os.sep in p:
             if leaf is not None:
@@ -727,7 +734,7 @@ def _spec_tail(spec: str) -> Tuple[str, Optional[str], bool]:
         else:
             raise ValueError(f"unknown field {p!r} in rollout spec {spec!r}: expected a stop "
                              f"({', '.join(STOPS)}), a leaf side ({', '.join(LEAF_SIDES)}), graphs, keyed, "
-                             f"keyed2, oracle, aligned, box4, belief<n>, race<n>, or a leaf checkpoint path")
+                             f"keyed2, keyedsym, oracle, aligned, box4, belief<n>, race<n>, or a leaf checkpoint path")
     return stop, leaf, graphs
 
 
@@ -756,11 +763,12 @@ def rollout_spec_leaf(spec: str) -> Optional[str]:
 
 
 def rollout_spec_config(spec: str) -> Tuple[str, RolloutConfig, str]:
-    """rollout:<checkpoint>[:k[:worlds[:horizon[:rule[:stop][:decider|own][:keyed|keyed2][:aligned][:box4][:oracle][:race<n>][:graphs][:leaf checkpoint]]]]] ->
+    """rollout:<checkpoint>[:k[:worlds[:horizon[:rule[:stop][:decider|own][:keyed|keyed2|keyedsym][:aligned][:box4][:oracle][:race<n>][:graphs][:leaf checkpoint]]]]] ->
     (checkpoint, config, label); an omitted field is the measured player's (4, 16, 4, z2, boundaries,
     the mover's side), the stop one of STOPS, `decider` reads each leaf from its decider's side, `own`
     plays on to the mover's next decision, `keyed` ties each draw to its situation (`keyed2` with the
-    player fields narrowed, RolloutConfig.keyed2), `aligned` counts every candidate's horizon from the end of the mover's
+    player fields narrowed, RolloutConfig.keyed2; `keyedsym` with both sides packed alike,
+    RolloutConfig.keyedsym), `aligned` counts every candidate's horizon from the end of the mover's
     own action round (the headline one boundary), `box4` keeps the opponent's headline revealed by Space Race box 4,
     `oracle` keeps the opponent's true hand in every world, `race<n>` races the worlds from the first n
     (RolloutConfig.race), and the
@@ -778,11 +786,14 @@ def rollout_spec_config(spec: str) -> Tuple[str, RolloutConfig, str]:
     cfg = RolloutConfig(k=int(field(2) or d.k), worlds=int(field(3) or d.worlds),
                         horizon=int(field(4) or d.horizon), rule=field(5) or d.rule, stop=stop, cuda_graphs=graphs,
                         leaf_side=side, keyed="keyed" in parts[6:], keyed2="keyed2" in parts[6:],
+                        keyedsym="keyedsym" in parts[6:],
                         oracle="oracle" in parts[6:],
                         aligned="aligned" in parts[6:], box4="box4" in parts[6:],
                         belief=_belief_particles(parts[6:]), race=_race_worlds(parts[6:]))
     if cfg.horizon < 0:
         raise ValueError(f"horizon must be >= 0 in {spec!r}")
+    if cfg.keyed2 and cfg.keyedsym:
+        raise ValueError(f"keyed2 and keyedsym are exclusive in {spec!r}")
     if cfg.race and not 0 < cfg.race < cfg.worlds:
         raise ValueError(f"race must be above 0 and below the worlds ({cfg.worlds}) in {spec!r}")
     parse_rule(cfg.rule)
@@ -790,6 +801,6 @@ def rollout_spec_config(spec: str) -> Tuple[str, RolloutConfig, str]:
                   "predeal": "-predeal", "earlier_predeal": "-untilpredeal"}[cfg.stop]
     horizon = "" if cfg.stop in ("turn", "predeal") else f"-h{cfg.horizon}"
     side_label = {"mover": "", "decider": "-dleaf", "own": "-ownleaf"}[cfg.leaf_side]
-    keyed = ("-keyed2" if cfg.keyed2 else "-keyed" if cfg.keyed else "") + ("-aligned" if cfg.aligned else "") + ("-box4" if cfg.box4 else "") + ("-oracle" if cfg.oracle else "") + (
+    keyed = ("-keyed2" if cfg.keyed2 else "-keyedsym" if cfg.keyedsym else "-keyed" if cfg.keyed else "") + ("-aligned" if cfg.aligned else "") + ("-box4" if cfg.box4 else "") + ("-oracle" if cfg.oracle else "") + (
         f"-belief{cfg.belief}" if cfg.belief else "") + (f"-race{cfg.race}" if cfg.race else "")
     return parts[1], cfg, f"rollout-k{cfg.k}-w{cfg.worlds}{horizon}{stop_label}{side_label}{keyed}-{cfg.rule}"

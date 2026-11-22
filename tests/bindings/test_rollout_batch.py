@@ -810,19 +810,21 @@ def _assert_same_batch(a: ts.RolloutBatch, b: ts.RolloutBatch, st: ts.GameState,
         assert ts.rollout_decide(a, 0, cands, logits, mask, rule) == ts.rollout_decide(b, 0, cands, logits, mask, rule)
 
 
-@pytest.mark.parametrize("shared,keyed,keyed2", [(True, False, False), (False, False, False), (True, True, False),
-                                                  (True, False, True)])
-def test_a_race_that_keeps_every_candidate_is_the_unraced_batch(shared: bool, keyed: bool, keyed2: bool) -> None:
+@pytest.mark.parametrize("shared,keyed,keyed2,keyedsym", [(True, False, False, False), (False, False, False, False),
+                                                           (True, True, False, False), (True, False, True, False),
+                                                           (True, False, False, True)])
+def test_a_race_that_keeps_every_candidate_is_the_unraced_batch(shared: bool, keyed: bool, keyed2: bool,
+                                                                keyedsym: bool) -> None:
     """The second stage's worlds continue the batch's stream (or its keys): with no challenger dropped
     (a lead of 0 is kept), a raced batch builds exactly the rows -- and decides exactly as -- a batch
     that played every candidate on every world."""
     st = _position()
     cands = _legal(st)[:3]
     values = {0: 0.0, 1: 0.05, 2: 0.0}
-    whole = ts.RolloutBatch(horizon=0, shared_dice=shared, seed=11, keyed=keyed, keyed2=keyed2)
+    whole = ts.RolloutBatch(horizon=0, shared_dice=shared, seed=11, keyed=keyed, keyed2=keyed2, keyedsym=keyedsym)
     whole.add(st, cands, 8)
     _value_leaves(whole, values)
-    raced = ts.RolloutBatch(horizon=0, shared_dice=shared, seed=11, keyed=keyed, keyed2=keyed2)
+    raced = ts.RolloutBatch(horizon=0, shared_dice=shared, seed=11, keyed=keyed, keyed2=keyed2, keyedsym=keyedsym)
     raced.add(st, cands, 3)
     _value_leaves(raced, values)
     raced.race(0, 5)

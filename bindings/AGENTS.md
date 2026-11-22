@@ -293,16 +293,25 @@ are cited from elsewhere; keep them.
   per hand for the Eagle/Bear Has Landed discard. A single continuation plays the same game distribution; only
   the coupling between continuations changes. Measured on P34's sibling slice: two candidates'
   results in one world correlate at 0.39 keyed against 0.22 with the shared stream.
-  **Two packings.** `keyed` widens the player fields as signed bytes: USSR is -1, so it sets every
-  higher bit of its word, and whenever the USSR is phasing the turn, action round and phase drop
-  out of the situation (and the decision type and staged roll when it decides or rolls) -- two USSR
+  **Three packings.** `keyed` widens the player fields as signed bytes: USSR is -1, so it sets every
+  higher bit of its word, and whenever the USSR is phasing the turn and action round drop
+  out of the situation (the phase, packed below the player, stays) (and the decision type and staged roll when it decides or rolls) -- two USSR
   draws of one world can reuse a die across turns. It is kept bit for bit, so every keyed player
   measured with it (the leaderboard's `chance=keyed`, the web default, the 0.39 above) stays one
   searcher. `keyed2=True` (both batches; `chance=keyed2`, the agent string's `:keyed2`, the web
   spec's `:keyed2`) narrows each player field to its byte first, so every field separates
   situations; it implies keyed, and keys exactly as `keyed` does wherever no player field is the
-  USSR. Its play is not yet measured against `keyed`'s.
-  `ts.keyed_key(state, key, keyed2=False)` is the keying step, for references and tests.
+  USSR. Its play is not yet measured against `keyed`'s. `keyedsym=True` (both batches;
+  `chance=keyedsym`, the agent string's `:keyedsym`, the web spec's `:keyedsym`, the wasm reset's
+  keyed=3) makes keyed's accident symmetric, at the owner's request (2026-11-22): any side (US or
+  USSR) in a player field is ORed in as all ones, so the same fields drop out for both sides -- a
+  coup's die does not depend on the turn or action round, which pairs "coup X now, Y later" with
+  "Y now, X later" -- and a fourth word, `(u8(phasing) << 16) | (u8(decision_player) << 8) |
+  u8(roll_actor)`, keeps the US's situations apart from the USSR's. It implies keyed and is
+  exclusive with keyed2 (both at once is refused). `keyed` and `keyed2` key bit for bit as before
+  (`tests/bindings/test_keyed_chance.py` pins them); the leaderboard's behaviour digest
+  (`tools/lib/engine_behaviour.py`) does not play keyedsym.
+  `ts.keyed_key(state, key, keyed2=False, keyedsym=False)` is the keying step, for references and tests.
 - **The oracle's worlds** (`RolloutBatch(oracle=True)`, `ts.determinize(..., keep_hand=True)`; the
   rollout agent string's `:oracle`): every world keeps the opponent's true hand and reshuffles only
   the draw deck, so the deck order, the dice and an unrevealed headline stay unknown. Not a

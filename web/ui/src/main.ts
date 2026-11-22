@@ -580,7 +580,7 @@ export class TSApp {
     const race = Number(val("ss-race") || "0");
     const chance = val("ss-chance");
     const text = `rollout:${val("ss-k")}:${val("ss-worlds")}:${val("ss-horizon")}:${val("ss-rule").trim()}:${val("ss-stop")}`
-      + `:${val("ss-leaf")}${chance === "keyed" || chance === "keyed2" ? `:${chance}` : ""}${on("ss-aligned") ? ":aligned" : ""}${on("ss-box4") ? ":box4" : ""}`
+      + `:${val("ss-leaf")}${chance === "keyed" || chance === "keyed2" || chance === "keyedsym" ? `:${chance}` : ""}${on("ss-aligned") ? ":aligned" : ""}${on("ss-box4") ? ":box4" : ""}`
       + (belief ? `:belief${belief}` : "") + (race ? `:race${race}` : "");
     const whole = (v: number) => Number.isInteger(v) && v >= 0;
     const spec = whole(belief) && whole(race) ? parseRolloutParam(text) : null;
@@ -619,7 +619,7 @@ export class TSApp {
     set("ss-rule", spec.rule);
     set("ss-stop", spec.stop);
     set("ss-leaf", spec.leaf);
-    set("ss-chance", spec.keyed2 ? "keyed2" : spec.keyed ? "keyed" : "shared");
+    set("ss-chance", spec.keyed2 ? "keyed2" : spec.keyedsym ? "keyedsym" : spec.keyed ? "keyed" : "shared");
     tick("ss-aligned", spec.aligned);
     tick("ss-box4", spec.box4);
     set("ss-belief", String(spec.belief));

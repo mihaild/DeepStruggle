@@ -203,13 +203,15 @@ class _PlayOuts:
     (84, 100, 3, "earlier", "own", 1, False, 0), (35, 150, 1, "boundaries", "mover", 1, False, 0),
     (84, 100, 3, "earlier", "own", 1, True, 0), (21, 70, 2, "boundaries", "mover", 0, True, 0),
     (84, 100, 3, "earlier", "own", 2, True, 0), (35, 150, 1, "boundaries", "mover", 2, False, 0),
-    (84, 100, 3, "earlier", "own", 1, True, 4), (35, 150, 1, "boundaries", "mover", 0, False, 3)])
+    (84, 100, 3, "earlier", "own", 1, True, 4), (35, 150, 1, "boundaries", "mover", 0, False, 3),
+    (84, 100, 3, "earlier", "own", 3, True, 0), (35, 150, 1, "boundaries", "mover", 3, False, 0),
+    (84, 100, 3, "earlier", "own", 3, True, 4)])
 def test_the_rollout_batch_plays_the_same_worlds_in_both_builds(seed: int, plies: int, horizon: int, stop: str,
                                                                  leaf: str, keyed: int, aligned: bool,
                                                                  race: int, tmp_path) -> None:
     """The rollout root's playouts (bindings/rollout_batch.hpp) under a fixed synthetic policy and
     critic: the same rows, the same worlds, the same observations ply by ply, the same values. `keyed`
-    is the page's code: 0 off, 1 keyed, 2 keyed2; `race` > 0 races the position for that many more
+    is the page's code: 0 off, 1 keyed, 2 keyed2, 3 keyedsym; `race` > 0 races the position for that many more
     worlds once the first are valued (RolloutBatch.race)."""
     state = ts.GameState()
     ts.Engine.init_game(state, seed)
@@ -229,7 +231,7 @@ def test_the_rollout_batch_plays_the_same_worlds_in_both_builds(seed: int, plies
     act = int(mask.shape[0])
 
     batch = ts.RolloutBatch(horizon=horizon, shared_dice=True, guard=True, features=0, seed=batch_seed, stop=stop,
-                            leaf=leaf, keyed=keyed == 1, keyed2=keyed == 2, aligned=aligned,
+                            leaf=leaf, keyed=keyed == 1, keyed2=keyed == 2, keyedsym=keyed == 3, aligned=aligned,
                             box4=aligned)
     rows = batch.add(state, cands, worlds)
     h = hashlib.sha256()

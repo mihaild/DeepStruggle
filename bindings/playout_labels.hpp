@@ -77,6 +77,7 @@ struct Config {
     uint32_t max_plies = 8000;  // a world still running after this many decisions is a failure
     bool keyed = false;         // keyed chance (keyed_chance.hpp): a world's candidates draw alike
     bool keyed2 = false;        // with keyed: the situation's player fields narrowed (keyed_chance.hpp)
+    bool keyedsym = false;      // with keyed: both sides' player fields as all ones (keyed_chance.hpp); not with keyed2
 };
 
 // One world's labels, from the mover's side.

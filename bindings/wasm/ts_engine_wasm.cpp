@@ -776,7 +776,8 @@ std::vector<uint16_t> g_ro_cands;
 // (ts::rollout::Leaf). `aligned`: count every candidate's horizon from the end of the mover's own
 // action round, the headline one boundary (rollout::Config::aligned); `box4`: keep the opponent's headline
 // revealed by Space Race box 4 in every world (rollout::Config::box4). `keyed`: 0 = the shared stream,
-// 1 = keyed chance, 2 = keyed2's packing (rollout::Config::keyed / keyed2, bindings/keyed_chance.hpp).
+// 1 = keyed chance, 2 = keyed2's packing, 3 = keyedsym's (rollout::Config::keyed / keyed2 / keyedsym,
+// bindings/keyed_chance.hpp).
 TS_API int ts_rollout_reset(int horizon, int shared_dice, int guard, uint32_t features,
                             uint32_t seed_lo, uint32_t seed_hi, int stop, int leaf, int keyed, int aligned, int box4) {
     if (horizon < 0) { g_error = "horizon must be >= 0"; return 0; }
@@ -785,13 +786,13 @@ TS_API int ts_rollout_reset(int horizon, int shared_dice, int guard, uint32_t fe
         return 0;
     }
     if (leaf < 0 || leaf > 2) { g_error = "leaf must be 0 (mover), 1 (decider) or 2 (own)"; return 0; }
-    if (keyed < 0 || keyed > 2) { g_error = "keyed must be 0 (off), 1 (keyed) or 2 (keyed2)"; return 0; }
+    if (keyed < 0 || keyed > 3) { g_error = "keyed must be 0 (off), 1 (keyed), 2 (keyed2) or 3 (keyedsym)"; return 0; }
     if (features & ~ts::obs_features::ALL) { g_error = "unknown obs_features bit"; return 0; }
     const uint64_t seed = (static_cast<uint64_t>(seed_hi) << 32) | seed_lo;
     g_rollout = std::make_unique<ts::rollout::RolloutBatch>(
         ts::rollout::Config{horizon, shared_dice != 0, guard != 0, features, static_cast<ts::rollout::Stop>(stop),
                             static_cast<ts::rollout::Leaf>(leaf), keyed != 0, false, aligned != 0, box4 != 0,
-                            keyed == 2}, seed);
+                            keyed == 2, keyed == 3}, seed);
     return 1;
 }
 

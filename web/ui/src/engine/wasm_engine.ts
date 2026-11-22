@@ -210,7 +210,7 @@ export class WasmEngine {
   /** Start a batch: a horizon in action-round boundaries, the model's obs_features bits, a seed, and
    *  where the playouts stop (0 after the boundaries, 1 at the turn's end, 2 the later of the two, 3 the earlier, 4 the turn-end park before
    *  the deal, 5 the earlier of the boundaries and that park); `keyed` ties every draw to its situation
-   *  (bindings/keyed_chance.hpp): 1 the leaderboard's chance=keyed, 2 its chance=keyed2, 0 off; `aligned` counts every candidate's
+   *  (bindings/keyed_chance.hpp): 1 the leaderboard's chance=keyed, 2 its chance=keyed2, 3 its chance=keyedsym, 0 off; `aligned` counts every candidate's
    *  horizon from the end of the mover's own action round, the headline one boundary
    *  (rollout::Config::aligned); `box4` keeps the opponent's headline revealed by Space Race box 4 in
    *  every world (rollout::Config::box4). */

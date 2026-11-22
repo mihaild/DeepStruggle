@@ -588,6 +588,24 @@ def test_a_rollout_players_chance_is_named_only_when_keyed() -> None:
     _, cfg, label = rollout_spec_config(agent)
     assert cfg.keyed2 and not cfg.keyed and label.endswith("-keyed2-z2")
     assert not rollout_spec_config("rollout:m.pt:4:16:4:z2:earlier:own:keyed")[1].keyed2
+    # keyedsym, keyed's USSR packing on both sides, is a third chance; it cannot be spelled beside keyed2.
+    sym = one[:-1] + ",chance=keyedsym)"
+    net, spec = parse_player_id(sym)
+    assert isinstance(spec, Rollout) and spec.chance == "keyedsym" and player_id(net, spec) == sym
+    assert spec_from_dict(spec_to_dict(spec)) == spec
+    agent = load_spec(spec, "m.pt")
+    assert agent == "rollout:m.pt:4:16:4:z2:earlier:own:keyedsym"
+    _, cfg, label = rollout_spec_config(agent)
+    assert cfg.keyedsym and not cfg.keyed and not cfg.keyed2 and label.endswith("-keyedsym-z2")
+    assert not rollout_spec_config("rollout:m.pt:4:16:4:z2:earlier:own:keyed2")[1].keyedsym
+    with pytest.raises(ValueError, match="exclusive"):
+        rollout_spec_config("rollout:m.pt:4:16:4:z2:earlier:own:keyed2:keyedsym")
+    # B6's soup under the raced 64-world root, keyedsym: the id the leaderboard registers round-trips.
+    b6 = ("E8.1-A8-R132-S45@11160M+(S45,46,47)@11520..11600M~rollout(k=4,worlds=64,horizon=4,rule=z2,stop=earlier,"
+          "leaf=own,chance=keyedsym,aligned=true,box4=true,race=16)")
+    net, spec = parse_player_id(b6)
+    assert isinstance(spec, Rollout) and spec.chance == "keyedsym" and spec.race == 16 and player_id(net, spec) == b6
+    assert workbench_search(spec) == "rollout:4:64:4:z2:earlier:own:keyedsym:aligned:box4:race16"
     with pytest.raises(PlayerSpecError):
         parse_player_id(one[:-1] + ",chance=fresh)")
 

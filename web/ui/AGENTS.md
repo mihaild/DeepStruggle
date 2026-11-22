@@ -403,7 +403,7 @@ web/ui/
      auto-play on, *Cancel* keeps undoing until the decision is the other side's again.
      `ActionHud.onRerender` re-applies badges after the HUD redraws itself (the die selector).
    - **Search.** The section's search radios (`#mode-opponent`) choose the policy's argmax (`search=policy`) or the **rollout root**
-     (`search=rollout:k:worlds:horizon:rule:stop:leaf[:keyed|keyed2][:aligned][:box4][:beliefN][:race<n>]`, always written with every field --
+     (`search=rollout:k:worlds:horizon:rule:stop:leaf[:keyed|keyed2|keyedsym][:aligned][:box4][:beliefN][:race<n>]`, always written with every field --
      `analysis/rollout_spec.ts`, the grammar without the engine, which the leaderboard page reads too). Its spec is the
      default search -- the Hugging Face repo's `models.json` `default_search` (`tools/publish_hf.py default --player`),
      read once with the default model (`defaultHfCatalog`), else the built-in `DEFAULT_ROLLOUT`, the corrected keyed root
@@ -416,8 +416,10 @@ web/ui/
      The spec takes the leaderboard's other modes too: `:keyed` (chance=keyed,
      `bindings/keyed_chance.hpp`), `:keyed2` (chance=keyed2, the packing that keeps the turn when the
      USSR is phasing; the default stays `:keyed` until keyed2 is measured; it implies keyed, so the
-     settings' one Chance selector picks shared, keyed or keyed2 and `:keyed:keyed2` parses as
-     `:keyed2`, `tests/web/test_rollout_spec.py`) and `:belief[N]` (belief=N, 2,048 hands by default: the worlds dealt
+     settings' one Chance selector picks shared, keyed, keyed2 or keyedsym and `:keyed:keyed2` parses as
+     `:keyed2`, `tests/web/test_rollout_spec.py`), `:keyedsym` (chance=keyedsym, keyed's USSR packing on
+     both sides, the sides keyed apart; the wasm reset's keyed=3; it implies keyed too, and a spec naming
+     both `:keyed2` and `:keyedsym` does not parse) and `:belief[N]` (belief=N, 2,048 hands by default: the worlds dealt
      from the policy-likelihood belief over the opponent's hand, `bindings/belief.hpp`, the same C++
      as Python's) and `:race<n>` (race=n: every candidate on the first n worlds, the rest only for the
      network's move and the challengers not trailing it, `RolloutBatch::race`; with a belief, the

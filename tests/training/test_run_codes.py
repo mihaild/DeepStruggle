@@ -187,6 +187,7 @@ def test_a_labellings_chance_is_named_only_when_keyed() -> None:
     assert "chance" not in labelling_signature(pmeta, lmeta)
     assert labelling_signature(pmeta, {**lmeta, "keyed": True})["chance"] == "keyed"
     assert labelling_signature(pmeta, {**lmeta, "keyed": False, "keyed2": True})["chance"] == "keyed2"
+    assert labelling_signature(pmeta, {**lmeta, "keyed": False, "keyedsym": True})["chance"] == "keyedsym"
 
 
 def test_a_value_fit_is_its_networks_shape_read_for_its_value(tmp_path: Any) -> None:

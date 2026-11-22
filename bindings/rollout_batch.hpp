@@ -134,6 +134,10 @@ struct Config {
     // With keyed: the situation packed with its player fields narrowed to a byte (keyed_chance.hpp's
     // keyed2). Off: the original packing, which every keyed player measured before it played.
     bool keyed2 = false;
+    // With keyed: any side in a player field packed as all ones, so the turn and action round (and the
+    // higher context fields when it decides or rolls) drop out for the US as for the USSR, the sides then
+    // told apart by one more word (keyed_chance.hpp's keyedsym). Exclusive with keyed2.
+    bool keyedsym = false;
 };
 
 struct Row {

@@ -29,20 +29,21 @@ constexpr size_t kMinZWorlds = 4;
 // Resolve the die rolls a position is sitting on, nothing else (bindings.settle's CHANCE depth). Under keyed
 // chance the stream is keyed before each roll, as the playout's own advance keys it (audit S-7, 2026-11-22: the
 // probe used to roll the decision step's keyed stream on, so it could see another die than the playout would).
-void drain_chance(GameState& s, bool keyed = false, uint64_t world_key = 0, bool keyed2 = false) noexcept {
+void drain_chance(GameState& s, bool keyed = false, uint64_t world_key = 0,
+                  keyed::Mode mode = keyed::Mode::kKeyed) noexcept {
     while (!Engine::is_terminal(s) && s.ctx().decision_player == Player::NONE &&
            s.ctx().decision_type == DecisionType::ROLL_DIE) {
-        if (keyed) keyed::key(s, world_key, keyed2);
+        if (keyed) keyed::key(s, world_key, mode);
         if (!Engine::step(s, MicroAction{DecisionType::ROLL_DIE, 0, 0, 0})) return;
     }
 }
 
 // Does `a` end the game against `who` on the spot? (ai/eval/paired_playouts.loses_now)
 bool loses_now(const GameState& s, uint16_t a, Player who, bool keyed = false, uint64_t world_key = 0,
-               bool keyed2 = false) noexcept {
+               keyed::Mode mode = keyed::Mode::kKeyed) noexcept {
     GameState probe = s;
     if (!Engine::step_flat(probe, a)) return false;
-    drain_chance(probe, keyed, world_key, keyed2);
+    drain_chance(probe, keyed, world_key, mode);
     if (!Engine::is_terminal(probe)) return false;
     const float u = Engine::get_terminal_utility(probe);
     return who == Player::US ? (u < 0.0f) : (u > 0.0f);
@@ -185,7 +186,7 @@ bool RolloutBatch::at_stop(const Row& r) const noexcept {
 
 void RolloutBatch::advance(Row& r) const noexcept {
     if (cfg_.stop != Stop::kPredeal && cfg_.stop != Stop::kEarlierPredeal) {
-        if (cfg_.keyed) keyed::advance(r.state, r.world_key, cfg_.keyed2);
+        if (cfg_.keyed) keyed::advance(r.state, r.world_key, keyed::mode_of(cfg_.keyed2, cfg_.keyedsym));
         else Engine::auto_advance_step(r.state);
         return;
     }
@@ -193,7 +194,7 @@ void RolloutBatch::advance(Row& r) const noexcept {
     // would otherwise.
     for (size_t k = 0; k < 256; ++k) {
         if (at_turn_cleanup(r.state) && !park_or_end(r)) return;
-        if (cfg_.keyed) keyed::key(r.state, r.world_key, cfg_.keyed2);
+        if (cfg_.keyed) keyed::key(r.state, r.world_key, keyed::mode_of(cfg_.keyed2, cfg_.keyedsym));
         if (Engine::auto_advance_step(r.state, 1) == 0) return;
     }
 }
@@ -287,7 +288,7 @@ size_t RolloutBatch::add_worlds(uint32_t position, size_t worlds, const uint8_t*
             r.start_turn = base.turn;
             r.value = std::numeric_limits<float>::quiet_NaN();
             r.world_key = world.rng_state;
-            if (cfg_.keyed) keyed::key(r.state, r.world_key, cfg_.keyed2);
+            if (cfg_.keyed) keyed::key(r.state, r.world_key, keyed::mode_of(cfg_.keyed2, cfg_.keyedsym));
             if (!Engine::step_flat(r.state, candidates[c])) {
                 r.refused = r.done = true;
             } else {
@@ -473,7 +474,7 @@ uint16_t RolloutBatch::guarded_choice(const GameState& s, const float* logits, c
         top[n++] = static_cast<uint16_t>(best);
     }
     for (size_t t = 0; t < n; ++t) {
-        if (!loses_now(s, top[t], who, cfg_.keyed, world_key, cfg_.keyed2)) return top[t];
+        if (!loses_now(s, top[t], who, cfg_.keyed, world_key, keyed::mode_of(cfg_.keyed2, cfg_.keyedsym))) return top[t];
     }
     return argmax;
 }
@@ -490,7 +491,7 @@ void RolloutBatch::step(const float* logits) {
             if (mask[a] && (best < 0 || lg[a] > lg[best])) best = static_cast<int>(a);
         }
         if (best < 0) { r.refused = r.done = true; return; }
-        if (cfg_.keyed) keyed::key(r.state, r.world_key, cfg_.keyed2);   // the guard's probes see the same draws
+        if (cfg_.keyed) keyed::key(r.state, r.world_key, keyed::mode_of(cfg_.keyed2, cfg_.keyedsym));   // the guard's probes see the same draws
         const uint16_t a = guarded_choice(r.state, lg, mask, static_cast<uint16_t>(best), r.world_key);
         if (!Engine::step_flat(r.state, a)) { r.refused = r.done = true; return; }
         settle_and_mark(r);

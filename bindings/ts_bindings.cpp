@@ -876,15 +876,17 @@ NB_MODULE(ts_engine, m) {
           "games, position, observation and legal mask alike.");
 
     // ---- P34's playout labeller (bindings/playout_labels.hpp; native only) ----
-    m.def("keyed_key", [](const ts::GameState& s, uint64_t world_key, bool keyed2) {
+    m.def("keyed_key", [](const ts::GameState& s, uint64_t world_key, bool keyed2, bool keyedsym) {
+              if (keyed2 && keyedsym) throw std::invalid_argument("keyed2 and keyedsym are exclusive packings");
               ts::GameState out = s;
-              ts::keyed::key(out, world_key, keyed2);
+              ts::keyed::key(out, world_key, ts::keyed::mode_of(keyed2, keyedsym));
               return out;
-          }, nb::arg("state"), nb::arg("world_key"), nb::arg("keyed2") = false,
+          }, nb::arg("state"), nb::arg("world_key"), nb::arg("keyed2") = false, nb::arg("keyedsym") = false,
           "A copy of `state` keyed for its next engine step (bindings/keyed_chance.hpp): rng_state "
           "set to hash(world_key, situation) and, at the turn's end, the next deal forced from the "
           "world's deck order. What the batches' keyed=True does before every step (keyed2=True: "
-          "keyed2's packing); a reference playout calls it the same way.");
+          "keyed2's packing; keyedsym=True: keyedsym's, not with keyed2); a reference playout calls it "
+          "the same way.");
     m.def("state_size", []() { return sizeof(ts::GameState); },
           "Bytes of one GameState: the row width of raw_bytes() arrays.");
     m.def("state_from_raw_bytes", [](nb::bytes b) {
@@ -964,7 +966,9 @@ NB_MODULE(ts_engine, m) {
             "continuous: fill_live(obs) -> logits -> step(logits) until idle(), collecting "
             "take_positions() / take_siblings() as they finish.")
             .def("__init__", [](PL* self, uint32_t features, int worlds, size_t capacity, uint64_t seed,
-                                bool safe, int leaf_horizon, uint32_t max_plies, bool keyed, bool keyed2) {
+                                bool safe, int leaf_horizon, uint32_t max_plies, bool keyed, bool keyed2,
+                                bool keyedsym) {
+                     if (keyed2 && keyedsym) throw std::invalid_argument("keyed2 and keyedsym are exclusive packings");
                      if (features & ~ts::obs_features::ALL) throw std::invalid_argument("unknown obs_features bit");
                      if (worlds <= 0 || worlds > 65535) throw std::invalid_argument("worlds must be in 1..65535");
                      if (capacity == 0) throw std::invalid_argument("capacity must be positive");
@@ -975,16 +979,19 @@ NB_MODULE(ts_engine, m) {
                      cfg.safe = safe;
                      cfg.leaf_horizon = leaf_horizon;
                      cfg.max_plies = max_plies;
-                     cfg.keyed = keyed || keyed2;
+                     cfg.keyed = keyed || keyed2 || keyedsym;
                      cfg.keyed2 = keyed2;
+                     cfg.keyedsym = keyedsym;
                      new (self) PL(cfg, capacity, seed);
                  }, nb::arg("features") = 0u, nb::arg("worlds") = 32, nb::arg("capacity") = 16384,
                  nb::arg("seed") = 0ull, nb::arg("safe") = true, nb::arg("leaf_horizon") = 0,
                  nb::arg("max_plies") = 8000u, nb::arg("keyed") = false, nb::arg("keyed2") = false,
+                 nb::arg("keyedsym") = false,
                  "keyed=True ties every draw to the situation it is made in (bindings/keyed_chance.hpp): "
                  "a world's candidates draw the same dice and cards wherever they reach the same situation. "
                  "keyed2=True is keyed chance with the player fields packed so a USSR side cannot hide the "
-                 "turn; keyed alone keeps the original packing.")
+                 "turn; keyedsym=True packs both sides as keyed packs the USSR, so neither side's draws see "
+                 "the turn or action round (exclusive with keyed2); keyed alone keeps the original packing.")
             .def("enqueue_raw", [](PL& self, RawStates states, Ids ids, std::optional<Cands> candidates) {
                      const size_t n = states.shape(0);
                      if (states.shape(1) != sizeof(ts::GameState))
@@ -1392,7 +1399,8 @@ NB_MODULE(ts_engine, m) {
             "Written once for the Python searcher and the browser (bindings/rollout_batch.hpp).")
             .def("__init__", [](RB* self, int horizon, bool shared_dice, bool guard, uint32_t features,
                                 uint64_t seed, const std::string& stop, const std::string& leaf, bool keyed, bool oracle,
-                                bool aligned, bool box4, bool keyed2) {
+                                bool aligned, bool box4, bool keyed2, bool keyedsym) {
+                     if (keyed2 && keyedsym) throw std::invalid_argument("keyed2 and keyedsym are exclusive packings");
                      if (horizon < 0) throw std::invalid_argument("horizon must be >= 0");
                      if (features & ~ts::obs_features::ALL) throw std::invalid_argument("unknown obs_features bit");
                      ts::rollout::Stop s;
@@ -1409,12 +1417,14 @@ NB_MODULE(ts_engine, m) {
                      else if (leaf == "decider") l = ts::rollout::Leaf::kDecider;
                      else if (leaf == "own") l = ts::rollout::Leaf::kOwn;
                      else throw std::invalid_argument("leaf must be 'mover', 'decider' or 'own'");
-                     new (self) RB(ts::rollout::Config{horizon, shared_dice, guard, features, s, l, keyed || keyed2,
-                                                       oracle, aligned, box4, keyed2}, seed);
+                     new (self) RB(ts::rollout::Config{horizon, shared_dice, guard, features, s, l,
+                                                       keyed || keyed2 || keyedsym, oracle, aligned, box4, keyed2,
+                                                       keyedsym}, seed);
                  }, nb::arg("horizon") = 4, nb::arg("shared_dice") = true, nb::arg("guard") = true,
                  nb::arg("features") = 0u, nb::arg("seed") = 0ull, nb::arg("stop") = "boundaries",
                  nb::arg("leaf") = "mover", nb::arg("keyed") = false, nb::arg("oracle") = false,
-                 nb::arg("aligned") = false, nb::arg("box4") = false, nb::arg("keyed2") = false)
+                 nb::arg("aligned") = false, nb::arg("box4") = false, nb::arg("keyed2") = false,
+                 nb::arg("keyedsym") = false)
             .def("add", [](RB& self, const ts::GameState& base, const std::vector<int>& candidates, size_t worlds,
                            std::optional<Hands> hands) {
                      std::vector<uint16_t> c;

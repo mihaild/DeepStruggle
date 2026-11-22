@@ -69,9 +69,10 @@ class Rollout:
     #: The registered network that reads the leaves (P34's evaluator); "" = the root's own network.
     leaf_net: str = ""
     #: How a world's randomness is shared by its candidates: "shared" (one dice stream, the measured
-    #: root), "keyed" (each draw tied to its situation, bindings/keyed_chance.hpp) or "keyed2" (keyed
+    #: root), "keyed" (each draw tied to its situation, bindings/keyed_chance.hpp), "keyed2" (keyed
     #: with the situation's player fields narrowed, so a USSR side no longer hides the turn; "keyed"
-    #: keeps the original packing every keyed player was measured with).
+    #: keeps the original packing every keyed player was measured with) or "keyedsym" (keyed with both
+    #: sides hiding the turn and action round as keyed's USSR does, the sides keyed apart).
     chance: str = "shared"
     #: P35 3b: the worlds dealt from the policy-likelihood belief over the opponent's hand with this
     #: many importance-sampled hands, the likelihood temperature model-averaged from the opponent's own
@@ -128,7 +129,7 @@ _LEAVES: Final = ("mover", "decider", "own")
 LATE_FIELDS: Final[Dict[str, Dict[str, Union[str, int]]]] = {
     "rollout": {"stop": "boundaries", "leaf": "mover", "leaf_net": "", "chance": "shared", "belief": 0,
                 "aligned": False, "box4": False, "race": 0}}
-_CHANCES: Final = ("shared", "keyed", "keyed2")
+_CHANCES: Final = ("shared", "keyed", "keyed2", "keyedsym")
 #: Characters a leaf_net name may not hold: the id grammar's own separators.
 _LEAF_NET_BAD: Final = frozenset("(),~:= ")
 #: ai.search.rollout_root.parse_rule's grammar, without importing it (torch-free here).

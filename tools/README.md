@@ -391,7 +391,11 @@ the evaluator is a registered network like any other (its file and sha256 are ch
 (`bindings/keyed_chance.hpp`), so the candidates' playouts stay paired longer than on one shared stream.
 `chance=keyed2` is the same with the situation packed so a USSR side no longer hides the turn from
 it; `chance=keyed` keeps the original packing, so every keyed player recorded before it is unchanged
-(`bindings/AGENTS.md`, keyed_chance.hpp).
+(`bindings/AGENTS.md`, keyed_chance.hpp). `chance=keyedsym` makes keyed's USSR accident symmetric: any
+side in a player field hides the turn and action round from the key (and, when it decides or rolls, the
+higher context fields), so a coup's die does not depend on when it is rolled -- "coup X now, Y later"
+and "Y now, X later" draw alike -- and one more word, the player fields as bytes, keeps the US's
+situations apart from the USSR's.
 
 **A network's engine and an epoch's engine are two things.** The `E<n>` in a network's name is the
 engine it was trained on; the epoch is the engine whose rules its games on the leaderboard are played

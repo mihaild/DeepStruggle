@@ -422,10 +422,10 @@ def run_label(a: argparse.Namespace) -> int:
     t0 = time.time()
 
     labellers = [ts.PlayoutLabels(features=features, worlds=a.worlds, capacity=a.capacity, seed=a.seed,
-                                  keyed=a.keyed, keyed2=a.keyed2) for _ in range(2)]
+                                  keyed=a.keyed, keyed2=a.keyed2, keyedsym=a.keyedsym) for _ in range(2)]
     sib_labellers = [ts.PlayoutLabels(features=features, worlds=a.sibling_worlds, capacity=a.capacity,
                                       seed=a.seed + 1, leaf_horizon=a.leaf_horizon, keyed=a.keyed,
-                                      keyed2=a.keyed2) for _ in range(2)]
+                                      keyed2=a.keyed2, keyedsym=a.keyedsym) for _ in range(2)]
     streams = policy_streams(device) if device.type == "cuda" else None
     policies = [GraphedPolicy(model, a.capacity, labellers[0].obs_width(), device, graphs=not a.no_graphs,
                               streams=streams, codes=not a.float_upload) for _ in range(2)]
@@ -498,6 +498,7 @@ def run_label(a: argparse.Namespace) -> int:
             "main": not a.no_main, "safe": True,
             "siblings": a.siblings, "sibling_worlds": a.sibling_worlds, "sibling_k": a.sibling_k,
             "leaf_horizon": a.leaf_horizon, "keyed": a.keyed, **({"keyed2": True} if a.keyed2 else {}),
+            **({"keyedsym": True} if a.keyedsym else {}),
             "capacity": a.capacity, "device": str(device),
             "follow": a.follow, "search_worlds": a.search_worlds, "search_window": a.search_window,
             "searched_decisions": follow.searched if follow is not None else 0,
@@ -649,7 +650,8 @@ def labelling_signature(pmeta: Dict[str, Any], lmeta: Dict[str, Any]) -> Dict[st
             "sibling_k": lmeta["sibling_k"], "leaf_horizon": lmeta["leaf_horizon"],
             "labels": ["score", "final_vp", "turn_vp", "turn_defcon", "region_swing"],
             # keyed chance (bindings/keyed_chance.hpp); recorded only when on, so D1 keeps its code
-            **({"chance": "keyed2"} if lmeta.get("keyed2") else {"chance": "keyed"} if lmeta.get("keyed") else {}),
+            **({"chance": "keyed2"} if lmeta.get("keyed2") else {"chance": "keyedsym"} if lmeta.get("keyedsym")
+               else {"chance": "keyed"} if lmeta.get("keyed") else {}),
             **({"main": False} if lmeta.get("main") is False else {}),
             # the follow-up: recorded only when not greedy, so D1 and D2 keep their codes
             **({"follow": {"player": "rollout(k=4,stop=earlier,leaf=own,chance=keyed) at entry decisions",
@@ -812,6 +814,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     la.add_argument("--keyed2", action="store_true",
                     help="keyed chance with the situation's player fields narrowed (bindings/keyed_chance.hpp), "
                          "so a USSR side does not hide the turn; implies --keyed")
+    la.add_argument("--keyedsym", action="store_true",
+                    help="keyed chance with both sides' player fields packed as keyed packs the USSR's "
+                         "(bindings/keyed_chance.hpp), so neither side's draws see the turn; implies --keyed, "
+                         "not with --keyed2")
     la.add_argument("--capacity", type=int, default=16384, help="rows per labeller batch")
     la.add_argument("--seed", type=int, default=44)
     la.add_argument("--part", type=_part, default=(0, 1))

@@ -71,10 +71,10 @@ class _Played:
 
 
 def _reference(base: ts.GameState, world: ts.GameState,
-               keyed: bool = False, keyed2: bool = False) -> _Played:
+               keyed: bool = False, keyed2: bool = False, keyedsym: bool = False) -> _Played:
     """One world played the way play_safe plays it, recording what the labeller records. With `keyed`
     every engine step is keyed first (ts.keyed_key, the world's rng_state its key), as keyed=True does
-    (`keyed2`: keyed2's packing)."""
+    (`keyed2`: keyed2's packing; `keyedsym`: keyedsym's)."""
     mover = decider(base)
     key = ar_key(base)
     st = world.clone()
@@ -83,7 +83,7 @@ def _reference(base: ts.GameState, world: ts.GameState,
     turn: Optional[Tuple[int, int]] = None
     while not ts.Engine.is_terminal(st):
         if keyed:
-            st = ts.keyed_key(st, world_key, keyed2)
+            st = ts.keyed_key(st, world_key, keyed2, keyedsym)
         mask = np.asarray(ActionEncoder.get_legal_mask(st)).copy()
         if guarding:
             if ar_key(st) != key or decider(st) != mover:
@@ -99,7 +99,7 @@ def _reference(base: ts.GameState, world: ts.GameState,
         ts.Engine.step_flat(st, a)
         if keyed:
             while not ts.Engine.is_terminal(st):
-                st = ts.keyed_key(st, world_key, keyed2)
+                st = ts.keyed_key(st, world_key, keyed2, keyedsym)
                 if ts.Engine.auto_advance_step(st, 1) == 0:
                     break
         else:
@@ -218,26 +218,27 @@ def test_a_terminal_position_or_an_illegal_candidate_is_refused() -> None:
     assert pl.queued() == 0
 
 
-@pytest.mark.parametrize("keyed2", [False, True])
-def test_a_keyed_world_is_the_keyed_python_playout_of_it_and_deals_cleanly(keyed2: bool,
+@pytest.mark.parametrize("keyed2,keyedsym", [(False, False), (True, False), (False, True)])
+def test_a_keyed_world_is_the_keyed_python_playout_of_it_and_deals_cleanly(keyed2: bool, keyedsym: bool,
                                                                           capfd: pytest.CaptureFixture[str]) -> None:
-    """keyed=True (and keyed2=True): every world equals a Python playout that keys each engine step the same way, and
+    """keyed=True (and keyed2=True or keyedsym=True): every world equals a Python playout that keys each engine step the same way, and
     the deals forced from the world's deck order never name a card the deck lacks (the engine would
     report an anomaly) -- across whole games, turn ends and era changes included."""
     positions = _positions(6, seed=12)
     worlds = 3
-    pl = ts.PlayoutLabels(worlds=worlds, capacity=8, seed=5, keyed=True, keyed2=keyed2)
+    pl = ts.PlayoutLabels(worlds=worlds, capacity=8, seed=5, keyed=True, keyed2=keyed2, keyedsym=keyedsym)
     pl.enqueue(positions, list(range(len(positions))))
     _drive(pl)
     got = pl.take_positions()
     for row, pid in enumerate(got["id"].tolist()):
         base = positions[pid]
-        ref = [_reference(base, pl.world(base, pid, w), keyed=True, keyed2=keyed2) for w in range(worlds)]
+        ref = [_reference(base, pl.world(base, pid, w), keyed=True, keyed2=keyed2, keyedsym=keyedsym)
+               for w in range(worlds)]
         s = got["sums"][row]
         assert s[0] == pytest.approx(sum(r.score for r in ref))
         assert s[2] == pytest.approx(sum(r.vp for r in ref))
         assert s[3] == pytest.approx(sum(r.turn_end_vp for r in ref))
-    sib = ts.PlayoutLabels(worlds=8, capacity=64, seed=3, keyed=True, keyed2=keyed2)
+    sib = ts.PlayoutLabels(worlds=8, capacity=64, seed=3, keyed=True, keyed2=keyed2, keyedsym=keyedsym)
     for i, st in enumerate(_positions(4, seed=13)):
         legal = np.flatnonzero(np.asarray(ActionEncoder.get_legal_mask(st)))
         if legal.size >= 2:

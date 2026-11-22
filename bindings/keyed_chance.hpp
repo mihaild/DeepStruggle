@@ -15,13 +15,18 @@
 // plays the same game distribution as before; only the coupling between continuations changes.
 // No engine change: the engine reads rng_state, and this sets it.
 //
-// Two packings of the situation, chosen by `keyed2` (the batches' keyed2=True, the rollout player's
-// chance=keyed2). The first, `keyed`, widens the player fields as signed bytes: Player::USSR is -1,
-// so it sets every higher bit of its word, and whenever the USSR is phasing the turn, action round
-// and phase drop out of the situation (and the decision type and staged roll when it decides or
-// rolls) -- two of a world's USSR draws can then reuse one die across turns. It is kept bit for bit,
-// so every keyed result measured with it stays a measurement of one searcher. `keyed2` narrows each
-// player field to its byte first, so every field it lists separates situations.
+// Three packings of the situation, chosen by the mode (the batches' keyed2=True / keyedsym=True, the
+// rollout player's chance=keyed2 / chance=keyedsym). The first, `keyed`, widens the player fields as
+// signed bytes: Player::USSR is -1, so it sets every higher bit of its word, and whenever the USSR is
+// phasing the turn and action round drop out of the situation (the phase, packed below it, stays; the
+// decision type and staged roll drop out too when it decides or rolls) -- two of a world's USSR draws
+// can then reuse one die across turns. It is kept bit for bit, so every keyed result measured with it stays a measurement of one
+// searcher. `keyed2` narrows each player field to its byte first, so every field it lists separates
+// situations. `keyedsym` makes keyed's accident symmetric: any side (US or USSR) in a player field is
+// ORed in as all ones, so the same fields drop out for both sides -- a coup's die does not depend on
+// the turn or action round it is rolled in, which pairs "coup X now, Y later" with "Y now, X later"
+// (the owner, 2026-11-22) -- and one more word, the three player fields as bytes, keeps the two sides'
+// situations apart. keyed and keyed2 are unchanged by it.
 #pragma once
 
 #include <algorithm>
@@ -42,12 +47,29 @@ inline uint64_t mix(uint64_t h, uint64_t v) noexcept {
     return Prng::next_u64(z);
 }
 
-// The situation a step is taken in, hashed with the world's key. `keyed2` narrows the player
-// fields to their byte (see the top of this file); without it the original packing stands.
-inline uint64_t situation(const GameState& s, uint64_t world_key, bool keyed2) noexcept {
-    const auto player = [keyed2](Player p) noexcept {
-        return keyed2 ? uint64_t{static_cast<uint8_t>(p)} : uint64_t(p);
+// The packing of a situation's player fields (see the top of this file).
+enum class Mode : uint8_t {
+    kKeyed = 0,     // widened as signed bytes: the USSR (-1) hides every field above it
+    kKeyed2 = 1,    // narrowed to a byte: every field counts
+    kKeyedSym = 2,  // any side widened as all ones, both sides hide alike; the players as bytes mixed in apart
+};
+
+// The mode a batch's options name: keyedsym and keyed2 are exclusive (the bindings refuse both).
+constexpr Mode mode_of(bool keyed2, bool keyedsym) noexcept {
+    return keyedsym ? Mode::kKeyedSym : keyed2 ? Mode::kKeyed2 : Mode::kKeyed;
+}
+
+// The situation a step is taken in, hashed with the world's key, its player fields packed by `mode`.
+inline uint64_t situation(const GameState& s, uint64_t world_key, Mode mode) noexcept {
+    const auto player = [mode](Player p) noexcept -> uint64_t {
+        switch (mode) {
+            case Mode::kKeyed2: return uint64_t{static_cast<uint8_t>(p)};
+            case Mode::kKeyedSym: return p == Player::NONE ? uint64_t{0} : ~uint64_t{0};
+            case Mode::kKeyed: break;
+        }
+        return uint64_t(p);
     };
+    const auto byte = [](Player p) noexcept { return uint64_t{static_cast<uint8_t>(p)}; };
     const auto& c = s.ctx();
     uint64_t h = world_key;
     h = mix(h, (uint64_t{s.turn} << 24) | (uint64_t{s.action_round} << 16) |
@@ -57,6 +79,8 @@ inline uint64_t situation(const GameState& s, uint64_t world_key, bool keyed2) n
                (player(c.roll_actor) << 8) | uint64_t{c.remaining_steps});
     h = mix(h, (uint64_t{c.resolving_card} << 24) | (uint64_t{c.pending_op_card} << 16) |
                (uint64_t{s.ctx_stack_depth} << 8) | uint64_t{s.headline_stage});
+    if (mode == Mode::kKeyedSym)   // the sides the all-ones fields no longer tell apart
+        h = mix(h, (byte(s.phasing_player) << 16) | (byte(c.decision_player) << 8) | byte(c.roll_actor));
     return h;
 }
 
@@ -110,18 +134,18 @@ inline void force_deal(GameState& s, uint64_t world_key) noexcept {
 }
 
 // Key the stream for the step about to be taken from `s` (and, at the turn's end, the deal).
-inline void key(GameState& s, uint64_t world_key, bool keyed2) noexcept {
-    s.rng_state = situation(s, world_key, keyed2);
+inline void key(GameState& s, uint64_t world_key, Mode mode) noexcept {
+    s.rng_state = situation(s, world_key, mode);
     if (rollout::at_turn_cleanup(s)) force_deal(s, world_key);   // the turn end deals next
 }
 
 // Engine::auto_advance_step, one micro-step at a time with the stream keyed before each: the
 // position the full drain would reach, every draw on the way keyed. Returns the steps taken.
-inline size_t advance(GameState& s, uint64_t world_key, bool keyed2) noexcept {
+inline size_t advance(GameState& s, uint64_t world_key, Mode mode) noexcept {
     size_t n = 0;
     for (; n < 4096; ++n) {
         if (Engine::is_terminal(s)) break;
-        key(s, world_key, keyed2);
+        key(s, world_key, mode);
         if (Engine::auto_advance_step(s, 1) == 0) break;
     }
     return n;
