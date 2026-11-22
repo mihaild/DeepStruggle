@@ -1652,19 +1652,24 @@ NB_MODULE(ts_engine, m) {
                                nb::ndarray<const uint8_t, nb::ndim<2>, nb::c_contig, nb::device::cpu> dones,
                                nb::ndarray<const float, nb::ndim<2>, nb::c_contig, nb::device::cpu> rewards,
                                nb::ndarray<const float, nb::ndim<2>, nb::c_contig, nb::device::cpu> values,
-                               nb::ndarray<const float, nb::ndim<1>, nb::c_contig, nb::device::cpu> last_v,
+                               nb::ndarray<const float, nb::ndim<1>, nb::c_contig, nb::device::cpu> last_v_us,
+                               nb::ndarray<const float, nb::ndim<1>, nb::c_contig, nb::device::cpu> last_v_ussr,
                                float gamma, float lam,
                                nb::ndarray<const float, nb::ndim<2>, nb::c_contig, nb::device::cpu> u,
                                nb::ndarray<const float, nb::ndim<2>, nb::c_contig, nb::device::cpu> post,
                                nb::ndarray<const float, nb::ndim<1>, nb::c_contig, nb::device::cpu> lam_opp,
+                               nb::ndarray<const float, nb::ndim<2>, nb::c_contig, nb::device::cpu> extra,
+                               nb::ndarray<const float, nb::ndim<2>, nb::c_contig, nb::device::cpu> ntgt,
                                nb::ndarray<float, nb::ndim<2>, nb::c_contig, nb::device::cpu> adv,
                                nb::ndarray<float, nb::ndim<2>, nb::c_contig, nb::device::cpu> ret,
                                nb::ndarray<float, nb::ndim<2>, nb::c_contig, nb::device::cpu> nadv) {
               const int64_t T = static_cast<int64_t>(players.shape(0)), N = static_cast<int64_t>(players.shape(1));
               const bool node = u.shape(0) == static_cast<size_t>(T);
               const int8_t* P = players.data(); const uint8_t* D = dones.data(); const float* Rw = rewards.data();
-              const float* V = values.data(); const float* LV = last_v.data(); const float* U = node ? u.data() : nullptr;
+              const float* V = values.data(); const float* LVU = last_v_us.data(); const float* LVR = last_v_ussr.data();
+              const float* U = node ? u.data() : nullptr;
               const float* PO = node ? post.data() : nullptr; const float* LO = node ? lam_opp.data() : nullptr;
+              const float* EX = node ? extra.data() : nullptr; const float* NT = node ? ntgt.data() : nullptr;
               float* A = adv.data(); float* RT = ret.data(); float* NA = nadv.data();
               nb::gil_scoped_release release;
               gomp_parallel_for(N, [&](int64_t e) {
@@ -1672,7 +1677,7 @@ NB_MODULE(ts_engine, m) {
                   // chains), value and rewards at q's next own decision, and the gap -- RolloutBuffer._gae_per_player_both.
                   float cA[2] = {0, 0}, cAn[2] = {0, 0}, cV[2], cR[2] = {0, 0}, gap[2] = {0, 0};
                   bool has[2] = {true, true};
-                  cV[0] = LV[e]; cV[1] = -LV[e];
+                  cV[0] = LVU[e]; cV[1] = LVR[e];
                   for (int64_t t = T - 1; t >= 0; --t) {
                       const int64_t i = t * N + e;
                       if (D[i]) { for (int q = 0; q < 2; ++q) { cA[q] = cAn[q] = cV[q] = cR[q] = gap[q] = 0.0f; has[q] = false; } }
@@ -1692,7 +1697,10 @@ NB_MODULE(ts_engine, m) {
                               float an = target - v_t + disc * lam * cAn[q] * carry;
                               const float ut = U[i], pt = PO[i];
                               if (std::isfinite(ut)) {
-                                  const float po = std::isfinite(pt) ? pt : target;
+                                  // Each roll's own luck left out: the first roll's after-value (or the next node's
+                                  // target), plus the later rolls' (after - average), a later roll with no after-row
+                                  // counting the target (node_tensors).
+                                  const float po = (std::isfinite(pt) ? pt : target) + EX[i] + NT[i] * target;
                                   an = (ut - v_t) + LO[e] * ((target - po) + disc * lam * cAn[q] * carry);
                               }
                               NA[i] = an; cAn[q] = an;
@@ -1701,12 +1709,12 @@ NB_MODULE(ts_engine, m) {
                       }
                   }
               });
-          }, nb::arg("players"), nb::arg("dones"), nb::arg("rewards"), nb::arg("values"), nb::arg("last_v"),
-          nb::arg("gamma"), nb::arg("lam"), nb::arg("u"), nb::arg("post"), nb::arg("lam_opp"), nb::arg("adv"),
-          nb::arg("ret"), nb::arg("nadv"),
+          }, nb::arg("players"), nb::arg("dones"), nb::arg("rewards"), nb::arg("values"), nb::arg("last_v_us"),
+          nb::arg("last_v_ussr"), nb::arg("gamma"), nb::arg("lam"), nb::arg("u"), nb::arg("post"), nb::arg("lam_opp"),
+          nb::arg("extra"), nb::arg("ntgt"), nb::arg("adv"), nb::arg("ret"), nb::arg("nadv"),
           "Per-player GAE (RolloutBuffer._gae_per_player_both), each env's backward pass in parallel. players int8 "
-          "(T, N), dones uint8, rewards / values float32, last_v (N,) in US frame; u / post (T, N) or (0, 0) for no "
-          "node, lam_opp (N,). Writes adv, ret (plain chain) and nadv (node chain) for every mover row; other rows are "
+          "(T, N), dones uint8, rewards / values float32, last_v_us / last_v_ussr (N,): each side's bootstrap past the "
+          "buffer in its own frame; u / post / extra / ntgt (T, N) or (0, 0) for no node, lam_opp (N,). Writes adv, ret (plain chain) and nadv (node chain) for every mover row; other rows are "
           "left as given.");
 
     m.def("roll_outcomes", [](const ts::GameState& g, ts::Player side, uint32_t features) {

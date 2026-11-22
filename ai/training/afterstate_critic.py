@@ -394,32 +394,97 @@ def read_all_node_values(rows: Sequence[AfterstateRows], value_fn: Callable[[tor
 
 
 def node_tensors(rows: Sequence[AfterstateRows], horizon: int, num_envs: int, device: Any
-                 ) -> Tuple[torch.Tensor, torch.Tensor]:
-    """P56: (U, U_post), each (horizon, num_envs), for compute_gae's afterstate node (RolloutBuffer._gae_per_player).
-    A decision's walk is its env's rows in its step. U is the value of the walk's first moment: the rolls' average
-    when that moment is a roll's (the move is followed by a die), else the moment's own value. U_post is U, except
-    after a die: the value after the roll that actually came (the next row), so the roll's own luck is left out of
-    the advantage -- NaN when that state is no row (the side's own next decision, or the end of the game), where the
-    step after the roll is zero. NaN in U: no afterstate, the plain step."""
+                 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """P56: (U, U_post, extra, n_target), each (horizon, num_envs), for compute_gae's afterstate node
+    (RolloutBuffer._gae_per_player_both). A decision's walk is its env's rows in its step.
+
+    Without a die in the walk, U is the walk's first moment's value and U_post = U. With one, U is the average over
+    the outcomes of the walk's FIRST real roll (a before-roll row with outcomes -- a forced step may come before it,
+    its value change stays in the move's own term), and every roll's own luck is left out of the advantage: U_post is
+    the value after the first roll that actually came, and for each later roll k, extra adds (value after it - its
+    average). A roll whose after-state is no row (it led straight to the side's next decision, or the end) counts
+    that next node's target as its after-value: NaN in U_post for the first roll, a count in n_target (and -average
+    in extra) for a later one. The step is measured from U_post + extra + n_target x target. NaN in U: no afterstate
+    (the plain step). (Audit T-1, 2026-11-22: the first version read only the walk's first moment, so a forced step
+    before the die kept the roll's luck, and only the first of two rolls was dropped.)"""
     u = np.full((horizon, num_envs), np.nan, dtype=np.float32)
     post = np.full((horizon, num_envs), np.nan, dtype=np.float32)
+    extra = np.zeros((horizon, num_envs), dtype=np.float32)
+    ntgt = np.zeros((horizon, num_envs), dtype=np.float32)
     for r in rows:
         n = len(r.envs)
         if n == 0 or r.values is None:
             continue
         envs = np.asarray(r.envs)
-        first = np.flatnonzero(np.r_[True, envs[1:] != envs[:-1]])
         kinds = np.asarray(r.kinds)
         vals = r.values.detach().float().cpu().numpy()
         avg = r.avg.detach().float().cpu().numpy() if r.avg is not None else np.full(n, np.nan, dtype=np.float32)
-        is_roll = (kinds[first] == BEFORE_ROLL) & np.isfinite(avg[first])
-        nxt = np.minimum(first + 1, n - 1)
-        after_ok = (first + 1 < n) & (envs[nxt] == envs[first]) & (kinds[nxt] == AFTER_ROLL)
-        u_f = np.where(is_roll, avg[first], vals[first])
-        post_f = np.where(is_roll, np.where(after_ok, vals[nxt], np.nan), u_f)
-        u[r.step, envs[first]] = u_f
-        post[r.step, envs[first]] = post_f
-    return torch.from_numpy(u).to(device), torch.from_numpy(post).to(device)
+        newg = np.r_[True, envs[1:] != envs[:-1]]
+        first = np.flatnonzero(newg)
+        g = np.cumsum(newg) - 1                          # the walk (group) each row belongs to
+        ng = len(first)
+        nxt = np.minimum(np.arange(n) + 1, n - 1)
+        aft = np.where((np.arange(n) + 1 < n) & (envs[nxt] == envs) & (kinds[nxt] == AFTER_ROLL), vals[nxt], np.nan)
+        roll = (kinds == BEFORE_ROLL) & np.isfinite(avg)
+        ridx = np.flatnonzero(roll)
+        has_roll = np.zeros(ng, dtype=bool)
+        u_g = vals[first].astype(np.float32)
+        post_g = u_g.copy()
+        ex_g = np.zeros(ng, dtype=np.float32)
+        nt_g = np.zeros(ng, dtype=np.float32)
+        if ridx.size:
+            rg = g[ridx]
+            firsts = np.r_[True, rg[1:] != rg[:-1]]      # ridx is ascending, so a group's rolls are contiguous
+            f_idx = ridx[firsts]
+            has_roll[g[f_idx]] = True
+            u_g[g[f_idx]] = avg[f_idx]
+            post_g[g[f_idx]] = aft[f_idx]                 # NaN: the first roll led straight to the next node
+            later = ridx[~firsts]
+            if later.size:
+                fin = np.isfinite(aft[later])
+                contrib = np.where(fin, aft[later] - avg[later], -avg[later]).astype(np.float32)
+                ex_g += np.bincount(g[later], weights=contrib, minlength=ng).astype(np.float32)
+                nt_g += np.bincount(g[later], weights=(~fin).astype(np.float64), minlength=ng).astype(np.float32)
+        e_first = envs[first]
+        u[r.step, e_first] = u_g
+        post[r.step, e_first] = post_g
+        extra[r.step, e_first] = np.where(has_roll, ex_g, 0.0)
+        ntgt[r.step, e_first] = np.where(has_roll, nt_g, 0.0)
+    return (torch.from_numpy(u).to(device), torch.from_numpy(post).to(device), torch.from_numpy(extra).to(device),
+            torch.from_numpy(ntgt).to(device))
+
+
+def last_moment_values(rows: Sequence[AfterstateRows], players: np.ndarray, num_envs: int) -> np.ndarray:
+    """(2, num_envs): per env, for the US (row 0) and the USSR (row 1), the value of the latest captured moment of that
+    side's last decision in the rollout, in its own frame -- the exact roll average where that moment waits on a die
+    -- or NaN where there is none (no decision of that side, or its walk was cut). Audit T-4(2), 2026-11-22: the
+    per-player chain of the side NOT to move at the rollout's end bootstraps from its own last trained moment instead
+    of the negated value of the side to move (another information set), and never reads the critic at the
+    opponent's decision, a position it is not trained on."""
+    out = np.full((2, num_envs), np.nan, dtype=np.float32)
+    seen = np.zeros((2, num_envs), dtype=np.int64) - 1
+    for r in rows:
+        n = len(r.envs)
+        if n == 0 or r.values is None:
+            continue
+        envs = np.asarray(r.envs)
+        vals = r.values.detach().float().cpu().numpy()
+        avg = r.avg.detach().float().cpu().numpy() if r.avg is not None else np.full(n, np.nan, dtype=np.float32)
+        last = np.flatnonzero(np.r_[envs[1:] != envs[:-1], True])
+        e = envs[last]
+        side = np.asarray(r.sides)[last]
+        v = np.where(np.isfinite(avg[last]), avg[last], vals[last])
+        q = np.where(side > 0, 0, 1)
+        newer = r.step >= seen[q, e]
+        out[q[newer], e[newer]] = v[newer]
+        seen[q[newer], e[newer]] = r.step
+    # A side whose last decision in the rollout came after its last captured walk has no moment for it.
+    for qi, pl in ((0, 1), (1, -1)):
+        lastdec = np.full(num_envs, -1, dtype=np.int64)
+        for t in range(players.shape[0]):
+            lastdec = np.where(players[t] == pl, t, lastdec)
+        out[qi] = np.where(seen[qi] == lastdec, out[qi], np.nan)
+    return out
 
 
 def build_targets(rows: Sequence[AfterstateRows], players: np.ndarray, dones: np.ndarray, rewards: np.ndarray,

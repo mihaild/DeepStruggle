@@ -12,8 +12,8 @@ import torch
 import ts_engine as ts
 
 from ai.models.ladder_net import LadderNet, create_ladder_net
-from ai.training.afterstate_critic import (AFTER_ROLL, BEFORE_ROLL, read_all_node_values, read_node_values,
-                                           walk_afterstates)
+from ai.training.afterstate_critic import (AFTER_ROLL, BEFORE_ROLL, AfterstateRows, last_moment_values, node_tensors,
+                                           read_all_node_values, read_node_values, walk_afterstates)
 from ai.training.nash_pg import NashPGTrainer, _value_only
 from ai.training.rollout_buffer import RolloutBuffer
 from bindings.ts_env import TsVectorizedEnv
@@ -244,11 +244,12 @@ def test_the_merged_gather_is_the_two_gathers() -> None:
     assert seen > 0
 
 
-def _gae_numpy(players, dones, rewards, values, last_v, gamma, lam, node):
+def _gae_numpy(players, dones, rewards, values, last_v, gamma, lam, node, last_ussr=None):
     """The numpy per-player loop ts.gae_per_player replaced (RolloutBuffer._gae_per_player_both before it moved to C++)."""
     T, N = players.shape
     adv = np.zeros((T, N), np.float32); ret = np.zeros((T, N), np.float32); nadv = np.zeros((T, N), np.float32)
-    st = {q: {"A": np.zeros(N, np.float32), "An": np.zeros(N, np.float32), "V": last_v * np.float32(q),
+    lv = {1: last_v, -1: (-last_v if last_ussr is None else last_ussr)}
+    st = {q: {"A": np.zeros(N, np.float32), "An": np.zeros(N, np.float32), "V": lv[q].astype(np.float32),
               "R": np.zeros(N, np.float32), "gap": np.zeros(N, np.float32), "has": np.ones(N, bool)} for q in (1, -1)}
     g, lm = np.float32(gamma), np.float32(lam)
     for t in range(T - 1, -1, -1):
@@ -271,7 +272,8 @@ def _gae_numpy(players, dones, rewards, values, last_v, gamma, lam, node):
             an = target - v_t + disc * lm * c["An"] * carry
             if node is not None:
                 u, post, lo = node[0][t], node[1][t], node[2]
-                p2 = np.where(np.isfinite(post), post, target)
+                ex, nt = (node[3][t], node[4][t]) if len(node) > 3 else (0.0, 0.0)
+                p2 = np.where(np.isfinite(post), post, target) + ex + nt * target
                 an = np.where(np.isfinite(u), (u - v_t) + lo * ((target - p2) + disc * lm * c["An"] * carry), an)
             adv[t] = np.where(mv, a, adv[t]); ret[t] = np.where(mv, a + v_t, ret[t]); nadv[t] = np.where(mv, an, nadv[t])
             c["A"] = np.where(mv, a, c["A"]); c["An"] = np.where(mv, an, c["An"])
@@ -296,8 +298,60 @@ def test_the_cpp_per_player_pass_is_the_numpy_loop() -> None:
         post[rng.random((T2, N2)) < 0.1] = np.nan
         lo = rng.choice([1.0, 0.8, 0.5], N2).astype(np.float32)
         for gamma in (1.0, 0.999):
-            want = _gae_numpy(players, dones, rewards, values, last_v, gamma, 0.96, (u, post, lo))
+            ex = np.where(rng.random((T2, N2)) < 0.1, rng.uniform(-0.2, 0.2, (T2, N2)), 0).astype(np.float32)
+            nt = (rng.random((T2, N2)) < 0.05).astype(np.float32)
+            last_r = rng.uniform(-0.5, 0.5, N2).astype(np.float32)
+            want = _gae_numpy(players, dones, rewards, values, last_v, gamma, 0.96, (u, post, lo, ex, nt), last_r)
             got = [np.zeros((T2, N2), np.float32) for _ in range(3)]
-            ts.gae_per_player(players, dones.astype(np.uint8), rewards, values, last_v, gamma, 0.96, u, post, lo, *got)
+            ts.gae_per_player(players, dones.astype(np.uint8), rewards, values, last_v, last_r, gamma, 0.96, u, post, lo,
+                              ex, nt, *got)
             for a, b in zip(got, want):
                 assert np.allclose(a, b, atol=2e-6)
+
+
+def _rows(step, envs, kinds, vals, avgs, sides=None):
+    r = AfterstateRows(step, np.asarray(envs, dtype=np.int64),
+                       np.asarray(sides if sides is not None else [1] * len(envs), dtype=np.int8),
+                       np.asarray(kinds, dtype=np.int8), torch.zeros(len(envs), 4))
+    r.values = torch.tensor(vals, dtype=torch.float32)
+    r.avg = torch.tensor(avgs, dtype=torch.float32)
+    return r
+
+
+def test_the_node_drops_every_rolls_luck() -> None:
+    """Audit T-1: a forced step before the die (AFTER_DECISION, BEFORE_ROLL, AFTER_ROLL) takes the roll's average as U
+    and the actual after-value as U_post; a second roll adds its own (after - average); a later roll that leads
+    straight to the next node counts the target; a walk with no die keeps U = U_post = its first value."""
+    nan = float("nan")
+    AD, BR, AR = 0, BEFORE_ROLL, AFTER_ROLL
+    rows = [_rows(0, [0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 3],
+                  [AD, BR, AR, BR, AR, BR, AR, BR, AR, BR, AD],
+                  [0.1, 0.2, 0.5, 0.0, 0.3, 0.4, 0.9, 0.0, 0.6, 0.7, 0.25],
+                  [nan, 0.35, nan, 0.1, nan, 0.5, nan, 0.2, nan, 0.45, nan])]
+    u, post, ex, nt = node_tensors(rows, 2, 5, torch.device("cpu"))
+    # env 0: forced step then one roll
+    assert abs(float(u[0, 0]) - 0.35) < 1e-6 and abs(float(post[0, 0]) - 0.5) < 1e-6 and float(ex[0, 0]) == 0.0
+    # env 1: two rolls -- the second's luck 0.9 - 0.5
+    assert abs(float(u[0, 1]) - 0.1) < 1e-6 and abs(float(post[0, 1]) - 0.3) < 1e-6
+    assert abs(float(ex[0, 1]) - 0.4) < 1e-6 and float(nt[0, 1]) == 0.0
+    # env 2: the second roll led straight to the next node: -average and one target
+    assert abs(float(ex[0, 2]) + 0.45) < 1e-6 and float(nt[0, 2]) == 1.0
+    # env 3: no die
+    assert abs(float(u[0, 3]) - 0.25) < 1e-6 and abs(float(post[0, 3]) - 0.25) < 1e-6
+    # env 4: no decision captured
+    assert math.isnan(float(u[0, 4]))
+
+
+def test_the_side_not_to_move_bootstraps_from_its_own_last_moment() -> None:
+    """Audit T-4(2): per env and side, the latest captured moment of that side's last decision (the roll average where it
+    waits on a die), NaN where that decision has no captured walk."""
+    nan = float("nan")
+    players = np.array([[1, -1], [-1, 1], [1, 1]], dtype=np.int8)        # T=3, N=2
+    rows = [_rows(0, [0, 0, 1], [0, BEFORE_ROLL, 0], [0.1, 0.2, 0.3], [nan, 0.25, nan], sides=[1, 1, -1]),
+            _rows(1, [0, 1], [0, 0], [0.4, 0.5], [nan, nan], sides=[-1, 1]),
+            _rows(2, [0], [0], [0.6], [nan], sides=[1])]                 # env 1's step-2 decision has no walk
+    out = last_moment_values(rows, players, 2)
+    assert abs(out[0, 0] - 0.6) < 1e-6          # US env 0: its last decision is step 2
+    assert abs(out[1, 0] - 0.4) < 1e-6          # USSR env 0: step 1
+    assert math.isnan(out[0, 1])                 # US env 1: last decision step 2 has no walk
+    assert abs(out[1, 1] - 0.3) < 1e-6          # USSR env 1: step 0

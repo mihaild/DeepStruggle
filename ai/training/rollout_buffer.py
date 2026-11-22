@@ -285,7 +285,8 @@ class RolloutBuffer:
         defcon_risk_horizon: int = 4,
         same_perspective_bootstrap: bool = False,
         per_player_gae: bool = False,
-        afterstate_node: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None,
+        afterstate_node: Optional[Tuple[torch.Tensor, ...]] = None,
+        last_side_values: Optional[torch.Tensor] = None,
     ) -> None:
         """Computes Generalized Advantage Estimation (GAE) with Zero-Sum Alternating Perspective Alignment.
 
@@ -334,7 +335,7 @@ class RolloutBuffer:
         if per_player_gae or afterstate_node is not None:
             # One pass gives the plain per-player chain and, with P56's node, the node chain beside it.
             pp_adv, pp_ret, node_adv = self._gae_per_player_both(gamma, gae_lambda, last_v_win, last_players,
-                                                                 afterstate_node)
+                                                                 afterstate_node, last_side_values)
             keep = ~window_mask
             if per_player_gae:
                 self.advantages = torch.where(keep, pp_adv, self.advantages)
@@ -635,7 +636,8 @@ class RolloutBuffer:
         gae_lambda: float,
         last_v_win: torch.Tensor,
         last_players: torch.Tensor,
-        node: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None,
+        node: Optional[Tuple[torch.Tensor, ...]] = None,
+        last_side_values: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """GAE within each player's own subsequence of decisions.
 
@@ -656,7 +658,8 @@ class RolloutBuffer:
         player q as ``rewards[t] * players[t] * q`` -- which is how the opponent's moves enter q's
         return without any value being negated.
         """
-        adv, ret, node_adv = self._gae_per_player_both(gamma, gae_lambda, last_v_win, last_players, node)
+        adv, ret, node_adv = self._gae_per_player_both(gamma, gae_lambda, last_v_win, last_players, node,
+                                                       last_side_values)
         return (node_adv if node is not None else adv), ret
 
     def _gae_per_player_both(
@@ -665,7 +668,8 @@ class RolloutBuffer:
         gae_lambda: float,
         last_v_win: torch.Tensor,
         last_players: torch.Tensor,
-        node: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None,
+        node: Optional[Tuple[torch.Tensor, ...]] = None,
+        last_side_values: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """_gae_per_player's one backward pass: the plain chain's advantages and returns, and the node chain's
         advantages (the plain ones when `node` is None), each carried separately. On the host in numpy: the loop is
@@ -677,21 +681,39 @@ class RolloutBuffer:
         dones = np.ascontiguousarray((self.dones[:T].cpu().numpy() > 0.5).astype(np.uint8))
         rewards = np.ascontiguousarray(self.rewards[:T].cpu().numpy().astype(np.float32))
         values = np.ascontiguousarray(self.values_win[:T].cpu().numpy().astype(np.float32))
-        last_v = np.ascontiguousarray((last_v_win.float() * last_players.float()).cpu().numpy().astype(np.float32))
+        last_v = (last_v_win.float() * last_players.float()).cpu().numpy().astype(np.float32)   # US frame
+        lv_us = last_v.copy()
+        lv_ussr = -last_v
+        if last_side_values is not None:
+            # Audit T-4(2): the side not to move at the end bootstraps from its own last trained moment where it has
+            # one, not from the negated value of the side to move.
+            lp = last_players.cpu().numpy()
+            own = last_side_values.cpu().numpy().astype(np.float32) if isinstance(last_side_values, torch.Tensor) \
+                else np.asarray(last_side_values, dtype=np.float32)
+            lv_us = np.where((lp != 1) & np.isfinite(own[0]), own[0], lv_us).astype(np.float32)
+            lv_ussr = np.where((lp != -1) & np.isfinite(own[1]), own[1], lv_ussr).astype(np.float32)
+        lv_us = np.ascontiguousarray(lv_us)
+        lv_ussr = np.ascontiguousarray(lv_ussr)
         if node is not None:
             u_all = np.ascontiguousarray(node[0].cpu().numpy().astype(np.float32))
             post_all = np.ascontiguousarray(node[1].cpu().numpy().astype(np.float32))
             lam_opp = np.ascontiguousarray(node[2].cpu().numpy().astype(np.float32))
+            if len(node) >= 5:
+                extra = np.ascontiguousarray(node[3].cpu().numpy().astype(np.float32))
+                ntgt = np.ascontiguousarray(node[4].cpu().numpy().astype(np.float32))
+            else:
+                extra = np.zeros((T, N), np.float32)
+                ntgt = np.zeros((T, N), np.float32)
         else:
-            u_all = post_all = np.zeros((0, 0), np.float32)
+            u_all = post_all = extra = ntgt = np.zeros((0, 0), np.float32)
             lam_opp = np.ones(N, np.float32)
         adv = np.zeros((T, N), dtype=np.float32)
         ret = np.zeros((T, N), dtype=np.float32)
         nadv = np.zeros((T, N), dtype=np.float32)
         # Each env's backward pass in C++, in parallel (ts.gae_per_player): the arithmetic of the numpy loop it
         # replaced, in float32 (tests/training/test_afterstate_advantage.py keeps that loop as the reference).
-        ts.gae_per_player(players, dones, rewards, values, last_v, float(gamma), float(gae_lambda), u_all, post_all,
-                          lam_opp, adv, ret, nadv)
+        ts.gae_per_player(players, dones, rewards, values, lv_us, lv_ussr, float(gamma), float(gae_lambda), u_all,
+                          post_all, lam_opp, extra, ntgt, adv, ret, nadv)
         a_t = torch.from_numpy(adv).to(dev)
         r_t = torch.from_numpy(ret).to(dev)
         return a_t, r_t, (torch.from_numpy(nadv).to(dev) if node is not None else a_t)

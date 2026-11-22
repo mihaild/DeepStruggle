@@ -32,7 +32,8 @@ from ai.training.card_event_targets import aux_label
 from ai.training.afterstate_critic import KIND_NAMES as AFTERSTATE_KINDS
 from ai.training.afterstate_critic import AfterstateCapture, AfterstateRows
 from ai.training.afterstate_critic import build_targets as build_afterstate_targets
-from ai.training.afterstate_critic import next_decision_targets, node_tensors, read_all_node_values
+from ai.training.afterstate_critic import (last_moment_values, next_decision_targets, node_tensors,
+                                           read_all_node_values)
 from ai.training.restart_pool import critic_judge
 from ai.rewards.region_reward import RegionTargetedReward
 from tools.lib.openings import FORCED_OPENINGS_US, FORCED_OPENINGS_USSR, NODE_OFFSET as _NODE, OPENINGS
@@ -713,6 +714,10 @@ class BaseNashPGTrainer:
         #: deal; nobody's decision) is recorded from both sides by the runner, and joins the value loss
         #: with that side's next-decision lambda-return as its target (the result where the game ends
         #: first). _predeal_rows holds each step's parks until the update.
+        #: Both extra critics' coefficients are TOTAL weights (owner, 2026-11-22, audit T-2): each term is the mean squared
+        #: error over its own rows of the minibatch, times coef x vf_coef, beside the main value loss's mean over the
+        #: decision rows -- so at 1.0 each term weighs as much as the main value loss, and a row weighs (decision rows /
+        #: its rows) times a decision row: ~31x for a pre-deal row, ~2.7x for an afterstate row in R170.
         self.predeal_value_coef = float(predeal_value_coef)
         #: The critic at every moment of a side's turn (ai/training/afterstate_critic.py, owner 2026-11-18): right after
         #: its decision and before / after each of its die rolls, from its own perspective, with the pre-deal rows'
@@ -2395,10 +2400,18 @@ class BaseNashPGTrainer:
             # P56: the rows' values and the rolls' averages from the rollout-time network, read in a few large batches.
             read_all_node_values(self._as_rows, lambda _o: _value_only(self.active_net, _o))
             # On the host: the per-player pass that takes them runs there.
-            _u, _post = node_tensors(self._as_rows, self.buffer.buffer_size, self.num_envs, torch.device("cpu"))
+            _u, _post, _ex, _nt = node_tensors(self._as_rows, self.buffer.buffer_size, self.num_envs,
+                                               torch.device("cpu"))
             # A game against a pool member keeps the plain chain's weight at the node.
             _lam = torch.from_numpy(np.where(self._selfplay_mask, self.afterstate_lambda_opp, 1.0).astype(np.float32))
-            _node = (_u, _post, _lam)
+            _node = (_u, _post, _lam, _ex, _nt)
+        _last_side = None
+        if self.per_player_gae and self._as_rows:
+            # Audit T-4(2): the side not to move at the end bootstraps from its own last captured moment.
+            if self._as_rows[0].values is None:
+                read_all_node_values(self._as_rows, lambda _o: _value_only(self.active_net, _o))
+            _last_side = torch.from_numpy(last_moment_values(
+                self._as_rows, self.buffer.players[:self.buffer.buffer_size].cpu().numpy(), self.num_envs))
         self.buffer.compute_gae(
             last_v_win=last_v_win.squeeze(-1),
             last_v_vp=last_v_vp.squeeze(-1),
@@ -2410,6 +2423,7 @@ class BaseNashPGTrainer:
             same_perspective_bootstrap=self.same_perspective_bootstrap,
             per_player_gae=self.per_player_gae,
             afterstate_node=_node,
+            last_side_values=_last_side,
         )
         if self.search_value_beta > 0.0:
             self._mix_search_values()
