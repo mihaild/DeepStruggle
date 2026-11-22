@@ -23,6 +23,14 @@ The batch runner records the moments itself as it steps (`set_capture_afterstate
 decision stream is unchanged and nothing is replayed. `walk_afterstates` below is the reference walk
 on a copy, which `tests/training/test_afterstate_critic.py` holds the runner's rows to; a walk longer
 than MAX_WALK nodes is dropped and counted.
+
+**The value before a roll is blind to the move that led there** (P56 log section 6, 2026-11-22): the
+observation does not show which roll is pending, so a coup in one country and in another are the same
+input before the die -- identical for every roll move at 75% of decisions. The before-roll row can only
+learn the average over the targets the policy picks. Anything that needs the value of a position waiting
+on a die should take its outcomes' exact average (`read_node_values`, the runner's roll faces), as the
+afterstate advantage (`--afterstate-advantage`, `node_tensors`) does; a critic-reading player or a search
+leaf that stops before a roll reads the blind value.
 """
 
 from __future__ import annotations
