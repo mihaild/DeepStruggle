@@ -154,6 +154,25 @@ below it.
 > C's 0.028) because the observation there does not show which roll is pending (identical for every roll move at
 > 75% of decisions); the advantage never reads it, taking the outcomes' average of the values after the roll.
 
+> **T1 and L8 redefined (owner, 2026-11-22): the critic is never trained or read at a state waiting on a die.**
+> `--afterstate-advantage` (and so T1, L8 and every later arm on it) now includes three changes; R169 and every run
+> without the flag train bit-identically (a CPU comparison of R169's flags, same seed: identical losses, weights,
+> optimizer and RNG states). The log's section 6, note of 2026-11-22.
+>
+> 1. **No before-roll rows in the value loss.** The before-roll rows -- exactly the rows that wait on a die (at one, or
+>    through single-choice steps alone) -- stay nodes of the advantage and are neither trained on nor read; the
+>    die's value is its outcomes' exact average. Their old target (that average) is gone with them.
+> 2. **Compound chance nodes, exact.** Dice that follow each other with no decision between them (an Ops-first coup
+>    or realignment on Korean War or Arab-Israeli War, two rolling headlines) are one chance node: one before-roll
+>    row whose average is over the compound outcomes, probabilities multiplied, and whose next row is the state after
+>    the last die; the state between is neither kept nor read, and the advantage drops the luck of both dice. This
+>    replaces V-4's extra before-roll row under the flag. 0.6-0.9% of rolls.
+> 3. **Readers outside training:** only the critic's-best-move player could read before a die; it takes the exact
+>    average behind `critic:...:exact` (opt-in). Search leaves are read only after chance is drained.
+>
+> Pair 1's T1 (`E8.1-A8-R169-S45@2010M+R170`) and L8 (`@2010M+R171`) ran the earlier definition; a run on the new one
+> differs from them by these changes.
+
 ### The arms
 
 All from R169's state at 2,000M, every other flag the baseline's (`launch_flags.py --diff` showing only the

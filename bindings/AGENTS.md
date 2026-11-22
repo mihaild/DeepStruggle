@@ -213,7 +213,19 @@ are cited from elsewhere; keep them.
   `ROLL_DIE` carries (primary_id the roller's, secondary_id the opponent's; no engine change), an Olympics tie pair is
   no outcome (re-rolled when rolled, given to the opponent when forced), and outcomes with identical observations (or
   the same finished-game result) are merged -- a failed coup is one row, ~2.9 outcomes a roll on average. The same
-  enumeration standalone: `ts.roll_outcomes(state, side, features)`. `get_afterstates_with_faces_into(out)` gathers the rows and the outcomes in one parallel
+  enumeration standalone: `ts.roll_outcomes(state, side, features, compound=False, forced=True)`. **With roll faces the
+  walk is exact** (`walk_afterstates_exact`; owner, 2026-11-22: the critic is never trained or read at a state
+  waiting on a die, as the observation does not show the pending roll): `bindings/chance_outcomes.hpp` defines a
+  state that waits on a die (at one, or forced, through single-choice steps alone: `ts.die_ahead(state, forced)`) and
+  enumerates a *compound* chance node -- an outcome that waits on another die is that die's outcomes, recursively,
+  probabilities multiplied, outcome states deduplicated (`ts.roll_outcomes(..., compound=True)`, `ts.roll_chain`) --
+  and the walk keeps a before-roll row only at a die not already covered by a compound node, never a row that waits
+  on a die otherwise; the row after a compound node is the state after its last die, the states between are not kept
+  (no V-4 row). A chain past `ts.MAX_ROLL_CHAIN` (4) dice or `ts.MAX_COMPOUND_OUTCOMES` (512) outcomes, or a die
+  with no outcome, makes `step_flat_all` raise after its parallel loop (never truncated). Compounds are ~0.6-0.9% of
+  rolls (at most 41 outcome states measured); the exact walk costs ~0.3 us an env step more than the first walk with
+  faces on the CPU (2.0 against 1.7 us of capture+faces, 2026-11-22). Without roll faces the first walk is unchanged.
+  `get_afterstates_with_faces_into(out)` gathers the rows and the outcomes in one parallel
   call into one (pinned) buffer. `ts.gae_per_player(...)` is the per-player GAE pass (plain and P56 node chains), each
   env's backward scan in parallel. `gomp_parallel_for` hands indices out from a shared counter (dynamic schedule), so a
   thread holding a few long walks no longer holds up the team; every body writes only its own index. `Config::leaf` chooses whose side a leaf's

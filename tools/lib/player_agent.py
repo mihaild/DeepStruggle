@@ -686,15 +686,21 @@ def load_agent(spec: str, device: Union[torch.device, str] = "cuda") -> PlayerAg
             raise ValueError(f"entry: needs a rollout: spec, not {s.split(':', 1)[1]!r}")
         return EntryRolloutAgent(inner)
     if s.lower().startswith("critic:"):
-        # critic:<checkpoint>[:worlds] -- every legal move played on a determinized copy and the one whose resulting
-        # position the network's critic values highest taken (ai/search/critic_argmax.py), averaged over <worlds>
-        # copies (1). The measure of a network trained with --afterstate-value-coef.
+        # critic:<checkpoint>[:worlds][:exact] -- every legal move played on a determinized copy and the one whose
+        # resulting position the network's critic values highest taken (ai/search/critic_argmax.py), averaged over
+        # <worlds> copies (1). The measure of a network trained with --afterstate-value-coef. `exact` (owner,
+        # 2026-11-22): a move whose position waits on a die is valued by the exact average over the roll's outcomes,
+        # never by the critic read blind before the die.
         rest = s[len("critic:"):]
+        exact = rest.lower().endswith(":exact")
+        if exact:
+            rest = rest[:-len(":exact")]
         path, _, w_str = rest.rpartition(":") if rest.rsplit(":", 1)[-1].isdigit() else (rest, "", "1")
         base = _e4_network(NeuralAgent.from_checkpoint(path, device=device), s)
         worlds = int(w_str)
-        agent = CriticArgmaxAgent(base.model, f"{base.name}~critic" + (f"(worlds={worlds})" if worlds != 1 else ""),
-                                  device=resolve_device(device), worlds=worlds)
+        opts = ([f"worlds={worlds}"] if worlds != 1 else []) + (["exact"] if exact else [])
+        agent = CriticArgmaxAgent(base.model, f"{base.name}~critic" + (f"({','.join(opts)})" if opts else ""),
+                                  device=resolve_device(device), worlds=worlds, exact_chance=exact)
         atexit.register(lambda: print(f"[critic] {agent.stats()}", flush=True))
         return agent
     if s.lower().startswith("rollout:"):

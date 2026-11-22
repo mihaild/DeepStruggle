@@ -30,8 +30,29 @@ observation does not show which roll is pending, so a coup in one country and in
 input before the die -- identical for every roll move at 75% of decisions. The before-roll row can only
 learn the average over the targets the policy picks. Anything that needs the value of a position waiting
 on a die should take its outcomes' exact average (`read_node_values`, the runner's roll faces), as the
-afterstate advantage (`--afterstate-advantage`, `node_tensors`) does; a critic-reading player or a search
-leaf that stops before a roll reads the blind value.
+afterstate advantage (`--afterstate-advantage`, `node_tensors`) does.
+
+**Never train or read the critic at a state waiting on a die (owner, 2026-11-22).** Under `--afterstate-advantage` the
+runner captures with roll faces and walks exactly (`walk_afterstates(exact=True)`, the runner's
+walk_afterstates_exact; rows marked `exact`):
+
+1. A state waits on a die when it is at one or reaches one through single-choice steps alone (`die_ahead`,
+   `ts.die_ahead`). The before-roll rows are exactly those states, each kept only at its die; no other row waits on
+   one. They are nodes of the advantage and are neither read (values NaN) nor trained on (`build_targets` drops
+   them; the trainer reports `afterstate_trained_<kind>` beside the capture's `afterstate/rows_<kind>`).
+2. Dice that follow each other with no decision between them (an Ops-first coup or realignment on Korean War or
+   Arab-Israeli War whose owed Event rolls at once, two rolling headlines) are one compound chance node: one
+   before-roll row whose outcomes are the second die's outcomes of each outcome of the first, recursively,
+   probabilities multiplied (`ts.roll_outcomes(compound=True)`, bindings/chance_outcomes.hpp; the reference is the
+   nested brute force `reference_roll_outcomes`), and whose next row is the state after its LAST die. The states
+   between are neither kept nor read, so `node_tensors` drops the luck of every die of the node. A chain longer than
+   ts.MAX_ROLL_CHAIN dice or with more than ts.MAX_COMPOUND_OUTCOMES outcomes raises (never truncated). Measured
+   2026-11-22: 0.9% of rolls on random play, 0.6% on R169's self-play, at most 41 distinct outcome states (12 after
+   merging by observation).
+3. Outside training, the critic's-best-move player can read before a die and takes the exact average behind its
+   opt-in `critic:...:exact`; search leaves are read only after chance is drained (the P56 log, 2026-11-22).
+
+Without `--afterstate-advantage` (R169's afterstate critic) the first walk and its training are unchanged.
 """
 
 from __future__ import annotations
@@ -70,6 +91,9 @@ class AfterstateRows:
     #: P56: each row's value read at rollout time, and a before-roll row's rolls' average (NaN elsewhere).
     values: Optional[torch.Tensor] = None
     avg: Optional[torch.Tensor] = None
+    #: P56, the exact walk (roll faces on; owner, 2026-11-22): the before-roll rows are exactly the rows that wait on a
+    #: die, their outcomes are compound, and they are neither read (values NaN) nor trained on.
+    exact: bool = False
 
 
 def _is_chance(state: Any) -> bool:
@@ -78,13 +102,16 @@ def _is_chance(state: Any) -> bool:
 
 
 def walk_afterstates(state: Any, action: int, side: Any, merged: bool = False, macro: bool = False,
-                     forced: bool = True) -> Tuple[List[Tuple[int, Any]], Any]:
+                     forced: bool = True, exact: bool = False) -> Tuple[List[Tuple[int, Any]], Any]:
     """The moments of `side`'s turn after it plays flat `action` in `state` (not modified): a list of
     (kind, state copy), and the state the walk ends in -- where the runner would stop next. `forced` is
     the env's settle mode: True steps through single-choice decisions as well as chance nodes
-    (SettleMode.FORCED, the default), False through chance nodes only."""
+    (SettleMode.FORCED, the default), False through chance nodes only. `exact`: the runner's walk with roll faces
+    (`_walk_exact`)."""
     st = state.clone()
     ts.Engine.step_flat(st, int(action), False, bool(merged), bool(macro))
+    if exact:
+        return _walk_exact(st, side, forced)
     out: List[Tuple[int, Any]] = []
 
     def keep(kind: int, s: Any) -> None:
@@ -126,6 +153,130 @@ def walk_afterstates(state: Any, action: int, side: Any, merged: bool = False, m
 def _rolls_a_die(state: Any) -> bool:
     """A chance node that rolls a die (the runner's roll_outcomes enumerates it); turn cleanup rolls nothing."""
     return _is_chance(state) and state.ctx().pending_roll_type not in (ts.RollType.NONE, ts.RollType.TURN_CLEANUP)
+
+
+def die_ahead(state: Any, forced: bool = True) -> Optional[Any]:
+    """If `state` waits on a die -- it is at one, or (`forced`) reaches one through single-choice decisions alone, the
+    steps the runner takes by itself -- a copy of the state at that die; otherwise None. The reference of the
+    runner's ts.die_ahead (bindings/chance_outcomes.hpp), which tests hold to it."""
+    if ts.Engine.is_terminal(state):
+        return None
+    if _rolls_a_die(state):
+        return state.clone()
+    if not forced or _is_chance(state):
+        return None
+    probe = state.clone()
+    for _ in range(MAX_WALK):
+        if ts.Engine.auto_advance_step(probe, 1) == 0 or ts.Engine.is_terminal(probe):
+            return None
+        if _is_chance(probe):
+            return probe if _rolls_a_die(probe) else None
+    raise RuntimeError(f"die_ahead: more than {MAX_WALK} single-choice steps")
+
+
+def _walk_exact(st: Any, side: Any, forced: bool) -> Tuple[List[Tuple[int, Any]], Any]:
+    """The exact walk (P56 with roll faces; owner, 2026-11-22), from `st` right after the decision: no row waits on a
+    die but the before-roll rows, each at its die and standing for the whole compound chance node that starts there
+    (`reference_roll_outcomes`): the dice it covers get no row, the states between them are not kept, and the row
+    after its last roll is its after-roll. A decision's own state that reaches a die through single-choice steps is
+    not kept (the die's row stands for it); one at the turn-end park stays an after-decision row. The runner's
+    walk_afterstates_exact."""
+    out: List[Tuple[int, Any]] = []
+
+    def keep(kind: int, s: Any) -> None:
+        if ts.Engine.is_terminal(s):
+            return
+        ctx = s.ctx()
+        if ctx.decision_player == side and not _is_chance(s) and (not forced or _settled(s)):
+            return
+        out.append((kind, s.clone()))
+
+    if _rolls_a_die(st):
+        keep(BEFORE_ROLL, st)
+    elif die_ahead(st, forced) is None:
+        keep(AFTER_DECISION, st)
+    chained = False                  # the die ahead belongs to a compound node already kept
+    for k in range(MAX_WALK):
+        if ts.Engine.is_terminal(st):
+            break
+        if _is_chance(st):
+            die = _rolls_a_die(st)
+            if die and not chained and k > 0:
+                keep(BEFORE_ROLL, st)
+            ts.Engine.auto_advance_step(st, 1)
+            waits = die_ahead(st, forced) is not None
+            chained = waits and die
+            if not waits:
+                keep(AFTER_ROLL, st)
+            continue
+        if not forced or ts.Engine.auto_advance_step(st, 1) == 0:
+            break
+    return out, st
+
+
+_TWO_DICE = (ts.RollType.REALIGNMENT, ts.RollType.SUMMIT, ts.RollType.OLYMPIC_GAMES)
+
+
+def reference_roll_outcomes(state: Any, side: Any, features: int = 0, forced: bool = True
+                            ) -> List[Tuple[float, bool, float, np.ndarray]]:
+    """The compound chance node at `state` (a die roll), by brute force: every face -- all 36 pairs for a realignment,
+    the Summit and the Olympic Games (an Olympics tie, re-rolled, is no outcome; the rest renormalised), 6 faces
+    otherwise -- stepped with the forced die, and an outcome that waits on another die (`die_ahead`) expanded into that
+    die's faces, recursively, probabilities multiplied (float64). Outcomes merged as the runner merges them: equal
+    observations from `side`, or the same result where the game ends. A list of (probability, finished, result from
+    `side`, observation -- zeros for a finished game). The reference of ts.roll_outcomes(compound=True), whose
+    two-dice enumeration by the dice's difference it checks."""
+    sign = 1.0 if side == ts.Player.US else -1.0
+    finals: List[Tuple[float, Any]] = []
+
+    def expand(g: Any, weight: float, depth: int) -> None:
+        if depth >= int(ts.MAX_ROLL_CHAIN):
+            raise RuntimeError("reference_roll_outcomes: a chain longer than MAX_ROLL_CHAIN dice")
+        rt = g.ctx().pending_roll_type
+        if rt in _TWO_DICE:
+            faces = [(a, b, 1.0 / 36.0) for a in range(1, 7) for b in range(1, 7)
+                     if not (rt == ts.RollType.OLYMPIC_GAMES and a + 2 == b)]
+        else:
+            faces = [(a, 0, 1.0 / 6.0) for a in range(1, 7)]
+        kids: List[Tuple[Any, float]] = []
+        for a, b, p in faces:
+            c = g.clone()
+            try:
+                ts.Engine.step(c, ts.MicroAction(ts.DecisionType.ROLL_DIE, a, b, 0), False)
+            except RuntimeError:
+                continue
+            kids.append((c, p))
+        kept = sum(p for _, p in kids)
+        if not kids:
+            raise RuntimeError("reference_roll_outcomes: a die with no outcome the engine accepts")
+        for c, p in kids:
+            nxt = die_ahead(c, forced)
+            if nxt is not None:
+                expand(nxt, weight * p / kept, depth + 1)
+            else:
+                finals.append((weight * p / kept, c))
+
+    if not _rolls_a_die(state):
+        return []
+    expand(state, 1.0, 0)
+    width = int(ts.obs_size_for(features))
+    merged: List[List[Any]] = []
+    for p, c in finals:
+        if ts.Engine.is_terminal(c):
+            res = sign * float(ts.Engine.get_terminal_utility(c))
+            hit = next((m for m in merged if m[1] and m[2] == res), None)
+            if hit is None:
+                merged.append([p, True, res, np.zeros(width, dtype=np.float32)])
+            else:
+                hit[0] += p
+            continue
+        o = np.asarray(ts.extract_observation_features(c, side, features), dtype=np.float32)
+        hit = next((m for m in merged if not m[1] and np.array_equal(m[3], o)), None)
+        if hit is None:
+            merged.append([p, False, 0.0, o])
+        else:
+            hit[0] += p
+    return [(float(m[0]), bool(m[1]), float(m[2]), m[3]) for m in merged]
 
 
 def _settled(state: Any) -> bool:
@@ -254,6 +405,7 @@ class AfterstateCapture:
             rows.face_term = np.asarray(ft, dtype=bool)
             rows.face_res = np.asarray(fres, dtype=np.float32)
             rows.face_obs = obs[n:]
+            rows.exact = True
         return rows
 
     def _with_faces(self, runner: Any, rows: AfterstateRows, device: Any) -> AfterstateRows:
@@ -295,6 +447,7 @@ class AfterstateCapture:
         rows.face_term = np.asarray(ft, dtype=bool)
         rows.face_res = np.asarray(fres, dtype=np.float32)
         rows.face_obs = fo_t
+        rows.exact = True
         return rows
 
     def metrics(self) -> dict:
@@ -351,31 +504,67 @@ def next_decision_targets(t: np.ndarray, e: np.ndarray, side: np.ndarray, player
     return np.where(ends, result, np.asarray(rets)[dd, e]).astype(np.float32), keep
 
 
+def _read_mask(rows: AfterstateRows) -> Optional[np.ndarray]:
+    """The rows whose value is read, or None for all: the exact walk's before-roll rows wait on a die, so the critic is
+    never asked about them (their value is their outcomes' average)."""
+    if not rows.exact:
+        return None
+    return np.asarray(rows.kinds) != BEFORE_ROLL
+
+
+def _node_inputs(rows: AfterstateRows) -> List[torch.Tensor]:
+    """The observations read for `rows`, in order: the rows read (`_read_mask`), then the outcomes."""
+    keep = _read_mask(rows)
+    obs = rows.obs if keep is None else rows.obs.index_select(0, torch.from_numpy(np.flatnonzero(keep)).to(rows.obs.device))
+    parts = [obs]
+    if rows.face_obs is not None and rows.face_obs.shape[0]:
+        parts.append(rows.face_obs)
+    return parts
+
+
+def _node_count(rows: AfterstateRows) -> int:
+    keep = _read_mask(rows)
+    n = int(rows.obs.shape[0]) if keep is None else int(keep.sum())
+    return n + (0 if rows.face_obs is None else int(rows.face_obs.shape[0]))
+
+
 def read_node_values(rows: AfterstateRows, value_fn: Callable[[torch.Tensor], torch.Tensor]) -> None:
-    """P56: fill rows.values (every row's value from its side, read by `value_fn` -- the rollout-time network) and
-    rows.avg (a before-roll row's probability-weighted value over its die's outcomes, a finished game counting its
+    """P56: fill rows.values (every row's value from its side, read by `value_fn` -- the rollout-time network; NaN at
+    the exact walk's before-roll rows, which wait on a die and are never read) and rows.avg (a before-roll row's
+    probability-weighted value over its die's outcomes -- compound in the exact walk --, a finished game counting its
     result; NaN for a row without outcomes)."""
-    obs = rows.obs if rows.face_obs is None or rows.face_obs.shape[0] == 0 else torch.cat([rows.obs, rows.face_obs])
+    parts = _node_inputs(rows)
+    obs = parts[0] if len(parts) == 1 else torch.cat(parts)
     with torch.no_grad():
         v = value_fn(obs).reshape(-1).float()
     fill_node_values(rows, v)
 
 
 def fill_node_values(rows: AfterstateRows, v: torch.Tensor) -> None:
-    """read_node_values from the values already read: `v` holds the rows' then the outcomes' values, in order.
-    Done on the host (a few numpy operations; on the GPU these were many tiny launches a row); rows.values and
-    rows.avg are CPU tensors."""
+    """read_node_values from the values already read: `v` holds the rows' read (`_read_mask`) then the outcomes'
+    values, in order. Done on the host (a few numpy operations; on the GPU these were many tiny launches a row);
+    rows.values and rows.avg are CPU tensors."""
     n = int(rows.obs.shape[0])
     vn = v.detach().float().cpu().numpy()
-    rows.values = torch.from_numpy(np.ascontiguousarray(vn[:n]))
+    keep = _read_mask(rows)
+    if keep is None:
+        vals, fv_read = vn[:n], vn[n:]
+    else:
+        m = int(keep.sum())
+        vals = np.full(n, np.nan, dtype=np.float32)
+        vals[keep] = vn[:m]
+        fv_read = vn[m:]
+    rows.values = torch.from_numpy(np.ascontiguousarray(vals, dtype=np.float32))
     avg = np.full(n, np.nan, dtype=np.float32)
     if rows.face_obs is not None and rows.face_obs.shape[0]:
         assert rows.face_row is not None and rows.face_prob is not None and rows.face_term is not None
         assert rows.face_res is not None
-        fv = np.where(rows.face_term, rows.face_res, vn[n:]).astype(np.float32)
+        fv = np.where(rows.face_term, rows.face_res, fv_read).astype(np.float32)
         acc = np.bincount(rows.face_row, weights=rows.face_prob * fv, minlength=n)[:n].astype(np.float32)
         has = np.bincount(rows.face_row, minlength=n)[:n] > 0
         avg = np.where(has, acc, avg).astype(np.float32)
+    if rows.exact and np.any((np.asarray(rows.kinds) == BEFORE_ROLL) & ~np.isfinite(avg)):
+        raise ValueError("the exact walk kept a before-roll row without outcomes: its value would be read blind")
     rows.avg = torch.from_numpy(avg)
 
 
@@ -391,22 +580,18 @@ def read_all_node_values(rows: Sequence[AfterstateRows], value_fn: Callable[[tor
             return
         parts: List[torch.Tensor] = []
         for r in group:
-            parts.append(r.obs)
-            if r.face_obs is not None and r.face_obs.shape[0]:
-                parts.append(r.face_obs)
+            parts.extend(_node_inputs(r))
         with torch.no_grad():
             v = value_fn(torch.cat(parts)).reshape(-1).float().cpu()
         at = 0
         for r in group:
-            n = int(r.obs.shape[0])
-            m = 0 if r.face_obs is None else int(r.face_obs.shape[0])
-            vals = v[at:at + n + m]
-            at += n + m
-            fill_node_values(r, vals)
+            m = _node_count(r)
+            fill_node_values(r, v[at:at + m])
+            at += m
         group, size = [], 0
     for r in rows:
         group.append(r)
-        size += int(r.obs.shape[0]) + (0 if r.face_obs is None else int(r.face_obs.shape[0]))
+        size += _node_count(r)
         if size >= chunk:
             flush()
     flush()
@@ -425,7 +610,13 @@ def node_tensors(rows: Sequence[AfterstateRows], horizon: int, num_envs: int, de
     that next node's target as its after-value: NaN in U_post for the first roll, a count in n_target (and -average
     in extra) for a later one. The step is measured from U_post + extra + n_target x target. NaN in U: no afterstate
     (the plain step). (Audit T-1, 2026-11-22: the first version read only the walk's first moment, so a forced step
-    before the die kept the roll's luck, and only the first of two rolls was dropped.)"""
+    before the die kept the roll's luck, and only the first of two rolls was dropped.)
+
+    In the exact walk (rows.exact, 2026-11-22, owner) a roll is a compound chance node: dice that follow each other
+    with no decision between them are one before-roll row whose average is over the compound outcomes (probabilities
+    multiplied) and whose next row is the state after the LAST die, so U is the exact average and U_post the value
+    after every die of the node -- the luck of all of them is out of the advantage, and the states between them are
+    never read. Its before-roll rows are never read either (values NaN there): every one has outcomes."""
     u = np.full((horizon, num_envs), np.nan, dtype=np.float32)
     post = np.full((horizon, num_envs), np.nan, dtype=np.float32)
     extra = np.zeros((horizon, num_envs), dtype=np.float32)
@@ -559,13 +750,11 @@ def build_targets(rows: Sequence[AfterstateRows], players: np.ndarray, dones: np
     side = np.concatenate([r.sides for r in rows]).astype(np.int64)
     kinds = np.concatenate([r.kinds for r in rows]).astype(np.int64)
     target, keep = next_decision_targets(t, e, side, players, dones, rewards, rets, learner)
-    if any(r.avg is not None for r in rows):
-        # P56: a before-roll row's target is its die's outcomes' average, read at rollout time.
-        ovr = np.concatenate([r.avg.detach().float().cpu().numpy() if r.avg is not None
-                              else np.full(len(r.envs), np.nan, dtype=np.float32) for r in rows])
-        has = np.isfinite(ovr)
-        target = np.where(has, ovr, target).astype(np.float32)
-        keep = keep | has
+    # P56, the exact walk (owner, 2026-11-22): the critic is never trained at a state waiting on a die -- the
+    # observation does not show which roll is pending --, so its before-roll rows (exactly the rows that wait on one)
+    # stay nodes of the advantage and out of the value loss.
+    exact = np.concatenate([np.full(len(r.envs), bool(r.exact)) for r in rows])
+    keep = keep & ~(exact & (kinds == BEFORE_ROLL))
     # Only the walks of learner decisions are trained on: --per-player-gae also captures the others' (a pool
     # member's, a forced move's) for their last moments alone (fix verification V-5, 2026-11-22).
     keep = keep & np.asarray(learner, dtype=bool)[t, e]

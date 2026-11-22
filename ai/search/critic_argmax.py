@@ -11,6 +11,13 @@ the draw deck) reshuffled, a fresh RNG -- so whatever a move reveals or decides 
 engine is a sample, not the real game's future. `worlds` averages that many such copies; every legal
 move is read in the same copies, so their values are compared on the same draws. A move that ends the
 game is valued at its result (+1 / 0 / -1 for the mover), not by the critic.
+
+**A move followed by a die is read blind** (P56 log section 6): the observation does not show which roll is pending,
+so a coup in Italy and one in Iran are the same input before the die. `exact_chance` (opt-in, spec `critic:...:exact`;
+owner, 2026-11-22) values such a move -- one whose position waits on a die, at once or through single-choice steps
+(`ts.die_ahead`) -- by the exact probability-weighted average of the critic over the roll's outcomes, compound rolls
+included (`ts.roll_outcomes(compound=True)`, bindings/chance_outcomes.hpp), a finished game counting its result. Off by
+default, so the player it was is unchanged.
 """
 
 from __future__ import annotations
@@ -27,10 +34,14 @@ class CriticArgmaxAgent:
     """A tournament entrant (`select_actions_batch`, the state-based batch hook): the legal move whose
     afterstate the critic values highest, from the mover's side."""
 
-    def __init__(self, model: Any, name: str, device: Any = "cpu", worlds: int = 1, seed: int = 0) -> None:
+    def __init__(self, model: Any, name: str, device: Any = "cpu", worlds: int = 1, seed: int = 0,
+                 exact_chance: bool = False) -> None:
         if worlds < 1:
             raise ValueError(f"worlds must be >= 1, got {worlds}")
         self.model = model
+        #: A move whose position waits on a die is valued by the exact average over the roll's outcomes, never by the
+        #: critic read before the die (which cannot see the pending roll).
+        self.exact_chance = bool(exact_chance)
         self.name = name
         self.device = torch.device(device)
         self.worlds = int(worlds)
@@ -52,8 +63,24 @@ class CriticArgmaxAgent:
         return self.select_actions_batch([state])[0]
 
     def select_actions_batch(self, states: Sequence[Any]) -> List[int]:
+        legal_all, sums = self.move_values(states)
+        policy = self._policy_argmax(states, legal_all)
+        picks: List[int] = []
+        for si, legal in enumerate(legal_all):
+            if len(legal) <= 1:
+                picks.append(int(legal[0]) if len(legal) else 0)
+                continue
+            best = int(legal[int(np.argmax(sums[si]))])
+            picks.append(best)
+            self.decisions += 1
+            self.agreed_with_policy += int(best == policy[si])
+        return picks
+
+    def move_values(self, states: Sequence[Any]) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+        """Per state: its legal moves and each one's value from the mover's side, summed over the worlds (zeros where
+        there is at most one legal move)."""
         obs: List[np.ndarray] = []
-        owner: List[Tuple[int, int]] = []        # (state index, move index) of each critic read
+        owner: List[Tuple[int, int, float]] = []  # (state index, move index, weight) of each critic read
         sums: List[np.ndarray] = []              # per state: per legal move, its values summed over worlds
         legal_all: List[np.ndarray] = []
         for si, st in enumerate(states):
@@ -70,24 +97,24 @@ class CriticArgmaxAgent:
                     s2 = world.clone()
                     s2.rng_state = self._seed()
                     ts.Engine.step_flat(s2, int(a), False)
+                    at_die = ts.die_ahead(s2, True) if self.exact_chance and not ts.Engine.is_terminal(s2) else None
                     if ts.Engine.is_terminal(s2):
                         sums[si][mi] += sign * float(ts.Engine.get_terminal_utility(s2))
+                    elif at_die is not None:
+                        f_obs, f_prob, f_term, f_res = ts.roll_outcomes(at_die, me, self.features, True, True)
+                        f_obs = np.asarray(f_obs, dtype=np.float32)
+                        for k, p in enumerate(f_prob):
+                            if f_term[k]:
+                                sums[si][mi] += float(p) * float(f_res[k])
+                            else:
+                                obs.append(f_obs[k])
+                                owner.append((si, mi, float(p)))
                     else:
                         obs.append(observe(s2, me, self.features))
-                        owner.append((si, mi))
-        for (si, mi), v in zip(owner, self._values(obs)):
-            sums[si][mi] += float(v)
-        policy = self._policy_argmax(states, legal_all)
-        picks: List[int] = []
-        for si, legal in enumerate(legal_all):
-            if len(legal) <= 1:
-                picks.append(int(legal[0]) if len(legal) else 0)
-                continue
-            best = int(legal[int(np.argmax(sums[si]))])
-            picks.append(best)
-            self.decisions += 1
-            self.agreed_with_policy += int(best == policy[si])
-        return picks
+                        owner.append((si, mi, 1.0))
+        for (si, mi, w), v in zip(owner, self._values(obs)):
+            sums[si][mi] += w * float(v) if self.exact_chance else float(v)
+        return legal_all, sums
 
     def _values(self, obs: List[np.ndarray]) -> np.ndarray:
         """The critic's v_win (the observer's win value in [-1, 1]) on each observation, batched."""

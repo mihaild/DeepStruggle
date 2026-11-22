@@ -36,6 +36,7 @@
 #include "rollout_batch.hpp"
 #include "playout_labels.hpp"
 #include "keyed_chance.hpp"
+#include "chance_outcomes.hpp"
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/optional.h>
 
@@ -253,77 +254,47 @@ constexpr size_t kTrackCards = 111;
 // The afterstate capture's longest walk (VectorizedBatchRunner::walk_afterstates; afterstate_critic.MAX_WALK).
 constexpr size_t kMaxAfterstateWalk = 64;
 
-// P56: every outcome of the die roll pending in `g` (a chance node, not the turn-end park), each with its
-// probability. Each face -- each pair for a realignment, the Summit and the Olympic Games -- is stepped on a copy
-// with the forced die ROLL_DIE carries (primary_id the roller's, secondary_id the opponent's); an Olympics tie pair
-// (re-rolled when rolled, given to the opponent when forced) is no outcome, the rest renormalised. Outcomes the critic cannot tell apart are merged: identical observations from `side`, or the same
-// result where the game ends. `obs` holds one row of `width` per outcome (zeros for a finished game). Returns
-// false where nothing can be enumerated.
-bool roll_outcomes(const ts::GameState& g, ts::Player side, uint32_t features, size_t width, std::vector<float>& obs,
-                   std::vector<float>& prob, std::vector<uint8_t>& terminal, std::vector<float>& result) {
+// P56: every outcome of the die roll pending in `g` (a chance node that rolls a die), each with its probability, from
+// ts::chance::compound_outcomes (chance_outcomes.hpp; `compound`: an outcome that waits on another die -- directly or,
+// `forced`, through single-choice steps -- is that die's outcomes, recursively, probabilities multiplied). Outcomes the
+// critic cannot tell apart are merged: identical observations from `side`, or the same result where the game ends.
+// `obs` holds one row of `width` per outcome (zeros for a finished game). Returns NONE where nothing can be enumerated,
+// OK, or the error the caller must raise (CHAIN_TOO_LONG, TOO_MANY_OUTCOMES, NO_OUTCOME, FORCED_TOO_LONG); `dice`
+// receives the chain's length.
+ts::chance::Status roll_outcomes(const ts::GameState& g, ts::Player side, uint32_t features, size_t width, bool forced,
+                                 bool compound, std::vector<float>& obs, std::vector<float>& prob,
+                                 std::vector<uint8_t>& terminal, std::vector<float>& result, int* dice = nullptr) {
     obs.clear(); prob.clear(); terminal.clear(); result.clear();
-    const ts::RollType rt = g.ctx().pending_roll;
-    if (g.ctx().decision_player != ts::Player::NONE || g.ctx().decision_type != ts::DecisionType::ROLL_DIE ||
-        rt == ts::RollType::NONE || rt == ts::RollType::TURN_CLEANUP || ts::Engine::is_terminal(g)) return false;
-    // A realignment, the Summit and the Olympic Games depend on the two dice only through their difference (each
-    // side's modifiers are added apart, and the higher total removes the difference or wins): 11 differences, each
-    // weighted (6 - |d|) / 36 and stepped once with a pair that has it, instead of 36 pairs.
-    const bool two = rt == ts::RollType::REALIGNMENT || rt == ts::RollType::SUMMIT || rt == ts::RollType::OLYMPIC_GAMES;
+    if (dice) *dice = 0;
+    if (g.ctx().decision_player != ts::Player::NONE || g.ctx().decision_type != ts::DecisionType::ROLL_DIE)
+        return ts::chance::Status::NONE;
+    thread_local std::vector<ts::chance::Outcome> outs;
+    const ts::chance::Status s = ts::chance::compound_outcomes(g, forced, compound, outs, dice);
+    if (s != ts::chance::Status::OK) return s;
     thread_local std::vector<float> row;
     row.resize(width);
-    // Positions already seen (with the step's die record cleared, which the observation does not read): a face that
-    // lands on one of them is that outcome without extracting its observation again -- a realignment tries 36 pairs.
-    thread_local std::vector<ts::GameState> seen;
-    thread_local std::vector<size_t> seen_at;
-    seen.clear(); seen_at.clear();
-    float kept = 0.0f;
-    for (int k = two ? -5 : 1; k <= (two ? 5 : 6); ++k) {
-        {
-            const uint8_t a = two ? static_cast<uint8_t>(std::max(1, 1 + k)) : static_cast<uint8_t>(k);
-            const uint8_t b = two ? static_cast<uint8_t>(a - k) : 0;
-            const float w = two ? static_cast<float>(6 - std::abs(k)) / 36.0f : 1.0f / 6.0f;
-            // The Olympic Games re-roll a tie of the sponsor's die + 2 against the opponent's, but only when both dice
-            // are rolled: a forced tie goes to the opponent without drawing (card_dispatcher.cpp), so the rng check
-            // below cannot see it. A tie pair is not an outcome; the rest are renormalised.
-            if (rt == ts::RollType::OLYMPIC_GAMES && a + 2 == b) continue;
-            ts::GameState c = g;
-            const ts::MicroAction ma{ts::DecisionType::ROLL_DIE, a, b, 0};
-            // Randomness the same engine step draws after the die (rare: a coup or realignment whose step goes on into
-            // a random draw) comes from the state's own stream, as it would after the real roll: unbiased in average.
-            if (!ts::StateMachine::step(c, ma)) continue;
-            kept += w;
-            c.last_roll = ts::DieRollRecord{};
-            c.last_die_roll = 0;
-            c.last_opp_die_roll = 0;
-            bool known = false;
-            for (size_t k = 0; k < seen.size(); ++k) {
-                if (std::memcmp(&seen[k], &c, sizeof(ts::GameState)) == 0) { prob[seen_at[k]] += w; known = true; break; }
-            }
-            if (known) continue;
-            seen.push_back(c);
-            if (ts::Engine::is_terminal(c)) {
-                const float u = ts::Engine::get_terminal_utility(c) * (side == ts::Player::US ? 1.0f : -1.0f);
-                bool merged = false;
-                for (size_t k = 0; k < prob.size(); ++k) {
-                    if (terminal[k] && result[k] == u) { prob[k] += w; merged = true; seen_at.push_back(k); break; }
-                }
-                if (!merged) { seen_at.push_back(prob.size()); obs.insert(obs.end(), width, 0.0f); prob.push_back(w); terminal.push_back(1); result.push_back(u); }
-                continue;
-            }
-            std::fill(row.begin(), row.end(), 0.0f);
-            ts::extract_observation_features(c, side, features, row.data());
+    for (const ts::chance::Outcome& o : outs) {
+        const ts::GameState& c = o.state;
+        if (ts::Engine::is_terminal(c)) {
+            const float u = ts::Engine::get_terminal_utility(c) * (side == ts::Player::US ? 1.0f : -1.0f);
             bool merged = false;
             for (size_t k = 0; k < prob.size(); ++k) {
-                if (!terminal[k] && std::memcmp(obs.data() + k * width, row.data(), width * sizeof(float)) == 0) {
-                    prob[k] += w; merged = true; seen_at.push_back(k); break;
-                }
+                if (terminal[k] && result[k] == u) { prob[k] += o.prob; merged = true; break; }
             }
-            if (!merged) { seen_at.push_back(prob.size()); obs.insert(obs.end(), row.begin(), row.end()); prob.push_back(w); terminal.push_back(0); result.push_back(0.0f); }
+            if (!merged) { obs.insert(obs.end(), width, 0.0f); prob.push_back(o.prob); terminal.push_back(1); result.push_back(u); }
+            continue;
         }
+        std::fill(row.begin(), row.end(), 0.0f);
+        ts::extract_observation_features(c, side, features, row.data());
+        bool merged = false;
+        for (size_t k = 0; k < prob.size(); ++k) {
+            if (!terminal[k] && std::memcmp(obs.data() + k * width, row.data(), width * sizeof(float)) == 0) {
+                prob[k] += o.prob; merged = true; break;
+            }
+        }
+        if (!merged) { obs.insert(obs.end(), row.begin(), row.end()); prob.push_back(o.prob); terminal.push_back(0); result.push_back(0.0f); }
     }
-    if (kept <= 0.0f) { obs.clear(); prob.clear(); terminal.clear(); result.clear(); return false; }
-    for (float& q : prob) q /= kept;
-    return true;
+    return ts::chance::Status::OK;
 }
 
 NB_MODULE(ts_engine, m) {
@@ -1827,11 +1798,13 @@ NB_MODULE(ts_engine, m) {
           "buffer in its own frame; u / post / extra / ntgt (T, N) or (0, 0) for no node, lam_opp (N,). Writes adv, ret (plain chain) and nadv (node chain) for every mover row; other rows are "
           "left as given.");
 
-    m.def("roll_outcomes", [](const ts::GameState& g, ts::Player side, uint32_t features) {
+    m.def("roll_outcomes", [](const ts::GameState& g, ts::Player side, uint32_t features, bool compound, bool forced) {
               const size_t w = ts::OBS_SIZE_V23 + ts::obs_features::extra_width(features);
               std::vector<float> obs, prob, res;
               std::vector<uint8_t> term;
-              roll_outcomes(g, side, features, w, obs, prob, term, res);
+              const ts::chance::Status st = roll_outcomes(g, side, features, w, forced, compound, obs, prob, term, res);
+              if (st != ts::chance::Status::OK && st != ts::chance::Status::NONE)
+                  throw std::runtime_error(std::string("roll_outcomes: ") + ts::chance::status_message(st));
               const size_t n = prob.size();
               float* o = new float[std::max<size_t>(1, n * w)];
               if (n) std::memcpy(o, obs.data(), n * w * sizeof(float));
@@ -1839,9 +1812,36 @@ NB_MODULE(ts_engine, m) {
               nb::capsule own(o, [](void* q) noexcept { delete[] static_cast<float*>(q); });
               return nb::make_tuple(nb::ndarray<nb::numpy, float, nb::ndim<2>>(o, 2, s2, own), prob,
                                     std::vector<int>(term.begin(), term.end()), res);
-          }, nb::arg("state"), nb::arg("side"), nb::arg("features") = 0u,
+          }, nb::arg("state"), nb::arg("side"), nb::arg("features") = 0u, nb::arg("compound") = false,
+          nb::arg("forced") = true,
           "P56: the distinct outcomes of the die roll pending in `state` (empty if none): (observations from `side`, "
-          "probabilities, finished-game flags, results from `side`) -- the runner's roll faces, standalone.");
+          "probabilities, finished-game flags, results from `side`) -- the runner's roll faces, standalone. "
+          "`compound` (the runner's afterstate capture with roll faces): an outcome that waits on another die -- at "
+          "once or, `forced`, through single-choice steps -- is that die's outcomes, recursively, probabilities "
+          "multiplied (chance_outcomes.hpp); a chain or outcome count past its bound raises.");
+    m.def("roll_chain", [](const ts::GameState& g, bool forced) {
+              std::vector<ts::chance::Outcome> outs;
+              int dice = 0;
+              const ts::chance::Status st = ts::chance::compound_outcomes(g, forced, true, outs, &dice);
+              if (st != ts::chance::Status::OK && st != ts::chance::Status::NONE)
+                  throw std::runtime_error(std::string("roll_chain: ") + ts::chance::status_message(st));
+              return nb::make_tuple(dice, outs.size());
+          }, nb::arg("state"), nb::arg("forced") = true,
+          "The compound chance node pending in `state`: (dice chained -- 0 if none is pending, 1 for a plain roll --, "
+          "distinct outcome states before merging by observation).");
+    m.def("die_ahead", [](const ts::GameState& g, bool forced) -> std::optional<ts::GameState> {
+              ts::GameState at;
+              ts::chance::Status err = ts::chance::Status::OK;
+              const bool w = ts::chance::waits_on_die(g, forced, at, err);
+              if (err != ts::chance::Status::OK) throw std::runtime_error(std::string("die_ahead: ") + ts::chance::status_message(err));
+              if (!w) return std::nullopt;
+              return at;
+          }, nb::arg("state"), nb::arg("forced") = true,
+          "If `state` waits on a die -- it is at one or, `forced`, reaches one through single-choice steps alone "
+          "(chance_outcomes.hpp) -- the state at that die (roll_outcomes enumerates it); otherwise None. A state "
+          "for which this is not None is never read by the critic directly where the exact chance average is on.");
+    m.attr("MAX_ROLL_CHAIN") = ts::chance::kMaxRollChain;
+    m.attr("MAX_COMPOUND_OUTCOMES") = ts::chance::kMaxCompoundOutcomes;
 
     nb::class_<ts::ActionMask>(m, "ActionMask")
         .def_static("generate_flat_mask", &flat_mask_array,
@@ -1956,6 +1956,8 @@ NB_MODULE(ts_engine, m) {
         std::vector<std::vector<float>> as_fobs, as_fprob, as_fres;
         std::vector<std::vector<uint8_t>> as_fterm;
         std::vector<std::vector<int32_t>> as_fown;
+        // The exact walk's errors, one ts::chance::Status per env (0: none), raised by step_flat_all after its loop.
+        std::vector<uint8_t> as_err;
         void set_capture_afterstates(bool on, bool roll_faces = false) {
             capture_afterstates = on;
             capture_roll_faces = on && roll_faces;
@@ -1964,13 +1966,20 @@ NB_MODULE(ts_engine, m) {
             as_kind.assign(on ? num_envs : 0, {});
             as_side.assign(num_envs, 0);
             as_cut.assign(num_envs, 0);
+            as_err.assign(num_envs, 0);
             const size_t nf = capture_roll_faces ? num_envs : 0;
             as_fobs.assign(nf, {}); as_fprob.assign(nf, {}); as_fres.assign(nf, {}); as_fterm.assign(nf, {}); as_fown.assign(nf, {});
         }
-        void add_roll_faces(size_t idx, ts::Player side, int32_t owner) {
+        void add_roll_faces(size_t idx, ts::Player side, int32_t owner, bool compound = false, bool forced = true) {
             thread_local std::vector<float> o, pr, res;
             thread_local std::vector<uint8_t> term;
-            if (!roll_outcomes(st(idx), side, features_for(idx, side), obs_width, o, pr, term, res)) return;
+            const ts::chance::Status s = roll_outcomes(st(idx), side, features_for(idx, side), obs_width, forced, compound,
+                                                       o, pr, term, res);
+            if (s != ts::chance::Status::OK) {
+                // The exact walk raises (step_flat_all, after its loop); the first walk keeps a row without outcomes.
+                if (compound) as_err[idx] = static_cast<uint8_t>(s == ts::chance::Status::NONE ? ts::chance::Status::NO_OUTCOME : s);
+                return;
+            }
             as_fobs[idx].insert(as_fobs[idx].end(), o.begin(), o.end());
             as_fprob[idx].insert(as_fprob[idx].end(), pr.begin(), pr.end());
             as_fres[idx].insert(as_fres[idx].end(), res.begin(), res.end());
@@ -2042,6 +2051,58 @@ NB_MODULE(ts_engine, m) {
             if (!ended) {
                 as_cut[idx] = 1; as_obs[idx].clear(); kinds.clear();
                 if (capture_roll_faces) { as_fobs[idx].clear(); as_fprob[idx].clear(); as_fres[idx].clear(); as_fterm[idx].clear(); as_fown[idx].clear(); }
+            }
+        }
+        // P56 with roll faces (--afterstate-advantage; owner, 2026-11-22): the walk that never keeps a row the critic
+        // would read blind. A state that waits on a die (chance_outcomes.hpp: at one, or forced, through single-choice
+        // steps) is kept only at the die itself, as a before-roll row whose outcomes are the exact compound ones -- an
+        // outcome that waits on another die is that die's outcomes, recursively -- and the dice that compound node
+        // covers get no row of their own: the states between them are neither kept nor read, and the row after the
+        // node's last roll is its after-roll. So the before-roll rows are exactly the die-waiting ones (the trainer
+        // neither trains on them nor reads them; their value is the outcomes' average), and no other row waits on a
+        // die. A decision's own state that waits on a die through single-choice steps is not kept (the die's row
+        // stands for it); one at a die is that die's before-roll row; one at the turn-end park stays its after-
+        // decision row. afterstate_critic.walk_afterstates(exact=True) is the reference.
+        void walk_afterstates_exact(size_t idx, ts::Player side, bool forced) {
+            as_side[idx] = static_cast<int8_t>(side == ts::Player::US ? 1 : -1);
+            std::vector<uint8_t>& kinds = as_kind[idx];
+            ts::GameState at_die;
+            ts::chance::Status err = ts::chance::Status::OK;
+            auto before_roll = [&]() {
+                keep_afterstate(idx, side, kBeforeRoll, forced);
+                add_roll_faces(idx, side, static_cast<int32_t>(kinds.size() - 1), true, forced);
+            };
+            bool chained = false;                         // the die ahead belongs to a compound node already kept
+            if (ts::chance::rolls_a_die(st(idx))) before_roll();
+            else if (!ts::chance::waits_on_die(st(idx), forced, at_die, err)) keep_afterstate(idx, side, kAfterDecision, forced);
+            bool ended = false;
+            for (size_t k = 0; k < kMaxAfterstateWalk && err == ts::chance::Status::OK; ++k) {
+                if (ts::Engine::is_terminal(st(idx))) { ended = true; break; }
+                if (at_chance(st(idx))) {
+                    const bool die = ts::chance::rolls_a_die(st(idx));
+                    if (die && !chained && k > 0) before_roll();
+                    if (forced) {
+                        if (capture_predeal && ts::rollout::at_turn_cleanup(st(idx))) record_predeal(idx);
+                        if (slots[idx].auto_advance(1) == 0) { ended = true; break; }
+                    } else {
+                        const ts::MicroAction chance_ma{ts::DecisionType::ROLL_DIE, 0, 0, 0};
+                        if (!slots[idx].step(chance_ma)) { ended = true; break; }
+                    }
+                    add_tracks(idx);
+                    // After the roll: a state that waits on another die is no row -- the next die is this node's when
+                    // a die was rolled (compound), or gets its own before-roll row after the turn-end park.
+                    const bool waits = ts::chance::waits_on_die(st(idx), forced, at_die, err);
+                    chained = waits && die;
+                    if (!waits) keep_afterstate(idx, side, kAfterRoll, forced);
+                    continue;
+                }
+                if (!forced || slots[idx].auto_advance(1) == 0) { ended = true; break; }
+                add_tracks(idx);
+            }
+            if (err != ts::chance::Status::OK && as_err[idx] == 0) as_err[idx] = static_cast<uint8_t>(err);
+            if (!ended && as_err[idx] == 0) {
+                as_cut[idx] = 1; as_obs[idx].clear(); kinds.clear();
+                as_fobs[idx].clear(); as_fprob[idx].clear(); as_fres[idx].clear(); as_fterm[idx].clear(); as_fown[idx].clear();
             }
         }
         void record_predeal(size_t idx) {
@@ -2204,7 +2265,7 @@ NB_MODULE(ts_engine, m) {
                 if (capture_tracks) std::fill_n(&track_vp[static_cast<size_t>(i) * kTrackCards], kTrackCards, int16_t{0});
                 const bool walk = capture_afterstates && as_pick[i];
                 if (capture_afterstates) {
-                    as_obs[i].clear(); as_kind[i].clear(); as_cut[i] = 0; as_side[i] = 0; as_pick[i] = 0;
+                    as_obs[i].clear(); as_kind[i].clear(); as_cut[i] = 0; as_side[i] = 0; as_pick[i] = 0; as_err[i] = 0;
                     if (capture_roll_faces) { as_fobs[i].clear(); as_fprob[i].clear(); as_fres[i].clear(); as_fterm[i].clear(); as_fown[i].clear(); }
                 }
                 if (static_cast<size_t>(i) >= act_count) return;
@@ -2219,7 +2280,10 @@ NB_MODULE(ts_engine, m) {
                 const bool ok = slots[i].step_flat(actions[i], view_for(static_cast<size_t>(i), who));
                 if (ok) {
                     add_tracks(static_cast<size_t>(i));
-                    if (walk) walk_afterstates(static_cast<size_t>(i), who, auto_advance);
+                    if (walk) {
+                        if (capture_roll_faces) walk_afterstates_exact(static_cast<size_t>(i), who, auto_advance);
+                        else walk_afterstates(static_cast<size_t>(i), who, auto_advance);
+                    }
                     if (auto_advance) {
                         if (capture_predeal) {
                             for (size_t k = 0; k < 256; ++k) {
@@ -2244,6 +2308,13 @@ NB_MODULE(ts_engine, m) {
                 results[i] = ok ? 1 : 0;
                 refresh_single(static_cast<size_t>(i));
             });
+            if (capture_roll_faces) {
+                // Raised here, not in the parallel loop: an exact walk that met a chain or outcome count past its bound.
+                for (size_t i = 0; i < num_envs; ++i) {
+                    if (as_err[i]) throw std::runtime_error("afterstate capture (env " + std::to_string(i) + "): " +
+                                                            ts::chance::status_message(static_cast<ts::chance::Status>(as_err[i])));
+                }
+            }
             return results;
         }
 

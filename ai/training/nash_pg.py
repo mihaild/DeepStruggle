@@ -3254,6 +3254,10 @@ class NashPGTrainer(BaseNashPGTrainer):
                 self.buffer.rewards.float().cpu().numpy(), self.buffer.returns_win.float().cpu().numpy(),
                 self.buffer.learner.float().cpu().numpy() > 0.5, self.device)
         _as_rows_n = 0 if self._as_tgt is None else int(self._as_tgt.shape[0])
+        # The rows trained on, by kind (the capture's afterstate/rows_* count what was recorded; under
+        # --afterstate-advantage the before-roll rows wait on a die and are never trained on).
+        _as_trained = ([0] * len(AFTERSTATE_KINDS) if self._as_kind is None else
+                       [int(c) for c in torch.bincount(self._as_kind.detach().cpu(), minlength=len(AFTERSTATE_KINDS))])
         as_se_kind = torch.zeros(len(AFTERSTATE_KINDS), device=self.device)
         as_n_kind = torch.zeros(len(AFTERSTATE_KINDS), device=self.device)
         sg_added = self._ingest_searched_games()
@@ -3696,6 +3700,7 @@ class NashPGTrainer(BaseNashPGTrainer):
             # The afterstate rows' value MSE by kind (after the decision, before a roll, after a roll), beside
             # val_loss on the decisions themselves; afterstate/* (capture counts) come from the rollout.
             **({"afterstate_rows": float(_as_rows_n),
+                **{f"afterstate_trained_{name}": float(_as_trained[k]) for k, name in enumerate(AFTERSTATE_KINDS)},
                 **{f"afterstate_value_loss_{name}": float(as_se_kind[k]) / max(1.0, float(as_n_kind[k]))
                    for k, name in enumerate(AFTERSTATE_KINDS) if float(as_n_kind[k]) > 0}}
                if self.afterstate_value_coef > 0.0 else {}),

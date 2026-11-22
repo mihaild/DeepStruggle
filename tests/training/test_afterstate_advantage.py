@@ -14,8 +14,9 @@ import ts_engine as ts
 from ai.models.ladder_net import LadderNet, create_ladder_net
 from ai.rewards.reward_calculator import ShapedZeroSumReward, VPPotentialShaping, ZeroSumTerminalReward
 from ai.training.afterstate_critic import (AFTER_ROLL, BEFORE_ROLL, AfterstateCapture, AfterstateRows, build_targets,
-                                           last_moment_values, missing_last_moments, node_tensors,
-                                           read_all_node_values, read_node_values, walk_afterstates)
+                                           die_ahead, last_moment_values, missing_last_moments, node_tensors,
+                                           read_all_node_values, read_node_values, reference_roll_outcomes,
+                                           walk_afterstates)
 from ai.training.nash_pg import NashPGTrainer, _value_only
 from ai.training.rollout_buffer import RolloutBuffer
 from bindings.ts_env import TsVectorizedEnv
@@ -24,8 +25,9 @@ OBS, ACT, N, T = 8, 4, 3, 14
 
 
 def test_the_runner_enumerates_every_outcome_of_each_roll() -> None:
-    """Each before-roll row's outcomes sum to probability 1, the roll that came is one of them, and a die
-    whose faces give the same board is one outcome (fewer outcomes than faces somewhere)."""
+    """Each before-roll row's outcomes sum to probability 1, the roll that came is one of them (the row after a
+    compound node is the state after its last die), and a die whose faces give the same board is one outcome (fewer
+    outcomes than faces somewhere)."""
     env = TsVectorizedEnv(num_envs=32, base_seed=5)
     obs, masks, _ = env.reset_all()
     r = env.runner
@@ -41,8 +43,7 @@ def test_the_runner_enumerates_every_outcome_of_each_roll() -> None:
         envs, kinds, aobs, own, prob, fobs = (np.asarray(x) for x in (envs, kinds, aobs, own, prob, fobs))
         for j in np.flatnonzero(kinds == BEFORE_ROLL):
             sel = np.flatnonzero(own == j)
-            if not sel.size:
-                continue
+            assert sel.size, "the exact walk keeps a before-roll row only at a die, and every die has outcomes"
             rows += 1
             merged += sel.size < 6
             assert abs(float(prob[sel].sum()) - 1.0) < 1e-5
@@ -162,8 +163,11 @@ def test_a_rollout_takes_the_node_and_trains() -> None:
     assert rows and all(r.values is not None and r.avg is not None for r in rows)
     rolls = [int(torch.isfinite(r.avg).sum()) for r in rows if r.avg is not None]
     assert sum(rolls) > 0, "no before-roll row got its die's average"
+    assert all(r.exact for r in rows)
     m = t.train_step()
-    assert math.isfinite(m["afterstate_value_loss_before_roll"]) and math.isfinite(m["policy_loss"])
+    # The before-roll rows wait on a die: captured, nodes of the advantage, never trained on (owner, 2026-11-22).
+    assert m["afterstate_trained_before_roll"] == 0.0 and "afterstate_value_loss_before_roll" not in m
+    assert m["afterstate_trained_after_decision"] > 0 and math.isfinite(m["policy_loss"])
 
 
 def test_the_gathered_outcomes_are_the_listed_ones() -> None:
@@ -208,10 +212,14 @@ def test_one_batched_read_equals_a_read_a_step() -> None:
     read_all_node_values(rows, fn, chunk=50)
     for (v1, a1), r in zip(one, rows):
         assert r.values is not None and r.avg is not None
-        assert torch.allclose(v1, r.values, atol=1e-5)
+        assert torch.allclose(v1, r.values, atol=1e-5, equal_nan=True)
         assert torch.allclose(a1, r.avg, atol=1e-5, equal_nan=True)
     for (v1, a1), (v2, a2) in zip(one, batched):
-        assert torch.allclose(v1, v2, atol=1e-5) and torch.allclose(a1, a2, atol=1e-5, equal_nan=True)
+        assert torch.allclose(v1, v2, atol=1e-5, equal_nan=True) and torch.allclose(a1, a2, atol=1e-5, equal_nan=True)
+    for r in rows:
+        assert r.values is not None
+        br = np.asarray(r.kinds) == BEFORE_ROLL
+        assert torch.isnan(r.values[torch.from_numpy(br)]).all() and torch.isfinite(r.values[torch.from_numpy(~br)]).all()
 
 
 def test_the_node_needs_per_player_returns() -> None:
@@ -344,18 +352,15 @@ def test_the_node_drops_every_rolls_luck() -> None:
     assert math.isnan(float(u[0, 4]))
 
 
-def test_a_die_right_after_another_gets_its_own_before_roll_row() -> None:
-    """Fix verification V-4: a die rolled right after another (an Ops-first coup or realignment on Korean War or
-    Arab-Israeli War, then the war's roll) has a before-roll row of its own -- the first roll's after-state kept again
-    -- with that die's outcomes, in the runner and in the reference walk alike, and node_tensors drops both rolls'
-    luck: U is the first roll's average, U_post the value after it, and the second roll adds (after - average)."""
+def test_without_roll_faces_a_die_right_after_another_keeps_its_own_before_roll_row() -> None:
+    """Fix verification V-4, the walk without roll faces (R169's afterstate critic, unchanged): a die rolled right after
+    another keeps the first roll's after-state again as a before-roll row, in the runner and the reference walk alike."""
     ne = 32
     env = TsVectorizedEnv(num_envs=ne, base_seed=7)
     obs, masks, _ = env.reset_all()
     r = env.runner
-    cap = AfterstateCapture(1.0, 0, obs.shape[1], forced=bool(env._auto_advance), seed=3, roll_faces=True)
+    cap = AfterstateCapture(1.0, 0, obs.shape[1], forced=bool(env._auto_advance), seed=3)
     rng = np.random.default_rng(3)
-    proj = torch.from_numpy(np.random.default_rng(0).normal(size=obs.shape[1]).astype(np.float32)) * 0.01
     found = 0
     for _ in range(4000):
         acts = np.array([rng.choice(np.flatnonzero(m)) for m in np.asarray(masks)])
@@ -363,47 +368,226 @@ def test_a_die_right_after_another_gets_its_own_before_roll_row() -> None:
         walks = {}
         for e in np.flatnonzero(dp != 0):
             side = ts.Player.US if dp[e] == 1 else ts.Player.USSR
-            walks[int(e)] = (side, walk_afterstates(r.get_state(int(e)), int(acts[e]), side)[0])
+            walks[int(e)] = walk_afterstates(r.get_state(int(e)), int(acts[e]), side)[0]
         cap.before(r, np.ones(ne, bool), dp)
         obs, masks, _, _, _ = env.step(acts)
         rows = cap.after(r, 0, np.zeros(ne, bool), "cpu")
         if rows is None:
             continue
-        read_node_values(rows, lambda o: o @ proj)
-        assert rows.values is not None and rows.avg is not None and rows.face_row is not None
-        assert rows.face_prob is not None
-        vals, avg = rows.values.numpy(), rows.avg.numpy()
-        u, post, ex, nt = node_tensors([rows], 1, ne, torch.device("cpu"))
-        for e, (side, moments) in walks.items():
+        assert not rows.exact
+        for e, moments in walks.items():
             sel = np.flatnonzero(rows.envs == e)
             kinds = list(rows.kinds[sel])
             assert kinds == [k for k, _ in moments], "the runner and the reference walk keep the same rows"
-            pairs = [i for i in range(1, len(sel)) if kinds[i - 1] == AFTER_ROLL and kinds[i] == BEFORE_ROLL]
-            if not pairs:
-                continue
-            i = pairs[0]
-            a, b = sel[i - 1], sel[i]
-            st = moments[i][1]
-            assert st.ctx().pending_roll_type not in (ts.RollType.NONE, ts.RollType.TURN_CLEANUP)
-            assert torch.equal(rows.obs[a], rows.obs[b]), "the first roll's after-state is the second's before-state"
-            faces = np.flatnonzero(rows.face_row == b)
-            assert faces.size and abs(float(rows.face_prob[faces].sum()) - 1.0) < 1e-5, "the second roll has outcomes"
-            _, p_ref, _, _ = ts.roll_outcomes(st, side, 0)
-            assert np.allclose(sorted(p_ref), sorted(rows.face_prob[faces]), atol=1e-6)
-            rolls = [j for j in range(len(sel)) if kinds[j] == BEFORE_ROLL and np.isfinite(avg[sel[j]])]
-            if len(rolls) != 2 or rolls[1] != i:
-                continue                      # the walk's first two rolls are the pair
-            f = sel[rolls[0]]
-            assert abs(float(u[0, e]) - float(avg[f])) < 1e-6
-            assert abs(float(post[0, e]) - float(vals[f + 1])) < 1e-6
-            if i + 1 < len(sel) and kinds[i + 1] == AFTER_ROLL:
-                assert abs(float(ex[0, e]) - float(vals[b + 1] - avg[b])) < 1e-5 and float(nt[0, e]) == 0.0
-            else:
-                assert abs(float(ex[0, e]) + float(avg[b])) < 1e-5 and float(nt[0, e]) == 1.0
-            found += 1
+            for i in range(1, len(sel)):
+                if kinds[i - 1] == AFTER_ROLL and kinds[i] == BEFORE_ROLL:
+                    assert moments[i][1].ctx().pending_roll_type not in (ts.RollType.NONE, ts.RollType.TURN_CLEANUP)
+                    assert torch.equal(rows.obs[sel[i - 1]], rows.obs[sel[i]])
+                    found += 1
         if found >= 3:
             break
     assert found >= 3, found
+
+
+def _exact_walks(ne: int, seed: int, want_compound: int, max_steps: int = 6000):
+    """Random play with the runner's exact capture (roll faces) beside the reference exact walk on a copy of each
+    pre-step state: yields (rows, {env: (side, moments)}) per step, until `want_compound` compound nodes were seen."""
+    env = TsVectorizedEnv(num_envs=ne, base_seed=seed)
+    obs, masks, _ = env.reset_all()
+    r = env.runner
+    cap = AfterstateCapture(1.0, 0, obs.shape[1], forced=bool(env._auto_advance), seed=3, roll_faces=True)
+    rng = np.random.default_rng(seed)
+    seen = 0
+    for _ in range(max_steps):
+        acts = np.array([rng.choice(np.flatnonzero(m)) for m in np.asarray(masks)])
+        dp = np.asarray(r.get_decision_players())
+        walks = {}
+        for e in np.flatnonzero(dp != 0):
+            side = ts.Player.US if dp[e] == 1 else ts.Player.USSR
+            walks[int(e)] = (side, walk_afterstates(r.get_state(int(e)), int(acts[e]), side, exact=True)[0])
+        cap.before(r, np.ones(ne, bool), dp)
+        obs, masks, _, _, _ = env.step(acts)
+        rows = cap.after(r, 0, np.zeros(ne, bool), "cpu")
+        if rows is None:
+            continue
+        seen += sum(int(ts.roll_chain(st, True)[0] >= 2) for _, mom in walks.values() for k, st in mom
+                    if k == BEFORE_ROLL)
+        yield rows, walks
+        if seen >= want_compound:
+            return
+    raise AssertionError(f"only {seen} compound chance nodes in {max_steps} steps")
+
+
+def _same_outcomes(rows, j: int, ref) -> None:
+    """The runner's outcomes of before-roll row j are the reference's: the same observations / results, the same
+    probabilities."""
+    f = np.flatnonzero(rows.face_row == j)
+    assert len(f) == len(ref), (len(f), len(ref))
+    assert abs(sum(p for p, _, _, _ in ref) - 1.0) < 1e-9
+    for p, term, res, o in ref:
+        hit = [i for i in f if (term and rows.face_term[i] and rows.face_res[i] == res)
+               or (not term and not rows.face_term[i] and np.array_equal(rows.face_obs[i].numpy(), o))]
+        assert len(hit) == 1 and abs(float(rows.face_prob[hit[0]]) - p) < 1e-5, (p, hit)
+
+
+def test_compound_outcomes_are_the_nested_brute_force() -> None:
+    """A die right after another (no decision between) is one compound chance node: ts.roll_outcomes(compound=True) --
+    the runner's enumeration, two dice by their difference -- equals the nested brute force over every face (36 pairs
+    for two dice) with probabilities multiplied, and a plain roll's compound enumeration is its plain one."""
+    compound = plain = 0
+    for rows, walks in _exact_walks(24, 17, want_compound=6):
+        for side, moments in walks.values():
+            for kind, st in moments:
+                if kind != BEFORE_ROLL:
+                    continue
+                dice, n_states = ts.roll_chain(st, True)
+                assert 1 <= dice <= int(ts.MAX_ROLL_CHAIN) and n_states <= int(ts.MAX_COMPOUND_OUTCOMES)
+                if dice == 1 and plain >= 20:
+                    continue
+                ref = reference_roll_outcomes(st, side, 0, True)
+                o, p, term, res = ts.roll_outcomes(st, side, 0, True, True)
+                o = np.asarray(o)
+                assert len(p) == len(ref) and abs(sum(p) - 1.0) < 1e-5
+                for q, t_, r_, ob in ref:
+                    hit = [i for i in range(len(p)) if (t_ and term[i] and res[i] == r_)
+                           or (not t_ and not term[i] and np.array_equal(o[i], ob))]
+                    assert len(hit) == 1 and abs(p[hit[0]] - q) < 1e-5
+                if dice == 1:
+                    _, p1, _, _ = ts.roll_outcomes(st, side, 0)
+                    assert np.allclose(sorted(p1), sorted(p), atol=1e-6)
+                    plain += 1
+                else:
+                    # More distinct outcomes than the first die alone has: the second die is in them.
+                    assert len(p) > len(ts.roll_outcomes(st, side, 0)[1]) or any(term)
+                    compound += 1
+    assert compound >= 6 and plain >= 20, (compound, plain)
+
+
+def test_the_exact_walk_keeps_no_row_waiting_on_a_die_but_the_before_roll_rows() -> None:
+    """The runner's exact walk (roll faces) keeps the reference exact walk's rows bit for bit; every before-roll row is
+    at a die and every other row waits on none (ts.die_ahead and its reference agree); a compound node is one
+    before-roll row with the compound outcomes, followed by the state after its LAST die."""
+    compound = 0
+    for rows, walks in _exact_walks(24, 23, want_compound=4):
+        for e, (side, moments) in walks.items():
+            sel = np.flatnonzero(rows.envs == e)
+            assert list(rows.kinds[sel]) == [k for k, _ in moments], "the runner and the reference keep the same rows"
+            for i, (j, (kind, st)) in enumerate(zip(sel, moments)):
+                assert np.array_equal(rows.obs[j].numpy(), np.asarray(ts.extract_observation_features(st, side, 0)))
+                assert (ts.die_ahead(st, True) is None) == (die_ahead(st, True) is None)
+                if kind != BEFORE_ROLL:
+                    assert die_ahead(st, True) is None, "a row other than a before-roll row waits on a die"
+                    continue
+                assert st.ctx().pending_roll_type not in (ts.RollType.NONE, ts.RollType.TURN_CLEANUP)
+                if ts.roll_chain(st, True)[0] < 2:
+                    continue
+                _same_outcomes(rows, int(j), reference_roll_outcomes(st, side, 0, True))
+                if i + 1 < len(moments) and moments[i + 1][0] == AFTER_ROLL:
+                    after = moments[i + 1][1]
+                    assert die_ahead(after, True) is None
+                    # The row after the node: one of its compound outcomes (a step that draws after a die aside).
+                    f = np.flatnonzero(rows.face_row == j)
+                    fo = rows.face_obs
+                    assert fo is not None
+                    assert any(np.array_equal(fo[k].numpy(), rows.obs[sel[i + 1]].numpy()) for k in f)
+                compound += 1
+    assert compound >= 4
+
+
+def test_the_critic_is_never_asked_about_a_state_waiting_on_a_die() -> None:
+    """Under --afterstate-advantage the values the trainer reads (read_all_node_values, last_moment_values) are asked
+    only about states that wait on no die: a probe value function records every observation it is given, and they are
+    exactly the reference walk's rows that wait on none plus the outcomes of each die, each of which waits on none."""
+    asked: list = []
+    def probe(o: torch.Tensor) -> torch.Tensor:
+        asked.extend(bytes(x.numpy().tobytes()) for x in o)
+        return o[:, :8].sum(1) * 0.01
+    allowed: dict = {}
+    collected = []
+    t = 0
+    for rows, walks in _exact_walks(16, 29, want_compound=2):
+        rows.step = t
+        t += 1
+        collected.append(rows)
+        for e, (side, moments) in walks.items():
+            for kind, st in moments:
+                if kind == BEFORE_ROLL:
+                    assert die_ahead(st, True) is not None
+                    for _, term, _, o in reference_roll_outcomes(st, side, 0, True):
+                        # A finished game's outcome is a row of zeros whose read is discarded for its result.
+                        allowed[o.tobytes()] = True
+                else:
+                    assert die_ahead(st, True) is None
+                    allowed[np.asarray(ts.extract_observation_features(st, side, 0), dtype=np.float32).tobytes()] = True
+    read_all_node_values(collected, probe, chunk=64)
+    n_rows = sum(int((np.asarray(r.kinds) != BEFORE_ROLL).sum()) for r in collected)
+    n_faces = sum(0 if r.face_obs is None else int(r.face_obs.shape[0]) for r in collected)
+    assert len(asked) == n_rows + n_faces
+    blind = [a for a in asked if a not in allowed]
+    assert not blind, f"{len(blind)} reads at a state waiting on a die (or unknown)"
+    # The last moments read nothing more: a before-roll last moment takes its average.
+    asked.clear()
+    players = np.zeros((t, 16), dtype=np.int8)
+    for r in collected:
+        players[r.step, np.asarray(r.envs)] = np.asarray(r.sides)
+    for r in collected:
+        r.values = r.avg = None
+    last_moment_values(collected, players, 16, probe)
+    assert asked and all(a in allowed for a in asked)
+
+
+def test_the_node_on_a_compound_drops_both_rolls_luck() -> None:
+    """node_tensors on the exact walk: a compound node's U is its compound average and U_post the value after its last
+    die, with nothing added for the die in between (no row of it); its before-roll row has no value of its own."""
+    nan = float("nan")
+    r = _rows(0, [0, 0, 0, 1, 1], [0, BEFORE_ROLL, AFTER_ROLL, BEFORE_ROLL, AFTER_ROLL],
+              [0.1, nan, 0.7, nan, -0.2], [nan, 0.3, nan, 0.05, nan])
+    r.exact = True
+    u, post, ex, nt = node_tensors([r], 1, 2, torch.device("cpu"))
+    assert abs(float(u[0, 0]) - 0.3) < 1e-6 and abs(float(post[0, 0]) - 0.7) < 1e-6
+    assert float(ex[0, 0]) == 0.0 and float(nt[0, 0]) == 0.0
+    assert abs(float(u[0, 1]) - 0.05) < 1e-6 and abs(float(post[0, 1]) + 0.2) < 1e-6
+    # On real compounds: U is the compound average (both dice's outcomes) and U_post the row after the last die.
+    proj = torch.from_numpy(np.random.default_rng(0).normal(size=int(ts.OBS_SIZE)).astype(np.float32)) * 0.01
+    checked = 0
+    for rows, walks in _exact_walks(24, 31, want_compound=3):
+        read_node_values(rows, lambda o: o @ proj)
+        assert rows.values is not None and rows.avg is not None and rows.face_prob is not None
+        u, post, ex, nt = node_tensors([rows], 1, 24, torch.device("cpu"))
+        for e, (side, moments) in walks.items():
+            sel = np.flatnonzero(rows.envs == e)
+            kinds = list(rows.kinds[sel])
+            rolls = [i for i, k in enumerate(kinds) if k == BEFORE_ROLL]
+            if len(rolls) != 1 or ts.roll_chain(moments[rolls[0]][1], True)[0] < 2:
+                continue
+            j = int(sel[rolls[0]])
+            ref = reference_roll_outcomes(moments[rolls[0]][1], side, 0, True)
+            want = sum(p * (res if term else float(torch.from_numpy(o) @ proj)) for p, term, res, o in ref)
+            assert abs(float(u[0, e]) - want) < 1e-4
+            if rolls[0] + 1 < len(kinds) and kinds[rolls[0] + 1] == AFTER_ROLL:
+                assert abs(float(post[0, e]) - float(rows.values[j + 1])) < 1e-6 and float(nt[0, e]) == 0.0
+            else:
+                assert math.isnan(float(post[0, e]))
+            assert float(ex[0, e]) == 0.0
+            checked += 1
+    assert checked >= 1
+
+
+def test_no_before_roll_row_reaches_the_value_loss_under_the_exact_walk() -> None:
+    """build_targets: the exact walk's before-roll rows are dropped from the value loss; without roll faces (R169's
+    afterstate critic) a before-roll row is trained on its next decision's return as before."""
+    players = np.array([[1], [-1], [1]], dtype=np.int8)
+    dones = np.zeros((3, 1), dtype=bool)
+    rewards = np.zeros((3, 1), dtype=np.float32)
+    rets = np.full((3, 1), 0.5, dtype=np.float32)
+    learner = np.ones((3, 1), dtype=bool)
+    for exact in (False, True):
+        r = _rows(0, [0, 0, 0], [0, BEFORE_ROLL, AFTER_ROLL], [0.1, 0.2, 0.3], [float("nan"), 0.4, float("nan")])
+        r.exact = exact
+        obs, tgt, kinds = build_targets([r], players, dones, rewards, rets, learner, torch.device("cpu"))
+        assert kinds is not None and tgt is not None
+        assert (int((kinds == BEFORE_ROLL).sum()) == 0) == exact
+        assert torch.allclose(tgt, torch.full_like(tgt, 0.5)), "targets are the next decision's return"
 
 
 def test_the_side_not_to_move_bootstraps_from_its_own_last_moment() -> None:
@@ -465,8 +649,7 @@ def test_a_side_without_its_own_last_moment_is_caught() -> None:
 
 
 def test_only_learner_walks_are_trained_on() -> None:
-    """--per-player-gae captures every decision's walk; build_targets keeps the learner decisions' rows alone (a
-    before-roll row's average target included)."""
+    """--per-player-gae captures every decision's walk; build_targets keeps the learner decisions' rows alone."""
     players = np.array([[1, -1], [-1, 1], [1, -1]], dtype=np.int8)
     dones = np.zeros((3, 2), dtype=bool)
     rewards = np.zeros((3, 2), dtype=np.float32)
@@ -526,3 +709,17 @@ def test_without_per_player_gae_the_capture_stays_learner_only() -> None:
                       afterstate_value_coef=1.0, afterstate_frac=1.0, predeal_value_coef=1.0)
     t.collect_rollouts()
     assert t.afterstate is not None and not t.afterstate.every_decider
+
+
+def test_without_the_advantage_the_walk_and_its_training_are_unchanged() -> None:
+    """R169 and every run without --afterstate-advantage: no roll faces, the first walk (rows not exact), and the
+    before-roll rows trained as before (a CPU comparison of R169's flags before / after the exact walk gave identical
+    losses, weights, optimizer and RNG states)."""
+    t = NashPGTrainer(active_net=_net(), env=TsVectorizedEnv(num_envs=8, base_seed=2), num_envs=8, buffer_size=64,
+                      lr=3e-4, eta=0.1, ref_update_freq=500, cuda_graphs=False, device=torch.device("cpu"),
+                      afterstate_value_coef=1.0, afterstate_frac=1.0, predeal_value_coef=1.0)
+    t.collect_rollouts()
+    assert t.afterstate is not None and not t.afterstate.roll_faces
+    assert t._as_rows and not any(r.exact or r.face_obs is not None for r in t._as_rows)
+    m = t.train_step()
+    assert m["afterstate_trained_before_roll"] > 0 and math.isfinite(m["afterstate_value_loss_before_roll"])

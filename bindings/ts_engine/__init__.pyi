@@ -1283,10 +1283,24 @@ def gae_per_player(players: Annotated[NDArray[numpy.int8], dict(shape=(None, Non
     Per-player GAE (RolloutBuffer._gae_per_player_both), each env's backward pass in parallel. players int8 (T, N), dones uint8, rewards / values float32, last_v_us / last_v_ussr (N,): each side's bootstrap past the buffer in its own frame; u / post / extra / ntgt (T, N) or (0, 0) for no node, lam_opp (N,). Writes adv, ret (plain chain) and nadv (node chain) for every mover row; other rows are left as given.
     """
 
-def roll_outcomes(state: GameState, side: Player, features: int = 0) -> tuple:
+def roll_outcomes(state: GameState, side: Player, features: int = 0, compound: bool = False, forced: bool = True) -> tuple:
     """
-    P56: the distinct outcomes of the die roll pending in `state` (empty if none): (observations from `side`, probabilities, finished-game flags, results from `side`) -- the runner's roll faces, standalone.
+    P56: the distinct outcomes of the die roll pending in `state` (empty if none): (observations from `side`, probabilities, finished-game flags, results from `side`) -- the runner's roll faces, standalone. `compound` (the runner's afterstate capture with roll faces): an outcome that waits on another die -- at once or, `forced`, through single-choice steps -- is that die's outcomes, recursively, probabilities multiplied (chance_outcomes.hpp); a chain or outcome count past its bound raises.
     """
+
+def roll_chain(state: GameState, forced: bool = True) -> tuple:
+    """
+    The compound chance node pending in `state`: (dice chained -- 0 if none is pending, 1 for a plain roll --, distinct outcome states before merging by observation).
+    """
+
+def die_ahead(state: GameState, forced: bool = True) -> GameState | None:
+    """
+    If `state` waits on a die -- it is at one or, `forced`, reaches one through single-choice steps alone (chance_outcomes.hpp) -- the state at that die (roll_outcomes enumerates it); otherwise None. A state for which this is not None is never read by the critic directly where the exact chance average is on.
+    """
+
+MAX_ROLL_CHAIN: int = 4
+
+MAX_COMPOUND_OUTCOMES: int = 512
 
 class ActionMask:
     @staticmethod

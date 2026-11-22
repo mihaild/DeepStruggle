@@ -239,3 +239,49 @@ def test_random_setup_forces_only_the_learners_setup_and_marks_it_environment() 
     assert list(np.flatnonzero(forced)) == [0, 2], "drawn games, learner rows, at setup -- nothing else"
     for i in (0, 2):
         assert np.asarray(masks)[i][int(acts[i])], "a legal placement"
+
+
+def test_the_critic_player_with_exact_chance_averages_a_rolls_outcomes() -> None:
+    """critic:...:exact (owner, 2026-11-22): a move whose position waits on a die is valued by the exact average of the
+    critic over the roll's outcomes (compound rolls included), never read before the die; a move followed by no die
+    is read as before; without the option every move is read right after it, as the player always was."""
+    torch.manual_seed(1)
+    net = _Critic(torch.randn(int(ts.OBS_SIZE)) * 0.05)
+    env = TsVectorizedEnv(num_envs=8, base_seed=33)
+    obs, masks, _ = env.reset_all()
+    rng = np.random.default_rng(2)
+    checked = 0
+    for _ in range(400):
+        for i in range(8):
+            st = env.runner.get_state(i)
+            me = st.ctx().decision_player
+            legal = np.flatnonzero(np.asarray(ts.ActionMask.generate_flat_mask(st), dtype=bool))
+            if me == ts.Player.NONE or len(legal) <= 1:
+                continue
+            agents = [CriticArgmaxAgent(net, "c", seed=5, exact_chance=x) for x in (False, True)]
+            (_, plain), (_, exact) = (a.move_values([st]) for a in agents)
+            again = CriticArgmaxAgent(net, "c", seed=5)
+            world = ts.determinize(st, me, again._seed(), False, True)
+            for mi, a in enumerate(legal):
+                s2 = world.clone()
+                s2.rng_state = again._seed()
+                ts.Engine.step_flat(s2, int(a), False)
+                if ts.Engine.is_terminal(s2):
+                    continue
+                read = float(torch.tanh(torch.from_numpy(np.asarray(ts.extract_observation_features(s2, me, 0))) @ net.w))
+                assert abs(plain[0][mi] - read) < 1e-5
+                at = ts.die_ahead(s2, True)
+                if at is None:
+                    assert abs(exact[0][mi] - read) < 1e-5
+                    continue
+                o, p, term, res = ts.roll_outcomes(at, me, 0, True, True)
+                want = sum(float(p[k]) * (float(res[k]) if term[k] else
+                                          float(torch.tanh(torch.from_numpy(np.asarray(o)[k]) @ net.w)))
+                           for k in range(len(p)))
+                assert abs(exact[0][mi] - want) < 1e-5
+                checked += 1
+        if checked >= 20:
+            break
+        acts = np.array([rng.choice(np.flatnonzero(m)) for m in np.asarray(masks)])
+        obs, masks, _, _, _ = env.step(acts)
+    assert checked >= 20, checked

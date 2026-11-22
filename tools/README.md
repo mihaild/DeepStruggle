@@ -292,8 +292,12 @@ Every iteration goes to `<run>/training_metrics.jsonl` and to TensorBoard under 
 * With the afterstate critic (`--afterstate-value-coef`, `ai/training/afterstate_critic.py`): `afterstate/*` counts the
   sampled decisions and the rows captured by kind (after the decision, before a roll, after a roll) and
   `afterstate/mismatched` the replays that disagreed with the runner (always 0 so far: such rows are dropped);
-  `afterstate_value_loss_<kind>` is their value MSE beside `val_loss`. The `critic:<checkpoint>[:worlds]` player
-  (`ai/search/critic_argmax.py`) is the move whose afterstate that critic values highest.
+  `afterstate_value_loss_<kind>` is their value MSE beside `val_loss`, `afterstate_trained_<kind>` the rows trained
+  on. Under `--afterstate-advantage` the before-roll rows wait on a die and are never trained on (trained 0; owner,
+  2026-11-22), and a die right after another is one compound before-roll row. The `critic:<checkpoint>[:worlds][:exact]`
+  player (`ai/search/critic_argmax.py`) is the move whose afterstate that critic values highest; with `:exact` a move
+  whose position waits on a die is valued by the exact average over the roll's (compound) outcomes instead of the
+  critic read blind before the die.
 * With the restart pool (`--restart-pool-frac`, P48b, `ai/training/restart_pool.py`) the unsuffixed game
   series are the whole games alone, `*_restart` the restarted ones, and `restart/*` the pool: size by turn,
   admission rate and the openness of the admitted, continuations handed out, n at retirement, put-backs

@@ -250,3 +250,38 @@ gap in the table above.
 > 1% of die rolls, despite audit T-1's later-roll term). Both walks (the runner's and `walk_afterstates`) now keep
 > the first roll's after-state again as the second roll's before-roll row, with its outcomes, and `node_tensors`
 > pairs it as any later roll. The numbers above and pair 1's runs were taken before it, with that 1% left in.
+
+> **Exact chance, 2026-11-22 (owner's ruling: never train or read the critic directly at a state waiting on a die;
+> always the probability-weighted average over the roll's outcomes).** Under `--afterstate-advantage` the runner now
+> walks exactly (`bindings/chance_outcomes.hpp`, `walk_afterstates_exact`; `afterstate_critic.walk_afterstates(exact=True)`
+> the reference):
+>
+> * **No before-roll row is trained on or read.** A state waits on a die when it is at one or reaches one through
+>   single-choice steps alone; the before-roll rows are exactly those (kept at the die), and no other row is one.
+>   They are the advantage's nodes, valued by their outcomes' average; the value loss drops them
+>   (`afterstate_trained_before_roll` 0, the capture count unchanged).
+> * **Compound nodes.** A die right after another is one chance node: its outcomes are the second die's outcomes of
+>   each outcome of the first (probabilities multiplied, outcome states deduplicated, then merged by observation as
+>   before), the row after it is the state after the last die, and the state between is no row (V-4's extra row is
+>   gone under the flag). Equal to the nested brute force over every face (36 pairs for two dice) on every compound
+>   tested. A chain past 4 dice or 512 outcomes raises. Measured on the CPU:
+>
+>   | play | decisions | dice kept | compound | share of rolls | outcome states (mean / max) | after merging (mean / max) |
+>   |:---|---:|---:|---:|---:|---:|---:|
+>   | random | 192,000 | 34,655 | 312 | 0.90% | 10.6 / 27 | 6.8 / 12 |
+>   | R169 (E9) at 1,220M, sampled self-play | 96,000 | 11,118 | 71 | 0.64% | 16.7 / 41 | 9.2 / 12 |
+>
+>   No chain of three dice was met. A plain roll reads 2.9 (random) / 4.1 (trained) outcomes after merging, as before.
+> * **Cost.** The runner's capture with faces, CPU, 256 envs, per env step: 2.0 us against 1.7 us for the first walk
+>   (the extra is the probe of whether each outcome waits on another die), on a step of ~0.7 us alone.
+> * **Readers outside training.** The critic's-best-move player reads right after the move, so before a die: it takes
+>   the exact average behind `critic:<checkpoint>[:worlds]:exact` (default unchanged). The rollout root's leaves
+>   (`bindings/rollout_batch.cpp` `advance`: `Engine::auto_advance_step`, which rolls every die, or the turn-end park,
+>   which rolls none), the Gumbel root and MCTS (`settle` after every child step, forced by both search specs), PIMCTS
+>   (`drain_chance_nodes` before `_evaluate`) and the web page (its board is drained; its rollout is the same C++
+>   batch) never read at a die. Left as they are: in chance-only settle mode (PIMCTS, MCTS with `auto_advance=False`,
+>   the web board) a read can sit at a single-choice decision whose forced step leads to a die -- no leaderboard
+>   player does. The E9 behaviour digest is unchanged.
+> * R169 and every run without the flag train bit-identically (CPU, R169's flags, same seed, 4 updates: identical
+>   metrics, weights, optimizer, torch / numpy / game RNG states).
+
