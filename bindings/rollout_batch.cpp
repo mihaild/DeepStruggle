@@ -192,10 +192,26 @@ void RolloutBatch::advance(Row& r) const noexcept {
     // One chance node at a time, so the park is seen before it drains; it stops where the full drain
     // would otherwise.
     for (size_t k = 0; k < 256; ++k) {
-        if (at_turn_cleanup(r.state)) { r.parked = true; return; }
+        if (at_turn_cleanup(r.state) && !park_or_end(r)) return;
         if (cfg_.keyed) keyed::key(r.state, r.world_key, cfg_.keyed2);
         if (Engine::auto_advance_step(r.state, 1) == 0) return;
     }
+}
+
+bool RolloutBatch::park_or_end(Row& r) const noexcept {
+    // Turn 10's park is followed by final scoring, with no deal: play on to the end (audit S-8, 2026-11-22).
+    if (r.state.turn >= 10) return true;
+    // Elsewhere the turn end's first checks -- the military-ops penalty, the held scoring card -- are
+    // deterministic: a copy runs them, and where they end the game the row takes that exact result rather
+    // than the critic's reading of the park. A copy that goes on (to Eagle/Bear Has Landed's discard, which
+    // can still drop a held scoring card, or to the deal) is thrown away and the row parks.
+    GameState probe = r.state;
+    if (Engine::step(probe, MicroAction{DecisionType::ROLL_DIE, 0, 0, 0}) && Engine::is_terminal(probe)) {
+        r.state = probe;
+        return false;
+    }
+    r.parked = true;
+    return false;
 }
 
 void RolloutBatch::settle_and_mark(Row& r) noexcept {

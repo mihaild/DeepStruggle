@@ -423,6 +423,74 @@ def test_predeal_leaves_are_the_turn_end_park_of_the_decisions_turn() -> None:
             assert parks > 0                          # (2 boundaries come before this turn's end)
 
 
+SCORING = [c for c in range(1, 111) if ts.CardData.get_card_info(c)["is_scoring"]]
+
+
+def _last_us_action_round(seed: int) -> ts.GameState:
+    """The US choosing its card in the last action round of a turn before 10 (the USSR's rounds done), no
+    space-race privilege at the turn end, its own hand free of scoring cards."""
+    for s in range(seed, seed + 200):
+        runner = ts.VectorizedBatchRunner(1, s)
+        rng = np.random.default_rng(s)
+        for _ in range(3000):
+            if runner.get_terminals()[0]:
+                break
+            st = runner.get_state(0)
+            c = st.ctx()
+            last = 6 if int(st.turn) <= 3 else 7
+            if (st.current_phase == ts.Phase.ACTION_ROUND and int(st.turn) < 10 and int(st.action_round) == last
+                    and st.phasing_player == ts.Player.US and c.decision_player == ts.Player.US
+                    and c.decision_type == ts.DecisionType.SELECT_CARD and int(c.resolving_card) == 0
+                    and int(st.us_space_track) < 6 and int(st.ussr_space_track) < 6
+                    ):
+                out = st.clone()
+                for card in SCORING:
+                    if out.get_card_location(card) in (ts.CardLocation.HAND_US_UNKNOWN, ts.CardLocation.HAND_US_KNOWN):
+                        out.set_card_location(card, ts.CardLocation.DISCARD_PILE)
+                if _legal(out):
+                    return out
+            m = np.asarray(runner.get_action_masks())[0]
+            runner.step_flat_all([int(rng.choice(np.flatnonzero(m)))], True)
+    raise AssertionError("no such position")
+
+
+@pytest.mark.parametrize("stop", ["predeal", "earlier_predeal"])
+def test_a_turn_end_that_ends_the_game_is_that_terminal_not_a_park(stop: str) -> None:
+    """The USSR holds a scoring card the US can see (known: every world keeps it) when the US makes the turn's
+    last move: the turn end's held-card check ends the game for the US, deterministically. The playout takes
+    that exact result instead of parking for the critic (audit S-8)."""
+    st = _last_us_action_round(3)
+    held = next(c for c in SCORING if st.get_card_location(c) in (ts.CardLocation.DRAW_DECK, ts.CardLocation.DISCARD_PILE))
+    st.set_card_location(held, ts.CardLocation.HAND_USSR_KNOWN)
+    cands = _legal(st)[:3]
+    b = ts.RolloutBatch(horizon=30, shared_dice=True, guard=False, features=0, seed=5, stop=stop)
+    n = b.add(st, cands, 4)
+    assert n > 0
+    _play(b, seed=2)
+    term = b.row_terminal()
+    v = b.values()
+    ended = 0
+    for r in range(b.rows()):
+        s = b.row_state(r)
+        assert term[r], r                     # before the fix: parked at the turn end, a critic leaf
+        assert ts.Engine.is_terminal(s) and v[r] == pytest.approx(1.0 if int(s.victory_points) > 0 else
+                                                                  (-1.0 if int(s.victory_points) < 0 else 0.0))
+        ended += int(s.has_flag(ts.EffectBits.HELD_SCORING_LOSS))
+    assert ended > 0
+
+
+def test_turn_ten_has_no_park_the_playout_plays_to_final_scoring() -> None:
+    st = _last_us_action_round(7)
+    st.turn = 10
+    cands = _legal(st)[:3]
+    b = ts.RolloutBatch(horizon=4, shared_dice=True, guard=False, features=0, seed=6, stop="predeal")
+    assert b.add(st, cands, 4) > 0
+    _play(b, seed=4)
+    assert all(b.row_terminal())              # before the fix: parked before final scoring
+    for r in range(b.rows()):
+        assert ts.Engine.is_terminal(b.row_state(r))
+
+
 def test_a_bad_horizon_or_stop_is_refused() -> None:
     with pytest.raises(ValueError):
         ts.RolloutBatch(horizon=-1)

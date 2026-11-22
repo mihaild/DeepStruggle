@@ -175,6 +175,9 @@ are cited from elsewhere; keep them.
   of the two), `kEarlier` (the earlier: the turn's end when it comes within the horizon), `kPredeal`
   (the turn-end park after the last action, before the deal -- `at_turn_cleanup`, nobody's decision,
   read from the mover's side) or `kEarlierPredeal` (the earlier of the horizon and that park; P33).
+  Turn 10 has no park (final scoring follows, no deal: the playout plays to the end), and a park whose
+  deterministic turn-end checks -- military ops, a held scoring card -- end the game takes that exact
+  result as a terminal row instead of the critic's reading (audit S-8, 2026-11-22; `park_or_end`).
   Python: `RolloutBatch(..., stop="boundaries"|"turn"|"later"|"earlier")`; the page passes
   `ts_rollout_reset`'s seventh argument (0 / 1 / 2 / 3; 4 / 5 for the pre-deal stops, Python
   `"predeal"` / `"earlier_predeal"`). The batch runner records the same park from both sides when

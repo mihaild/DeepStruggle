@@ -87,8 +87,10 @@ inline bool at_turn_cleanup(const GameState& s) noexcept {
 // never inside the decision's turn. kEarlier: at the earlier of the two -- the turn's end when it comes
 // within `horizon` boundaries, else after `horizon` boundaries. kPredeal: at the turn-end park of the
 // decision's turn (at_turn_cleanup: after the last action, before the deal), nobody's decision, read from
-// the root mover's side; `horizon` is not read. kEarlierPredeal: the earlier of `horizon` boundaries and
-// that park.
+// the root mover's side; `horizon` is not read. Turn 10 has no park (its end is final scoring, no deal: the
+// playout plays to the end), and a park whose deterministic turn-end checks (military ops, a held scoring
+// card) end the game is that terminal, exactly, not a leaf (audit S-8, 2026-11-22). kEarlierPredeal: the
+// earlier of `horizon` boundaries and that park.
 enum class Stop : uint8_t { kBoundaries = 0, kTurnEnd = 1, kLater = 2, kEarlier = 3, kPredeal = 4,
                             kEarlierPredeal = 5 };
 
@@ -234,8 +236,12 @@ private:
     // candidate's index in the decision's list; a world in which one of them is illegal is dropped.
     size_t add_worlds(uint32_t position, size_t worlds, const uint8_t* hands);
     void settle_and_mark(Row& r) noexcept;
-    // Auto-advance; under a pre-deal stop it halts at the turn-end park and marks the row parked.
+    // Auto-advance; under a pre-deal stop it halts at the turn-end park and marks the row parked --
+    // except turn 10's, played on to final scoring, and a park whose deterministic turn-end checks end
+    // the game, which the row takes as its terminal (park_or_end).
     void advance(Row& r) const noexcept;
+    // At the park: true to play on through it (turn 10), false when the row parked or ended.
+    bool park_or_end(Row& r) const noexcept;
     bool at_stop(const Row& r) const noexcept;   // a row at its stop under cfg_.horizon and cfg_.stop
     uint16_t guarded_choice(const GameState& s, const float* logits, const uint8_t* mask,
                             uint16_t argmax, uint64_t world_key) const noexcept;
