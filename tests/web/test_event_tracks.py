@@ -24,9 +24,12 @@ CAPTURED_NAZI_SCIENTIST = 18
 CHOOSE_BRANCH = 6
 RED_SCARE = 31
 DE_STALINIZATION = 33
+EUROPE_SCORING = 2
 
 
-def _at_headline(us_card: int, ussr_card: int, defcon: int, vp: int) -> str:
+def _at_headline(us_card: int, ussr_card: int, defcon: int, vp: int, europe_to: int = 0) -> str:
+    """A saved position at turn 1's headline with these two cards; `europe_to` +1 / -1 gives that side 20 Influence
+    (and the other none) in every European country."""
     state = ts.GameState()
     ts.Engine.init_game(state, 12345)
     while state.current_phase == ts.Phase.SETUP:
@@ -40,6 +43,10 @@ def _at_headline(us_card: int, ussr_card: int, defcon: int, vp: int) -> str:
         state.set_card_location(card, loc)
     state.defcon = defcon
     state.victory_points = vp
+    if europe_to:
+        for c in range(84):
+            if ts.MapData.get_country_info(c)["region"] == 0:
+                state.set_country(c, 20 if europe_to > 0 else 0, 20 if europe_to < 0 else 0)
     return state.to_save_json()
 
 
@@ -60,6 +67,12 @@ def logged(tmp_path_factory: pytest.TempPathFactory) -> Dict[str, Any]:
         # the US, whose removals and placements the USSR then makes.
         "purge_first": {"save": _at_headline(DE_STALINIZATION, RED_SCARE, 5, 0),
                         "us": DE_STALINIZATION, "ussr": RED_SCARE, "finish": True},
+        # Europe Scoring headlined by the side that controls Europe: Fidel (2 Ops) first, then the win by Europe
+        # Control, which the engine's Event record books as 100 VP (E9) while the track moves to 20.
+        "europe_us": {"save": _at_headline(EUROPE_SCORING, FIDEL, 5, 3, europe_to=1),
+                      "us": EUROPE_SCORING, "ussr": FIDEL},
+        "europe_ussr": {"save": _at_headline(NUCLEAR_TEST_BAN, EUROPE_SCORING, 5, -2, europe_to=-1),
+                        "us": NUCLEAR_TEST_BAN, "ussr": EUROPE_SCORING},
     }
     spec = out / "cases.json"
     spec.write_text(json.dumps(cases))
@@ -121,3 +134,19 @@ def test_a_merged_line_is_numbered_only_when_one_step_made_it(logged: Dict[str, 
     assert step[roll] == 3
     assert step["  • Space Race: USSR 0 -> 1"] == 3
     assert step["  • Captured Nazi Scientist (#18) removed from the game"] is None
+
+
+def test_a_win_by_europe_control_is_said_as_that_win(logged: Dict[str, Any]) -> None:
+    """In-game Europe Control is booked as 100 VP (E9, `effect_bits::EUROPE_CONTROL_VP`, the region reward's reading):
+    the log says the win, beside the track's move to 20, never "+100 VP"."""
+    def headline_lines(case: str) -> List[str]:
+        # The click's own entry is the game's end; the headline entry holds what it did.
+        return next(e for e in logged[case]["entries"] if e["title"].startswith("Headlines: "))["lines"]
+
+    us = headline_lines("europe_us")
+    assert "  • Europe Scoring (#2): US controls Europe and wins" in us, us
+    assert "  • Victory Points: +3 (US) -> +20 (US) (+17 VP)" in us, us
+    assert [(t["card_id"], t["vp_delta"]) for t in logged["europe_us"]["event_tracks"][-1]] == [(EUROPE_SCORING, 100)]
+    ussr = headline_lines("europe_ussr")
+    assert "  • Europe Scoring (#2): USSR controls Europe and wins" in ussr, ussr
+    assert not any("100 VP" in d for d in us + ussr), us + ussr

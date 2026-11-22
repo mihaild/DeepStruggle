@@ -118,6 +118,7 @@
     "vp": "{{card}}（#{{id}}）：{{side}} +{{vp}} 胜利点数",
     "defcon": "{{card}}（#{{id}}）：核危机等级 {{defcon}}",
     "both": "{{card}}（#{{id}}）：{{side}} +{{vp}} 胜利点数，核危机等级 {{defcon}}",
+    "europeControl": "{{card}}（#{{id}}）：{{side}} 控制欧洲，获胜",
     "none": "{{card}}（#{{id}}）："
   },
   "roll": {

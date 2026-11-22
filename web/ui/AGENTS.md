@@ -271,8 +271,11 @@ web/ui/
      board's changes (`describeDeltas`, which also logs the Space Race track). When the click's Events moved VP or DEFCON in ways its before/after cannot show -- two
      headlines whose VP cancel, or more than one Event -- each gets a line of its own
      (`describeEventTracks`, from `clickEventTracks`; `ReplayStep.event_tracks` keeps them, and the
-     replay log shows them too); a lone Event that is the whole change adds nothing.
-     `tests/web/test_event_tracks.py` pins it on Nuclear Test Ban against Pershing II.
+     replay log shows them too); a lone Event that is the whole change adds nothing. The Event that
+     wins by Europe Control, which the engine's record books as 100 VP (E9) while the track moves to
+     20, is said as that win ("Europe Scoring (#2): US controls Europe and wins").
+     `tests/web/test_event_tracks.py` pins it on Nuclear Test Ban against Pershing II and on a
+     headlined Europe Scoring.
      When the click carried into the turn's end -- an action round that ends the turn stops on the
      turn's cleanup, resolved in the same click -- the turn's end (final VP, the military-ops reset,
      DEFCON, the next deal) is its own `TURN_END` entry, "End of turn N". Read from the end state,

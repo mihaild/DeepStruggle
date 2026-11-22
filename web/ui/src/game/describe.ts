@@ -279,10 +279,19 @@ export function spaceLine(side: string, from: number, to: number): LogLine {
 }
 
 /**
+ * Europe Control's VP as the engine's Event record books it (`effect_bits::EUROPE_CONTROL_VP`,
+ * engine/include/ts/constants.hpp; E9): an amount that only says "won by Europe Control" -- the VP
+ * track itself ends at +/-20. tests/web/test_event_tracks.py holds it to the WebAssembly engine.
+ */
+const EUROPE_CONTROL_VP = 100;
+
+/**
  * What each Event of a step did to VP and DEFCON, when the step's before/after cannot say it. The
  * second headline commit resolves both headlines: Nuclear Test Ban's +1 VP for the US and Pershing
  * II's +1 VP for the USSR net to no change, and the Tracks lines then say nothing at all. A lone
  * Event that accounts for the whole change is already told by those lines, so it adds nothing.
+ * The Event that wins by Europe Control is said as that win, not as its record's 100 VP beside the
+ * track's move to 20.
  */
 export function describeEventTracks(before: GameState, after: GameState,
                                     tracks: EventTrackState[] | undefined): LogLine[] {
@@ -292,8 +301,13 @@ export function describeEventTracks(before: GameState, after: GameState,
   const netVp = (after.victory_points ?? 0) - (before.victory_points ?? 0);
   const netDefcon = (after.defcon ?? 0) - (before.defcon ?? 0);
   if (tracks.length === 1 && vp === netVp && defcon === netDefcon) return [];
+  const europeWon = (after.flags ?? []).includes("EUROPE_CONTROL_WIN")
+    && !(before.flags ?? []).includes("EUROPE_CONTROL_WIN");
   return tracks.map(t => {
     const card = { card: cardArg(t.card_id, t.card_name || `Card #${t.card_id}`), id: t.card_id };
+    if (europeWon && Math.abs(t.vp_delta) === EUROPE_CONTROL_VP) {
+      return logLine("•", "log:eventTrack.europeControl", { ...card, side: sideArg(t.vp_delta > 0 ? "US" : "USSR") });
+    }
     const vpPart = t.vp_delta !== 0 ? { side: sideArg(t.vp_delta > 0 ? "US" : "USSR"), vp: Math.abs(t.vp_delta) } : null;
     const defconPart = t.defcon_delta !== 0 ? { defcon: signed(t.defcon_delta) } : null;
     const key = vpPart && defconPart ? "log:eventTrack.both" : vpPart ? "log:eventTrack.vp"

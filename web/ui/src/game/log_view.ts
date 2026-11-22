@@ -148,7 +148,8 @@ export function isCardMove(l: LogLine): boolean {
 /** A line that says the score moved: the VP track's change, or an Event's VP. */
 export function movesVp(l: LogLine): boolean {
   const k = l.msg.key;
-  return k === "log:change.vp" || k === "log:eventTrack.vp" || k === "log:eventTrack.both";
+  return k === "log:change.vp" || k === "log:eventTrack.vp" || k === "log:eventTrack.both"
+    || k === "log:eventTrack.europeControl";
 }
 
 /** A line that speaks of VP: `movesVp`, and a die whose outcome is put in VP (the Olympics won by

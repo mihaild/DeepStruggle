@@ -118,6 +118,7 @@
     "vp": "{{card}} (#{{id}}): {{side}} +{{vp}} VP",
     "defcon": "{{card}} (#{{id}}): DEFCON {{defcon}}",
     "both": "{{card}} (#{{id}}): {{side}} +{{vp}} VP, DEFCON {{defcon}}",
+    "europeControl": "{{card}} (#{{id}}): {{side}} controls Europe and wins",
     "none": "{{card}} (#{{id}}): "
   },
   "roll": {
