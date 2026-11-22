@@ -777,10 +777,12 @@ the whole human corpus, the observation golden (regenerated for E-16), the WebAs
 
 **Added to E9 the same day (owner, 2026-11-22):**
 
-* **Europe Control reads 40 VP** (`effect_bits::EUROPE_CONTROL_VP`), an amount that always means an instant win:
-  the observation's Europe region slot shows +/-2.0 (40 / 20; only that slot's clamp is widened, nothing else
-  reaches beyond about 0.5), the per-Event VP record (`last_event_tracks`, read by the region reward) books +/-40 for
-  the Event that wins by it (audit T-13: it booked 20 - the score before), and the scoring tap reports +/-40. The VP
+* **Europe Control reads 100 VP** (`effect_bits::EUROPE_CONTROL_VP`), an amount that always means an instant win:
+  the observation's Europe region slot shows +/-5.0 (100 / 20; only that slot's clamp is widened, nothing else
+  reaches beyond about 0.5), the per-Event VP record (`last_event_tracks`, read by the region reward) books +/-100 for
+  the Event that wins by it (audit T-13: it booked 20 - the score before), and the scoring tap reports +/-100.
+  It read 40 (+/-2.0) until E9's base reached 550M; the owner raised it to 100 in place, the same epoch, and the
+  base resumed on it. The VP
   track itself still ends at +/-20.
 * **The ending is classified from what the engine recorded** (`state_json::ending_reason`, audit T-10): CMC
   suicide, DEFCON 1 (own decision / opponent's -- unchanged), `held scoring card` (`HELD_SCORING_LOSS`, a new

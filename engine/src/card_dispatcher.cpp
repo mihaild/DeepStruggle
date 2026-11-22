@@ -363,7 +363,7 @@ bool recorded(GameState& state, uint8_t card, Run&& run) noexcept {
     const bool europe_before = state.has_flag(effect_bits::EUROPE_CONTROL_WIN);
     const bool done = run();
     int vp = state.victory_points - vp_before;
-    // Europe Control is booked as a fixed +/-40 (E9): the track's jump to +/-20 depended on the score before, so a
+    // Europe Control is booked as a fixed +/-100 (E9, `EUROPE_CONTROL_VP`): the track's jump to +/-20 depended on the score before, so a
     // region reward read 20 - VP_before as Europe's VP -- up to 40 for a winner behind, and a loss sized by the score
     // rather than by Europe (audit T-13, 2026-11-22).
     if (!europe_before && state.has_flag(effect_bits::EUROPE_CONTROL_WIN)) {

@@ -263,7 +263,7 @@ TEST(ScoringTest, TapReportsSoutheastAsiaAndAEuropeControlWin) {
     ts::Scoring::score_region(state, ts::Region::EUROPE);
     ts::scoring_tap = nullptr;
     ASSERT_EQ(state.victory_points, -20);
-    ASSERT_EQ(tap.swing[0], -ts::effect_bits::EUROPE_CONTROL_VP);   // E9: Europe Control reads 40, the track ends at 20
+    ASSERT_EQ(tap.swing[0], -ts::effect_bits::EUROPE_CONTROL_VP);   // E9: Europe Control reads 100, the track ends at 20
 }
 
 // Final Scoring reports every region it scores and the track as it began.

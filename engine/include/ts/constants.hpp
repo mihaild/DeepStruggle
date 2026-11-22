@@ -403,7 +403,7 @@ namespace effect_bits {
     constexpr uint64_t WARGAMES_END                = 1ULL << 51;
     // Europe Control's VP as every record of it reads (E9, owner 2026-11-22): an amount that always means an
     // instant win, whatever the score before -- the VP track itself still ends at +/-20.
-    constexpr int EUROPE_CONTROL_VP                = 40;
+    constexpr int EUROPE_CONTROL_VP                = 100;
 
     // Mask for flags that are cleared automatically at end of turn
     constexpr uint64_t TURN_CLEANUP_MASK           = CONTAINMENT_ACTIVE |

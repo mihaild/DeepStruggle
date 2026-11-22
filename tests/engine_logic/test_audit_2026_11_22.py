@@ -333,8 +333,8 @@ def _europe() -> List[int]:
     return [i for i in range(84) if ts.MapData.get_country_info(i)["region"] == 0]
 
 
-def test_t13_europe_control_is_booked_as_forty_whatever_the_score() -> None:
-    """Audit T-13 / E9: the Event that wins by Europe Control records +/-40 VP for Europe scoring, not the track's
+def test_t13_europe_control_is_booked_as_a_hundred_whatever_the_score() -> None:
+    """Audit T-13 / E9: the Event that wins by Europe Control records +/-100 VP for Europe scoring, not the track's
     jump to +/-20 (which depended on the score before); the game ends at 20 as Europe Control."""
     eu = card("Europe Scoring")
     for vp_before in (-15, 0, 12):
@@ -346,7 +346,7 @@ def test_t13_europe_control_is_booked_as_forty_whatever_the_score() -> None:
         step(s, CARD + eu - 1)
         sd = s.to_save_dict()
         tracks = [t for t in sd["last_event_tracks"] if t["card_id"] == eu]
-        assert tracks and tracks[0]["vp_delta"] == 40, (vp_before, tracks)
+        assert tracks and tracks[0]["vp_delta"] == 100, (vp_before, tracks)
         assert s.victory_points == 20 and str(ts.game_ending_reason(s)) == "Europe Control"
 
 
