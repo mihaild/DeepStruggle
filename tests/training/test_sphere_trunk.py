@@ -4,6 +4,7 @@ optimiser step; off by default, recorded in the config only when on and recovere
 residual blocks and the trunk norm rather than stacking on them."""
 
 import math
+from typing import Any, cast
 
 import pytest
 import torch
@@ -102,10 +103,10 @@ def test_the_output_scale_sets_the_heads_input_and_is_recovered_only_off_one() -
     assert not any("out_scale" in k for k in plain.state_dict())
 
 
-def _rows_unit(net: LadderNet) -> bool:
-    assert net.sphere is not None
-    return all(torch.allclose(lin.weight.norm(dim=1), torch.ones(lin.weight.shape[0]), atol=1e-5)
-               for block in net.sphere.blocks for lin in (block.w1, block.w2))
+def _rows_unit(net: torch.nn.Module) -> bool:
+    rows = [p for n, p in net.named_parameters() if n.startswith("sphere.") and n.endswith(("w1.weight", "w2.weight"))]
+    assert rows
+    return all(torch.allclose(p.norm(dim=1), torch.ones(p.shape[0]), atol=1e-5) for p in rows)
 
 
 def _one_step(net: LadderNet, opt: torch.optim.Optimizer) -> None:
@@ -121,10 +122,11 @@ def test_every_trainers_optimiser_re_projects_the_sphere() -> None:
     net = _sphere_net()
     _one_step(net, register_sphere_projection(torch.optim.AdamW(net.parameters(), lr=0.1), net))
     assert _rows_unit(net)
-    bc = BehavioralCloningTrainer(net, lr=0.1, device="cpu")
+    bc = BehavioralCloningTrainer(cast(Any, net), lr=0.1, device="cpu")
     _one_step(net, bc.optimizer)
     assert _rows_unit(net)
-    head_only = register_sphere_projection(torch.optim.AdamW(net.val_win_head.parameters(), lr=0.1), net)
+    heads = [p for n, p in net.named_parameters() if not n.startswith("sphere.")]
+    head_only = register_sphere_projection(torch.optim.AdamW(heads, lr=0.1), net)
     assert not head_only._optimizer_step_post_hooks
     raw = torch.optim.AdamW(net.parameters(), lr=0.1)
     _one_step(net, raw)
@@ -139,4 +141,4 @@ def test_the_weight_average_is_projected_back_to_the_sphere() -> None:
     for _ in range(3):
         _one_step(live, opt)
     ema.update(live, 500.0)
-    assert _rows_unit(ema.model)        # type: ignore[arg-type]
+    assert _rows_unit(ema.model)

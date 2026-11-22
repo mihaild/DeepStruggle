@@ -4,7 +4,7 @@ the parameter it was taken for -- by name when the names were saved, and from th
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Dict, List
 
 import pytest
 import torch
@@ -27,6 +27,12 @@ def _step(net: nn.Module, opt: torch.optim.Optimizer) -> Dict[str, torch.Tensor]
     opt.step()
     by_id = {id(p): n for n, p in net.named_parameters()}
     return {by_id[id(p)]: opt.state[p]["exp_avg"].clone() for g in opt.param_groups for p in g["params"]}
+
+
+def _names(opt: torch.optim.Optimizer, net: nn.Module) -> List[str]:
+    names = optimizer_param_names(opt, net)
+    assert names is not None
+    return names
 
 
 def _moments(net: nn.Module, opt: torch.optim.Optimizer) -> Dict[str, torch.Tensor]:
@@ -61,7 +67,7 @@ def test_named_states_map_by_name_and_the_default_state_is_untouched() -> None:
     src = make_optimizer(net, 1e-3, 1e-2, decay_norms_biases=False)
     want = _step(net, src)
     sd = src.state_dict()
-    names = optimizer_param_names(src, net)
+    names = _names(src, net)
     target = make_optimizer(net, 1e-3, 1e-2, lr_mults={"0.weight": 0.5})
     _load_optimizer_state(target, optimizer_state_in_model_order(sd, names, net.state_dict(), names))
     got = _moments(net, target)
@@ -76,7 +82,7 @@ def test_a_state_whose_names_or_shapes_do_not_fit_is_refused() -> None:
     net = _net()
     opt = make_optimizer(net, 1e-3, 1e-2)
     _step(net, opt)
-    names = optimizer_param_names(opt, net)
+    names = _names(opt, net)
     with pytest.raises(RuntimeError, match="names"):
         optimizer_state_in_model_order(opt.state_dict(), names[:-1] + ["nope"], net.state_dict(), names)
     swapped = names.copy()
