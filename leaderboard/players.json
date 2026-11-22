@@ -609,5 +609,23 @@
     },
     "description": "The B6 soup (11,520-11,600M) under the belief root: the raced 64-world keyed rollout root (k4, horizon 4, rule z2, stop earlier, its own leaves, keyed chance, aligned, box-4 headline, race 16) with each world's opponent hand dealt from the policy-likelihood belief over 2,048 hands (P35 3b), on the build with the 2026-11-01 headline-leak fix (a9e554a). Back on the board by the owner's ask (2026-11-17).",
     "report": null
+  },
+  "E8.1-A8-R132-S45@11160M+(S45,46,47)@11520..11600M~rollout(k=4,worlds=64,horizon=4,rule=z2,stop=earlier,leaf=own,chance=keyed2,aligned=true,box4=true,race=16)": {
+    "network": "E8.1-A8-R132-S45@11160M+(S45,46,47)@11520..11600M",
+    "inference": {
+      "kind": "rollout",
+      "k": 4,
+      "worlds": 64,
+      "horizon": 4,
+      "rule": "z2",
+      "stop": "earlier",
+      "leaf": "own",
+      "chance": "keyed2",
+      "aligned": true,
+      "box4": true,
+      "race": 16
+    },
+    "description": "B6's soup under the raced 64-world rollout root with keyed2 chance (the situation key packed with player bytes, bindings/keyed_chance.hpp): the keyed2-vs-keyed measurement on E9 (audit S-5, owner 2026-11-22)",
+    "report": null
   }
 }
