@@ -30,9 +30,8 @@ from typing import Dict, List, Optional, Sequence, Tuple, cast
 
 import ts_engine as ts
 from bindings.action_encoder import ActionEncoder
-from tools.lib.data_root import checkpoints_dir
 from tools.lib.engine_fingerprint import fingerprint as engine_fingerprint, require_fresh
-from tools.lib.game_stats import (BuildHistory, ModelFiles, RatedGame, ReplayContext, Seating, Step, SubmissionDict,
+from tools.lib.game_stats import (BuildHistory, RatedGame, ReplayContext, Seating, Step, SubmissionDict, model_files,
                                   decode_log, fit_rating, load_export, outcome, player_key, rated_game, rating_check,
                                   replay, summarize_submission, verify)
 from web.server.replay import ReplayLogger, replays_dir
@@ -44,7 +43,8 @@ WORKER_DIR = os.path.join(_ROOT, "web", "stats_worker")
 DATABASE = "ts-game-stats"
 CHECKPOINTS_HELP = ("where the models' checkpoints are (default: the shared data tree's checkpoints/): a game is "
                     "re-driven with each auto side seated with its model's rule bits, read from the checkpoint a "
-                    "record names; a game whose checkpoint is not there is unverifiable")
+                    "record names, or where it is not there from the ONNX the page loaded from Hugging Face "
+                    "(sha256-checked, cached in the data tree's hf_models/); with neither, the game is unverifiable")
 
 
 def cmd_fetch(a: argparse.Namespace) -> int:
@@ -87,7 +87,7 @@ def cmd_show(a: argparse.Namespace) -> int:
 
 def replay_context(a: argparse.Namespace) -> ReplayContext:
     """This build, the models' files under --checkpoints-dir, and this clone's git history."""
-    return ReplayContext(engine_fingerprint(), ModelFiles(a.checkpoints_dir or checkpoints_dir()), BuildHistory())
+    return ReplayContext(engine_fingerprint(), model_files(a.checkpoints_dir), BuildHistory())
 
 
 def _rebuild(sub: SubmissionDict, seats: Seating) -> str:

@@ -20,9 +20,8 @@ import subprocess
 import sys
 from typing import Any, Dict, List, Optional, Sequence, Tuple, cast
 
-from tools.lib.data_root import checkpoints_dir
 from tools.lib.engine_fingerprint import fingerprint as engine_fingerprint, require_fresh
-from tools.lib.game_stats import BuildHistory, ModelFiles, ReplayContext, SubmissionDict, rated_game, rating_check
+from tools.lib.game_stats import BuildHistory, ReplayContext, SubmissionDict, model_files, rated_game, rating_check
 from tools.lib.leaderboard import LeaderboardError, ROOT, load
 from tools.lib.playdek_estimate import (DEFAULT_PRIOR_GAMES, KEYED_DEFAULT_COMMIT, PRIOR_GAMES_CHOICES, Estimate,
                                         PlayedGame, estimate)
@@ -113,8 +112,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ap.add_argument("--default-prior-games", type=float, default=float(DEFAULT_PRIOR_GAMES),
                     help="the weight the page opens on, and the one written at the top level (one of --prior-games)")
     ap.add_argument("--checkpoints-dir", default=None,
-                    help="where the models' checkpoints are (default: the shared data tree's checkpoints/); a game "
-                         "whose model's checkpoint is not there is unverifiable (tools/game_stats.py rating)")
+                    help="where the models' checkpoints are (default: the shared data tree's checkpoints/); where a "
+                         "model's is not, the ONNX the page loaded from Hugging Face (tools/game_stats.py rating)")
     a = ap.parse_args(argv)
     if a.default_prior_games not in a.prior_games:
         ap.error("--default-prior-games must be one of --prior-games")
@@ -126,7 +125,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             rows = read_database()
         if not rows:
             raise LeaderboardError("the database holds no games")
-        ctx = ReplayContext(engine_fingerprint(), ModelFiles(a.checkpoints_dir or checkpoints_dir()), BuildHistory())
+        ctx = ReplayContext(engine_fingerprint(), model_files(a.checkpoints_dir), BuildHistory())
         played, left_out = counted_games(rows, ctx)
         cache: Dict[str, Optional[bool]] = {}
         board = load()

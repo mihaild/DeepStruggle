@@ -527,16 +527,24 @@ PYTHONPATH=.:build/release python tools/game_stats.py rating data/game_stats/gam
     are read from the model itself: the checkpoint the record names (`ts.checkpoint`, under
     `--checkpoints-dir`, default the shared `data/checkpoints/`), and where the ONNX the page played
     (the recorded sha256) lies beside it, that ONNX must be an export of that checkpoint and say the
-    same rule bits. A game whose checkpoint is not here is **unverifiable**, with the reason: its
-    seat would be a guess.
+    same rule bits. Where the checkpoint is not here (CI has none), the bits are read from the ONNX
+    the page loaded, fetched from its Hugging Face `source` (`hf:<repo>@<revision>:<path>`, cached in
+    the data tree's `hf_models/`) and required to hash to the recorded sha256. With neither -- or a
+    failed download, or a file that now hashes otherwise -- the game is **unverifiable**, with the
+    reason: its seat would be a guess.
   * **Person rules** (`PERSON_RULES_HISTORY`, from the git history of `seatSides`,
     `ts_obs_features_rules` and `obs_features::PERSON_RULES`): none before f383abd (2026-11-06; before
     d2cc85f there were no rule bits), `opp_event_gated` from f383abd, and
-    `opp_event_gated|own_event_gated|always_ask_discard` from 464bb90 (2026-11-11). Between d2cc85f and
+    `opp_event_gated|own_event_gated|always_ask_discard` from 464bb90 (2026-11-11). Two in-place
+    changes of 2026-11-18 changed whether **Missile Envy**'s giver is asked: f088816 asks under
+    always_ask_discard even with one candidate, and 4dd0ead ties on effective rather than printed Ops.
+    For a build before them the replay answers the question that build never asked with its one legal
+    answer -- the exchange the build made at once (`EnvyRules`); 24 games of 2026-11-14..19 need it. Between d2cc85f and
     f383abd the page seated a person with whichever model last analysed it: unverifiable. A build is
     placed from its engine fingerprint: `commits_by_fingerprint` hashes every engine-changing commit
     here with `fingerprint()`'s own rule (unchanged since before the first stored game), and the
-    entry that commit descends from is the build's -- this build's own `PERSON_RULES` for a game on
+    newest entry any commit with that fingerprint descends from is the build's (one tree can be several
+    commits: 7655378 is a rebased copy of 464bb90) -- this build's own `PERSON_RULES` for a game on
     this engine. A fingerprint no commit here has (the twilightstruggle.app deployments are built from
     a repository whose history is not here) is tried with every reproducible set, newest first,
     whatever the game's date: that repository had the 2026-11-11 rules before they were merged here,
@@ -582,8 +590,8 @@ PYTHONPATH=.:build/release python tools/game_stats.py rating data/game_stats/gam
 
   Its games pass the same check as `rating`, except that a game from another engine that is not
   verified here also counts if the Worker stamped it before `UNVERIFIED_BEFORE`: E7's games are wanted,
-  and nothing new can claim to predate that. `--checkpoints-dir` as for `rating`: where the models'
-  checkpoints are not (as on CI, which has none), every later game is unverifiable and left out. A player's estimate is its leaderboard Elo on the newest
+  and nothing new can claim to predate that. `--checkpoints-dir` as for `rating`: on CI, which has no
+  checkpoints, the models' rule bits come from their ONNX on Hugging Face. A player's estimate is its leaderboard Elo on the newest
   epoch's scale (an older epoch's through the newer one's anchor) + one shared offset + a deviation
   shared by its network + its own. Their priors are set by a weight (owner, 2026-11-17): the games
   between models count as `k` games against people, so the deviation's sd is what `k` games at even

@@ -41,8 +41,11 @@ from typing import (Any, Callable, Dict, Iterable, List, Literal, Mapping, Optio
 
 import numpy as np
 import onnx
+from huggingface_hub import hf_hub_download
 
 import ts_engine as ts
+from bindings.action_encoder import ActionEncoder
+from tools.lib.data_root import checkpoints_dir, data_path
 from tools.lib.engine_fingerprint import commits_by_fingerprint
 from tools.lib.game_step import drain_chance, step_checked
 from tools.lib.player_agent import NeuralAgent
@@ -285,18 +288,50 @@ def rule_names(bits: int) -> str:
 
 
 @dataclass(frozen=True)
+class EnvyRules:
+    """How a build's engine asked Missile Envy's giver -- the one question whose asking changed in place
+    after games were played, so a replay must answer it as that build did (`replay`).
+
+    `effective_ops`: ties are among the giver's highest *effective* Ops (4dd0ead, 2026-11-18, owner's
+    ruling); before, among the highest printed Ops. `asks_single`: under always_ask_discard the giver
+    is asked even when one card qualifies (f088816, 2026-11-18); before, that card was exchanged at
+    once. An engine that did not ask exchanged exactly the card the question's one answer gives
+    (f088816: "answering it makes the same exchange"), so a replay answers it itself, from the
+    rules, never from a guess."""
+    effective_ops: bool
+    asks_single: bool
+
+
+CURRENT_ENVY = EnvyRules(True, True)
+_PRINTED_ENVY = EnvyRules(False, False)
+MISSILE_ENVY = 49
+
+
+@dataclass(frozen=True)
 class PersonRules:
     """The rule bits the page seated a person's side with, from commit `since` on."""
     since: str
     #: None where what the page seated a person with cannot be reproduced.
     bits: Optional[int]
     why: str
+    envy: EnvyRules = _PRINTED_ENVY
+
+    @property
+    def name(self) -> str:
+        return rule_names(self.bits or 0) + ("" if self.envy == CURRENT_ENVY else
+                                              " (Missile Envy as before 4dd0ead)" if self.envy.asks_single else
+                                              " (Missile Envy as before f088816)")
 
 
 #: What a person's side played, by build, newest first, from the git history of web/ui/src/main.ts
 #: (`seatSides`), bindings/wasm/ts_engine_wasm.cpp (`ts_obs_features_rules`, the page's currentRules)
 #: and engine/include/ts/game_state.hpp (obs_features::RULES, PERSON_RULES).
 PERSON_RULES_HISTORY: Tuple[PersonRules, ...] = (
+    PersonRules("4dd0ead4662ef62e87df711a35dbeea8b0913a22", OPP_EVENT_GATED | OWN_EVENT_GATED | ALWAYS_ASK_DISCARD,
+                "Missile Envy's ties are the giver's highest effective Ops (2026-11-18)", CURRENT_ENVY),
+    PersonRules("f08881664c9b585c9bf74944e03ccd2bf5068da9", OPP_EVENT_GATED | OWN_EVENT_GATED | ALWAYS_ASK_DISCARD,
+                "always_ask_discard asks Missile Envy's giver even when one card qualifies (2026-11-18)",
+                EnvyRules(False, True)),
     PersonRules("464bb90916f72a6ca8144e1bdd439ca55b9d9d68", OPP_EVENT_GATED | OWN_EVENT_GATED | ALWAYS_ASK_DISCARD,
                 "PERSON_RULES gains own_event_gated and always_ask_discard (2026-11-11)"),
     PersonRules("f383abd28cfc57c3cb60442d3a388ace90e0a063", OPP_EVENT_GATED,
@@ -338,20 +373,51 @@ def _sha256_file(path: str) -> str:
     return h.hexdigest()
 
 
+#: Fetches `path` at `revision` of the Hugging Face repo `repo` into `cache_dir`; returns the local file.
+Download = Callable[[str, str, str, str], str]
+
+
+def hf_download(repo: str, path: str, revision: str, cache_dir: str) -> str:
+    return str(hf_hub_download(repo, path, revision=revision, cache_dir=cache_dir))
+
+
+def parse_hf_source(source: str) -> Optional[Tuple[str, str, str]]:
+    """(repo, revision, path) of a model source the page writes as hf:<repo>@<revision>:<path>
+    (web/ui/src/analysis/model.ts), None for any other source."""
+    if not source.startswith("hf:") or "@" not in source:
+        return None
+    repo, rest = source[3:].split("@", 1)
+    revision, sep, path = rest.partition(":")
+    return (repo, revision, path) if repo and ":" not in repo and revision and sep and path else None
+
+
+def _onnx_meta(path: str) -> Dict[str, str]:
+    return {p.key: p.value for p in onnx.load(path, load_external_data=False).metadata_props}
+
+
 class ModelFiles:
     """The obs_features bits of the models games were played with, read from each model itself.
 
     A submission names a model by its ONNX file's sha256, with the checkpoint it was exported from
-    (`ts.checkpoint`, relative to the checkpoints directory). The bits are read from that checkpoint's
-    weights (NeuralAgent: LadderNet's obs_features buffer). Where the ONNX the page loaded lies beside
-    it -- a file of the recorded sha256 -- the chain is checked too: that ONNX must name the checkpoint's
-    own sha256 (`ts.checkpoint_sha256`), and the rule bits the page read from its metadata
-    (`ts.obs_features`) must be the weights'. A checkpoint that is not here makes the game
-    unverifiable: its seat's rules would be a guess.
+    (`ts.checkpoint`, relative to the checkpoints directory) and where the page loaded it (`source`).
+
+    * The checkpoint, when it is here: the bits are read from its weights (NeuralAgent: LadderNet's
+      obs_features buffer). Where the ONNX the page loaded lies beside it -- a file of the recorded
+      sha256 -- the chain is checked too: that ONNX must name the checkpoint's own sha256
+      (`ts.checkpoint_sha256`), and the rule bits the page read from its metadata (`ts.obs_features`)
+      must be the weights'.
+    * Otherwise (CI has no checkpoints) the ONNX itself, from its Hugging Face source, downloaded into
+      `cache_dir` and required to hash to the recorded sha256: its `ts.obs_features` is what the page
+      read and seated.
+
+    Neither available -- no checkpoint here and no Hugging Face source, a failed download, a file of
+    another sha256 -- makes the game unverifiable: its seat's rules would be a guess.
     """
 
-    def __init__(self, root: str) -> None:
+    def __init__(self, root: str, *, cache_dir: Optional[str] = None, download: Optional[Download] = None) -> None:
         self.root = root
+        self.cache_dir = cache_dir or os.path.join(os.path.dirname(os.path.abspath(root)), "hf_models")
+        self._download: Download = download or hf_download
         self._known: Dict[str, int] = {}
 
     def features(self, sha: str, info: Optional[ModelInfoDict]) -> int:
@@ -360,19 +426,21 @@ class ModelFiles:
         if info is None:
             raise Unverifiable(f"model {sha[:12]} is not among the record's models")
         label, ck = info["label"], info["checkpoint"]
-        if not ck or os.path.isabs(ck) or ".." in pathlib.PurePath(ck).parts:
-            raise Unverifiable(f"model {label} names no checkpoint under the checkpoints directory ({ck!r})")
-        path = os.path.join(self.root, ck)
-        if not os.path.isfile(path):
-            raise Unverifiable(f"model {label}: its checkpoint {ck} is not in {self.root}, so the rule bits "
-                               f"its seat played cannot be read")
-        bits = int(NeuralAgent.from_checkpoint(path, device="cpu").obs_features)
+        safe = bool(ck) and not os.path.isabs(ck) and ".." not in pathlib.PurePath(ck).parts
+        path = os.path.join(self.root, ck) if safe else ""
+        bits = self._from_checkpoint(sha, label, ck, path) if path and os.path.isfile(path) else \
+            self._from_source(sha, label, ck, info["source"])
         if bits & int(ts.OBS_FEATURE_CANONICAL_LEARNED):
             raise Unverifiable(f"model {label} plays canonical_learned, whose order is the network's own logits at "
                                f"each run's start: a replay would have to run it")
+        self._known[sha] = bits
+        return bits
+
+    def _from_checkpoint(self, sha: str, label: str, ck: str, path: str) -> int:
+        bits = int(NeuralAgent.from_checkpoint(path, device="cpu").obs_features)
         onnx_path = os.path.splitext(path)[0] + ".onnx"
         if os.path.isfile(onnx_path) and _sha256_file(onnx_path) == sha:
-            meta = {p.key: p.value for p in onnx.load(onnx_path, load_external_data=False).metadata_props}
+            meta = _onnx_meta(onnx_path)
             exported_from = meta.get("ts.checkpoint_sha256")
             if exported_from is not None and exported_from != _sha256_file(path):
                 raise Unverifiable(f"model {label}: the ONNX the page played was exported from another "
@@ -381,8 +449,30 @@ class ModelFiles:
             if read & int(ts.OBS_FEATURES_RULES) != bits & int(ts.OBS_FEATURES_RULES):
                 raise Unverifiable(f"model {label}: the page read rule bits {read:#x} from its ONNX, the "
                                    f"checkpoint's weights hold {bits:#x}")
-        self._known[sha] = bits
         return bits
+
+    def _from_source(self, sha: str, label: str, ck: str, source: str) -> int:
+        missing = f"model {label}: its checkpoint {ck or '(none named)'} is not in {self.root}"
+        hf = parse_hf_source(source)
+        if hf is None:
+            raise Unverifiable(f"{missing}, and its source {source or '(a dropped file)'} is not on Hugging Face, "
+                               f"so the rule bits its seat played cannot be read")
+        repo, revision, file = hf
+        try:
+            local = self._download(repo, file, revision, self.cache_dir)
+        except Exception as e:   # whatever the hub or the network raised: the finding, with its reason
+            raise Unverifiable(f"{missing}, and downloading {source} failed: {type(e).__name__}: {e}") from e
+        got = _sha256_file(local)
+        if got != sha:
+            raise Unverifiable(f"{missing}, and {source} is now another file (sha256 {got[:12]}, the page played "
+                               f"{sha[:12]})")
+        return int(_onnx_meta(local).get("ts.obs_features", "0"))
+
+
+def model_files(checkpoints: Optional[str] = None) -> ModelFiles:
+    """The models' checkpoints under `checkpoints` (default: the shared data tree's checkpoints/), with
+    Hugging Face downloads cached in the data tree's hf_models/."""
+    return ModelFiles(checkpoints or checkpoints_dir(), cache_dir=data_path("hf_models"))
 
 
 class BuildHistory:
@@ -431,7 +521,7 @@ class ReplayContext:
 @dataclass(frozen=True)
 class BuildRules:
     """What a game's build seated a person with: the candidates to replay, newest first."""
-    candidates: Tuple[int, ...]
+    candidates: Tuple[PersonRules, ...]
     #: How they were chosen, for the verdict.
     basis: str
     #: Whether the build may have named endings as before E9 (PRE_E9_REASON_NAMES).
@@ -441,8 +531,8 @@ class BuildRules:
 def build_rules(sub: SubmissionDict, ctx: ReplayContext) -> BuildRules:
     """The person rules `sub`'s build seated, from its engine fingerprint.
 
-    This build: its own PERSON_RULES. A fingerprint some commit here hashes to: the PERSON_RULES_HISTORY
-    entry that commit descends from. Any other -- a build of a tree this clone lacks, such as the
+    This build: its own PERSON_RULES. A fingerprint some commits here hash to: the newest PERSON_RULES_HISTORY
+    entry any of them descends from (they share their sources). Any other -- a build of a tree this clone lacks, such as the
     twilightstruggle.app deployments, built from a repository whose history is not here -- every rule
     set the page has had that can be reproduced, newest first, whichever its date: that repository
     carried the 2026-11-11 person rules (464bb90, made for it) before they were merged here, and its
@@ -451,7 +541,8 @@ def build_rules(sub: SubmissionDict, ctx: ReplayContext) -> BuildRules:
     """
     fp = sub["build"]["engine_fingerprint"]
     if fp == ctx.fingerprint:
-        return BuildRules((int(ts.OBS_FEATURES_PERSON_RULES),), "this build", False)
+        return BuildRules((PersonRules("", int(ts.OBS_FEATURES_PERSON_RULES), "this build", CURRENT_ENVY),),
+                          "this build", False)
     eras: List[PersonRules] = []
     e9: List[Optional[bool]] = []
     commits = list(ctx.builds.commits(fp))
@@ -472,13 +563,15 @@ def build_rules(sub: SubmissionDict, ctx: ReplayContext) -> BuildRules:
             eras.append(era)
         e9.append(ctx.builds.descends(E9_REASONS_COMMIT, commit))
     if eras:
-        eras.sort(key=PERSON_RULES_HISTORY.index)
+        # Every commit here with this fingerprint has the same engine sources, so they hold every change
+        # any of them descends from: a rebased copy of a commit (7655378 is 464bb90's) descends from less
+        # than its twin, not from older rules. The newest era wins, and E9's names if any one has them.
+        era = min(eras, key=PERSON_RULES_HISTORY.index)
         where = f"engine of commit {commits[0][:10]}" + (f" and {len(commits) - 1} more" if len(commits) > 1 else "")
-        for era in eras:
-            if era.bits is None:
-                raise Unverifiable(f"{where}, from {era.since[:7]} on: {era.why}")
-        return BuildRules(tuple(cast(int, e.bits) for e in eras), where, not all(x is True for x in e9))
-    every = tuple(cast(int, e.bits) for e in PERSON_RULES_HISTORY if e.bits is not None)
+        if era.bits is None:
+            raise Unverifiable(f"{where}, from {era.since[:7]} on: {era.why}")
+        return BuildRules((era,), where, not any(x is True for x in e9))
+    every = tuple(e for e in PERSON_RULES_HISTORY if e.bits is not None)
     return BuildRules(every, "an engine no commit here has; every person rule set the page has had, newest first",
                       True)
 
@@ -496,6 +589,9 @@ class Seating:
     person: int
     #: Per step: (US, USSR) obs_features.
     seats: Tuple[Tuple[int, int], ...]
+    #: How the build asked Missile Envy's giver.
+    envy: EnvyRules = CURRENT_ENVY
+    name: str = ""
 
     def seat(self, state: ts.GameState, i: int) -> None:
         us, ussr = self.seats[i]
@@ -503,7 +599,8 @@ class Seating:
         state.seat_obs_features(ts.Player.USSR, ussr)
 
 
-def seating(sub: SubmissionDict, steps: Sequence[Step], person: int, models: ModelFiles) -> Seating:
+def seating(sub: SubmissionDict, steps: Sequence[Step], person: int, models: ModelFiles,
+            envy: EnvyRules = CURRENT_ENVY, name: str = "") -> Seating:
     """The seats of every step of `sub` with `person` on a person's side. Raises Unverifiable when a
     model's rule bits cannot be read, ValueError for a step naming a setting the record lacks."""
     seats: List[Tuple[int, int]] = []
@@ -511,7 +608,32 @@ def seating(sub: SubmissionDict, steps: Sequence[Step], person: int, models: Mod
         s = _setting(sub, i, st)
         auto = models.features(s["model"], sub["models"].get(s["model"])) if s["auto"] and s["model"] else person
         seats.append((auto if s["auto"] == "US" else person, auto if s["auto"] == "USSR" else person))
-    return Seating(person, tuple(seats))
+    return Seating(person, tuple(seats), envy, name or rule_names(person))
+
+
+def _unasked_envy_answer(state: ts.GameState, envy: EnvyRules, seats: Tuple[int, int]) -> Optional[int]:
+    """The flat action answering a Missile Envy giver's question the build's engine never asked, or None.
+
+    This engine asks the giver to choose among the highest effective-Ops cards, and under
+    always_ask_discard even when one qualifies. A build before 4dd0ead compared printed Ops -- the
+    giver's modifiers apply to every card alike and never lower a higher card below a lower one, so its
+    candidates are the printed-highest among these -- and one before f088816 asked only a real tie.
+    Where the build would have had one candidate and not asked, it exchanged that card at once."""
+    if envy == CURRENT_ENVY:
+        return None
+    ctx = state.ctx()
+    if int(ctx.decision_type) != int(ts.DecisionType.SELECT_CARD) or int(ctx.resolving_card) != MISSILE_ENVY:
+        return None
+    legal = {int(ActionEncoder.decode(state, int(f)).primary_id): int(f)
+             for f in np.flatnonzero(ActionEncoder.get_legal_mask(state))}
+    if not envy.effective_ops:
+        top = max(int(ts.CardData.get_card_info(c)["ops"]) for c in legal)
+        legal = {c: f for c, f in legal.items() if int(ts.CardData.get_card_info(c)["ops"]) == top}
+    if len(legal) != 1:
+        return None
+    # A single candidate: asked by a build after f088816 only when a person's seat played the bit.
+    asked = envy.asks_single and bool((seats[0] | seats[1]) & ALWAYS_ASK_DISCARD)
+    return None if asked else next(iter(legal.values()))
 
 
 class StepRefused(Exception):
@@ -535,6 +657,9 @@ def replay(sub: SubmissionDict, seed: int, steps: Sequence[Step], seats: Seating
     state = start_state(seed, sub["start_position"])
     for i, st in enumerate(steps):
         seats.seat(state, i)
+        while (answer := _unasked_envy_answer(state, seats.envy, seats.seats[i])) is not None:
+            step_checked(state, answer, context="Missile Envy's question the build did not ask")
+            drain_chance(state, context="Missile Envy's exchange")
         if on_step is not None:
             on_step(i, st, state)
         where = describe_step(state, i, len(steps), st)
@@ -595,7 +720,8 @@ def verify(sub: SubmissionDict, ctx: ReplayContext) -> Verdict:
         return Verdict("bad-log", str(e), other)
     try:
         rules = build_rules(sub, ctx)
-        candidates = [seating(sub, steps, person, ctx.models) for person in rules.candidates]
+        candidates = [seating(sub, steps, cast(int, era.bits), ctx.models, era.envy, era.name)
+                      for era in rules.candidates]
     except Unverifiable as e:
         return Verdict("unverifiable", said(str(e)), other)
     summary_ok = summarize_submission(sub) == sub["summary"]
@@ -604,7 +730,7 @@ def verify(sub: SubmissionDict, ctx: ReplayContext) -> Verdict:
         try:
             state = replay(sub, seed, steps, seats)
         except StepRefused as e:
-            failures.append(f"person rules {rule_names(seats.person)}: refused at {e}")
+            failures.append(f"person rules {seats.name}: refused at {e}")
             continue
         got = outcome(state)
         hash_ok = final_hash(state) == sub["final_hash"]
@@ -623,12 +749,12 @@ def verify(sub: SubmissionDict, ctx: ReplayContext) -> Verdict:
         if not summary_ok:
             problems.append("the page's summary differs from this one")
         if problems:
-            failures.append(f"person rules {rule_names(seats.person)}: " + "; ".join(problems))
+            failures.append(f"person rules {seats.name}: " + "; ".join(problems))
             continue
         if not other:
             return Verdict("ok", "", False, seats, True)
         renamed = f"; reason {want['reason']!r} is {got['reason']!r} here" if got["reason"] != want["reason"] else ""
-        return Verdict("ok", said(f"replays here with person rules {rule_names(seats.person)} ({rules.basis}){renamed}; "
+        return Verdict("ok", said(f"replays here with person rules {seats.name} ({rules.basis}){renamed}; "
                                   f"final position hash {'matches' if hash_ok else 'differs (informational)'}"),
                        True, seats, hash_ok)
     if not candidates:

@@ -52,10 +52,11 @@ def _mover(state: ts.GameState) -> str:
     return {ts.Player.US: "US", ts.Player.USSR: "USSR"}.get(state.ctx().decision_player, "")
 
 
-def play_seated(seed: int, auto_sides: List[str], model: int, person: int, *,
-                switch_at: Optional[int] = None) -> Tuple[List[Step], ts.GameState]:
+def play_seated(seed: int, auto_sides: List[str], model: int, person: int, *, switch_at: Optional[int] = None,
+                envy_single: Optional[List[int]] = None) -> Tuple[List[Step], ts.GameState]:
     """A whole game of random legal moves, seated as the page seats it: the auto-play side (setting 0's,
-    or setting 1's from step `switch_at`) with `model`, a person's side with `person`."""
+    or setting 1's from step `switch_at`) with `model`, a person's side with `person`. `envy_single`
+    collects the steps that answer a Missile Envy giver's question with one candidate."""
     rng = np.random.default_rng(seed)
     state = start_state(seed, None)
     steps: List[Step] = []
@@ -65,7 +66,12 @@ def play_seated(seed: int, auto_sides: List[str], model: int, person: int, *,
         state.seat_obs_features(ts.Player.US, model if auto == "US" else person)
         state.seat_obs_features(ts.Player.USSR, model if auto == "USSR" else person)
         mover = _mover(state)
-        flat = int(rng.choice(np.flatnonzero(ActionEncoder.get_legal_mask(state))))
+        legal = np.flatnonzero(ActionEncoder.get_legal_mask(state))
+        ctx = state.ctx()
+        if (envy_single is not None and len(legal) == 1 and int(ctx.resolving_card) == 49
+                and int(ctx.decision_type) == int(ts.DecisionType.SELECT_CARD)):
+            envy_single.append(len(steps))
+        flat = int(rng.choice(legal))
         action = ActionEncoder.decode(state, flat)
         st = Step(int(action.decision_type), action.primary_id, action.secondary_id, action.flags, 0,
                   "auto" if mover == auto else "human", False, mover, False, setting)

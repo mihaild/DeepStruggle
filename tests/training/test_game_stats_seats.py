@@ -26,7 +26,7 @@ from tests.game_stats_helpers import CHECKPOINT, MODEL, PERSON, SHA, play_seated
 from tools.lib.engine_fingerprint import commits_by_fingerprint, fingerprint
 from tools.lib.game_stats import (E9_REASONS_COMMIT, PERSON_RULES_HISTORY, BuildHistory, ModelFiles, ReplayContext,
                                   Seating, StepRefused, SubmissionDict, Unverifiable, decode_log, final_hash, outcome,
-                                  rating_check, replay, same_reason, seating, verify)
+                                  parse_hf_source, rating_check, replay, same_reason, seating, verify)
 
 HERE = fingerprint()
 OTHER = "f" * 64
@@ -133,8 +133,9 @@ def test_a_known_build_is_replayed_with_its_own_person_rules(seated_game: Dict[s
     """A fingerprint some commit here hashes to names the build's person rules; nothing else is tried."""
     sub = copy.deepcopy(seated_game)
     sub["build"]["engine_fingerprint"] = OTHER
-    newest, opp_era = PERSON_RULES_HISTORY[0], PERSON_RULES_HISTORY[1]
-    assert newest.bits == PERSON and opp_era.bits == OPP
+    newest = PERSON_RULES_HISTORY[0]
+    opp_era = next(e for e in PERSON_RULES_HISTORY if e.bits == OPP)
+    assert newest.bits == PERSON
 
     def builds(era_commit: str) -> BuildHistory:
         return BuildHistory({OTHER: ["b" * 40]}, lambda a, c: a in (era_commit, ""))
@@ -144,7 +145,7 @@ def test_a_known_build_is_replayed_with_its_own_person_rules(seated_game: Dict[s
     # Built before the page gave a person own_event_gated and always_ask_discard: this game, which
     # needs them, is not that build's.
     v = verify(cast(SubmissionDict, sub), _ctx(models, builds(opp_era.since)))
-    assert v.status == "other-engine" and "person rules opp_event_gated:" in v.detail, v.detail
+    assert v.status == "other-engine" and "person rules opp_event_gated (" in v.detail, v.detail
     assert "always_ask_discard" not in v.detail
 
 
@@ -254,3 +255,78 @@ def test_a_commits_engine_fingerprint_is_computed_from_git(tmp_path: pathlib.Pat
         tar.extractall(tmp_path, filter="data")
     index = commits_by_fingerprint(root)
     assert newest in index[fingerprint(tmp_path)]
+
+
+def test_a_hugging_face_source_is_parsed_as_the_page_writes_it() -> None:
+    assert parse_hf_source("hf:me/repo@main:_models/x@1..2M.onnx") == ("me/repo", "main", "_models/x@1..2M.onnx")
+    assert parse_hf_source("hf:me/repo@abc123:run/swa.onnx") == ("me/repo", "abc123", "run/swa.onnx")
+    for other in ("", "local:run/x.pt", "hf:me/repo", "hf:me/repo@main"):
+        assert parse_hf_source(other) is None
+
+
+def test_without_its_checkpoint_a_model_is_read_from_its_onnx_on_hugging_face(
+        seated_game: Dict[str, Any], tmp_path: pathlib.Path) -> None:
+    """CI has no checkpoints: the ONNX the page loaded is fetched from its source and must hash to the
+    record's sha256; its ts.obs_features is what the page seated. A failed download or another file
+    is unverifiable, never a guess."""
+    onnx_file = tmp_path / "served.onnx"
+    sha = _onnx_beside(onnx_file.with_suffix(".pt"), {"ts.obs_features": str(MODEL)})
+    asked: List[Tuple[str, str, str, str]] = []
+
+    def serve(repo: str, path: str, revision: str, cache_dir: str) -> str:
+        asked.append((repo, path, revision, cache_dir))
+        return str(onnx_file)
+
+    def broken(repo: str, path: str, revision: str, cache_dir: str) -> str:
+        raise OSError("no route to host")
+
+    sub = copy.deepcopy(seated_game)
+    sub["models"] = {sha: {"label": "net", "source": "hf:me/repo@abc:run/net.onnx", "checkpoint": "run/net.pt"}}
+    for s in sub["settings"]:
+        s["model"] = sha
+    sub["summary"]["models"] = [sha]
+    empty = str(tmp_path / "no-checkpoints")
+
+    def ctx(download: Any) -> ReplayContext:
+        return ReplayContext(HERE, ModelFiles(empty, cache_dir=str(tmp_path / "cache"), download=download),
+                             BuildHistory({}))
+
+    v = verify(cast(SubmissionDict, sub), ctx(serve))
+    assert v.status == "ok", v.detail
+    assert asked == [("me/repo", "run/net.onnx", "abc", str(tmp_path / "cache"))], "once per model, cached"
+    v = verify(cast(SubmissionDict, sub), ctx(broken))
+    assert v.status == "unverifiable" and "downloading hf:me/repo@abc:run/net.onnx failed" in v.detail
+    sub2 = copy.deepcopy(sub)
+    sub2["models"] = {SHA: sub["models"][sha]}
+    for s in sub2["settings"]:
+        s["model"] = SHA
+    sub2["summary"]["models"] = [SHA]
+    v = verify(cast(SubmissionDict, sub2), ctx(serve))
+    assert v.status == "unverifiable" and "is now another file" in v.detail
+
+
+def test_a_build_before_the_missile_envy_changes_did_not_ask_a_single_candidate(models: ModelFiles) -> None:
+    """f088816 (2026-11-18) made always_ask_discard ask Missile Envy's giver even with one candidate;
+    a game from a build before it has no such step. The replay answers the question that build never
+    asked -- its one legal answer, the exchange that build made at once -- and only for such a build."""
+    for seed in range(1, 200):
+        single: List[int] = []
+        steps, state = play_seated(seed, ["US"], MODEL, PERSON, envy_single=single)
+        if single:
+            break
+    else:
+        raise AssertionError("no seed in 1..199 plays Missile Envy with one candidate")
+    old = [st for i, st in enumerate(steps) if i not in single]
+    sub = cast(SubmissionDict, submission(seed, old, state, ["US"], OTHER))
+    eras = {e.since: e for e in PERSON_RULES_HISTORY if e.since}
+    before, after = "464bb90916f72a6ca8144e1bdd439ca55b9d9d68", "f08881664c9b585c9bf74944e03ccd2bf5068da9"
+
+    def built_after(commit: str) -> BuildHistory:
+        order = list(eras)
+        return BuildHistory({OTHER: ["b" * 40]}, lambda a, c: a == "" or (a in order and order.index(a) >= order.index(commit)))
+
+    v = verify(sub, _ctx(models, built_after(before)))
+    assert v.status == "ok" and "Missile Envy as before f088816" in v.detail, v.detail
+    assert verify(sub, _ctx(models, built_after(after))).status == "other-engine"
+    # This build's own record of the same game holds the question and its answer.
+    assert verify(cast(SubmissionDict, submission(seed, steps, state, ["US"], HERE)), _ctx(models)).status == "ok"
