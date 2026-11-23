@@ -34,6 +34,7 @@ import torch.nn.functional as F
 
 import ts_engine as ts
 from ai.models.ladder_net import LadderNet, create_ladder_net, ladder_config_from_state_dict
+from ai.models.head_registry import refuse_side_split
 from ai.models.hyperspherical import register_sphere_projection
 from ai.training.generic_trainer import _resolve_run_dir
 from ai.training.npz_mmap import load_npz_mmap
@@ -270,6 +271,7 @@ def run_value_fit(cfg: ValueFitConfig, run_name: Optional[str], description: Opt
     lcfg = ladder_config_from_state_dict(sd)
     if lcfg is None:
         raise SystemExit(f"{cfg.init}: value fit takes a LadderNet checkpoint")
+    refuse_side_split(lcfg, "the value fit")
     if cfg.arch:
         if not cfg.reinit:
             raise SystemExit("a changed architecture (--value-arch) trains from fresh weights: add --value-reinit")

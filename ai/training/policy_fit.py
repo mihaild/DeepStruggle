@@ -38,7 +38,7 @@ from bindings.action_encoder import ActionEncoder
 import torch.nn.functional as F
 
 import ts_engine as ts
-from ai.models.head_registry import HEAD_NORMS, POLICY_HEADS, VALUE_HEADS
+from ai.models.head_registry import HEAD_NORMS, POLICY_HEADS, VALUE_HEADS, refuse_side_split
 from ai.models.hyperspherical import register_sphere_projection
 from ai.models.ladder_net import create_ladder_net, ladder_config_from_state_dict
 from ai.training.generic_trainer import _resolve_run_dir
@@ -146,6 +146,7 @@ def run_policy_fit(cfg: PolicyFitConfig, run_name: Optional[str], description: O
     if lcfg is None:
         raise SystemExit(f"{cfg.init}: policy fit takes a LadderNet checkpoint")
     refuse_macro(lcfg, "policy fit")
+    refuse_side_split(lcfg, "the policy fit")
     if cfg.arch:
         if not cfg.reinit:
             raise SystemExit("a changed architecture (--policy-arch) trains from fresh weights: add --policy-reinit")

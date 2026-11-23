@@ -26,7 +26,9 @@ from tools.lib.player_agent import NeuralAgent
 def checkpoint_architecture(path: str) -> str:
     """The class of the network the evaluation loader builds from this checkpoint's weights."""
     agent = NeuralAgent.from_checkpoint(path, device="cpu")
-    return type(agent.model).__name__
+    split = ("side heads" if getattr(agent.model, "side_heads", False)
+             else "side nets" if getattr(agent.model, "ussr_net", None) is not None else "")
+    return type(agent.model).__name__ + (f" ({split})" if split else "")
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

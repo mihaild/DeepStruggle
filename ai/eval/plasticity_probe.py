@@ -31,7 +31,7 @@ import ts_engine as ts
 from bindings.action_encoder import ActionEncoder
 
 from ai.models.coldwar_net_v2 import POLICY_HEAD_MODULES, create_like
-from ai.models.head_registry import HEAD_NORMS, VALUE_HEADS
+from ai.models.head_registry import HEAD_NORMS, VALUE_HEADS, refuse_side_split
 from ai.models.hyperspherical import register_sphere_projection
 from ai.eval.loading import load_for_eval
 from bindings.ts_env import legal_mask, model_obs_features, observe
@@ -55,6 +55,7 @@ NOT_TRUNK = POLICY_HEAD + VALUE_HEADS + ("defcon_risk_head", "aux_own_head", "au
 
 def trunk_modules(model: nn.Module) -> List[str]:
     """The names of `model`'s trunk modules (top-level, in model order)."""
+    refuse_side_split(model, "the plasticity probe")
     return [name for name, _m in model.named_children() if name not in NOT_TRUNK]
 A = ActionEncoder.BASE_ACTION_SIZE
 

@@ -23,7 +23,7 @@ from typing import Callable, Dict, Iterable, List, Mapping, Optional
 import torch
 import torch.nn as nn
 
-from ai.models.head_registry import HEAD_NORMS, POLICY_HEADS, READOUTS
+from ai.models.head_registry import HEAD_NORMS, POLICY_HEADS, READOUTS, copy_prefixes
 
 #: The policy heads, by top-level module, and their head norms: what `--policy-head-lr-mult` scales (P39 arm 5: the
 #: heads saturate first). From the head registry (ai/models/head_registry.py).
@@ -31,7 +31,13 @@ POLICY_HEAD_PREFIXES: tuple[str, ...] = tuple(f"{n}." for n in POLICY_HEADS) + (
 
 #: The readouts muP starts at zero: the output layer of each policy and value head (the head registry's). The branch,
 #: play-mode, macro and region-attention heads' are already zero-initialised by LadderNet, so zeroing them is a no-op.
+#: A side-split network's USSR copies (`ussr_heads.` / `ussr_net.`) are zeroed with their originals.
 OUTPUT_LAYERS: tuple[str, ...] = READOUTS
+
+
+def policy_head_prefixes(model: nn.Module) -> tuple[str, ...]:
+    """POLICY_HEAD_PREFIXES under every copy of `model`'s heads (a side-split network's USSR copy too)."""
+    return tuple(pre + p for pre in copy_prefixes(model) for p in POLICY_HEAD_PREFIXES)
 
 
 def fan_in(p: torch.Tensor) -> int:
@@ -61,7 +67,8 @@ def base_shapes_for(config: Mapping[str, object], base_proj_dim: int, base_hidde
     the fusion width) change; depth (sphere and residual blocks), a sphere block's expansion factor and every other
     setting are the network's own, so a matrix whose fan-in is a multiple of the width (a sphere block's w2) keeps
     that multiple in the base and gets the same multiplier as its width's other matrices. `build(**config)` makes a
-    LadderNet on the CPU."""
+    LadderNet on the CPU. A side-split network's base is side-split too (the side flags are in its config), so each
+    USSR copy has its original's base shape and multiplier."""
     cfg = dict(config)
     # A token-main network has no grouped projections to set a base width for (P41 J5).
     cfg.update(entity_proj_dim=0 if cfg.get("token_main") else int(base_proj_dim), hidden_dim=int(base_hidden_dim))
@@ -71,9 +78,10 @@ def base_shapes_for(config: Mapping[str, object], base_proj_dim: int, base_hidde
 
 @torch.no_grad()
 def zero_output_layers(model: nn.Module, names: Iterable[str] = OUTPUT_LAYERS) -> List[str]:
-    """Zero the readout layers the model has (weight and bias); returns the ones zeroed."""
+    """Zero the readout layers the model has (weight and bias), in every copy of its heads (a side-split network's
+    USSR copy under its prefix); returns the ones zeroed."""
     done: List[str] = []
-    for name in names:
+    for name in [pre + n for pre in copy_prefixes(model) for n in names]:
         try:
             mod = model.get_submodule(name)
         except AttributeError:
@@ -90,7 +98,8 @@ def policy_head_lr_mults(model: nn.Module, mult: float) -> Dict[str, float]:
     """`mult` for every parameter of a policy head; empty at 1."""
     if mult == 1.0:
         return {}
-    return {n: float(mult) for n, _ in model.named_parameters() if n.startswith(POLICY_HEAD_PREFIXES)}
+    prefixes = policy_head_prefixes(model)
+    return {n: float(mult) for n, _ in model.named_parameters() if n.startswith(prefixes)}
 
 
 def combine_lr_mults(*mults: Optional[Mapping[str, float]]) -> Optional[Dict[str, float]]:

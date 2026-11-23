@@ -109,7 +109,9 @@ graph TD
 │   │                           # coldwar_net_v2.py (V2 + ColdWarNetMLP), coldwar_net.py (V1),
 │   │                           # kept so older checkpoints load; grow.py (in-place widening);
 │   │                           # head_registry.py (the one list of policy / value heads that muP,
-│   │                           # head L2, the head reset, head norms and grow all read)
+│   │                           # head L2, the head reset, head norms and grow all read, and the
+│   │                           # side copies of --ladder-side-heads / --ladder-side-nets: a USSR
+│   │                           # copy under ussr_heads. / ussr_net., rows routed by I_AM_US)
 │   ├── training/               # train.py (CLI behind tools/train.py), nash_pg.py, rollout_buffer.py,
 │   │                           # opponent_pool.py, behavioral_cloning.py, warmup_dataset_loader.py,
 │   │                           # human_corpus_dataset.py, search_workers.py, start_pool.py,

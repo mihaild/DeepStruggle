@@ -61,7 +61,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from ai.models.head_registry import VALUE_HEADS
+from ai.models.head_registry import VALUE_HEADS, refuse_side_split
 from ai.models.hyperspherical import register_sphere_projection
 from ai.models.ladder_net import create_ladder_net, ladder_config_from_state_dict
 from ai.training.generic_trainer import _resolve_run_dir
@@ -153,6 +153,7 @@ def run_q_fit(cfg: QFitConfig, run_name: Optional[str], description: Optional[st
     if lcfg is None:
         raise SystemExit(f"{cfg.init}: the Q fit takes a LadderNet checkpoint")
     refuse_macro(lcfg, "the Q fit")
+    refuse_side_split(lcfg, "the Q fit")
     model = create_ladder_net(dev, **lcfg)
     model.load_state_dict(sd, strict=True)
     base_net = copy.deepcopy(model).eval()          # the starting network: its logits are a baseline

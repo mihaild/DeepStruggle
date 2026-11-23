@@ -33,6 +33,7 @@ import ts_engine as ts
 
 from ai.eval.plasticity_probe import POLICY_HEAD, dormant
 from ai.models.coldwar_net_v2 import create_like, policy_head_norms
+from ai.models.head_registry import refuse_side_split
 from ai.eval.loading import load_for_eval
 from bindings.ts_env import legal_mask, model_obs_features, observe
 from tools.lib.corpus_driver import selfplay
@@ -102,6 +103,7 @@ def head_dormant(model: nn.Module, obs: torch.Tensor, masks: torch.Tensor, tau: 
 def measure(model: nn.Module, obs: torch.Tensor, masks: torch.Tensor, dtypes: Sequence[str],
             seed: int = 3737) -> Dict[str, Any]:
     """Every checkpoint measure of the module docstring, on one batch of positions."""
+    refuse_side_split(model, "network health")
     model.eval()
     stream: Dict[str, torch.Tensor] = {}
     norm = getattr(model, "trunk_norm", None)

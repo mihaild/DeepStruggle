@@ -156,6 +156,9 @@ def _ladder_config(args: argparse.Namespace) -> "dict[str, object] | None":
            if getattr(args, "ladder_logit_cap", 0.0) and getattr(args, "ladder_logit_cap_leak", 0.0) else {}),
         **({"logit_cap_leak_up": float(args.ladder_logit_cap_leak_up)}
            if getattr(args, "ladder_logit_cap", 0.0) and getattr(args, "ladder_logit_cap_leak_up", 0.0) else {}),
+        # Per-side parameters (owner, 2026-11-23). Recorded only when on.
+        **({"side_heads": True} if getattr(args, "ladder_side_heads", False) else {}),
+        **({"side_nets": True} if getattr(args, "ladder_side_nets", False) else {}),
     )
 
 
@@ -271,6 +274,19 @@ def build_parser() -> argparse.ArgumentParser:
                           "heads, as the base policy head has. Only those heads go dormant (the plateaued control, "
                           "R48 and the sphere trunk alike; 2026-10-26). Registered last, so it can be added at a "
                           "branch point with --resume.")
+    lad.add_argument("--ladder-side-heads", action="store_true",
+                     help="Per-side heads (owner, 2026-11-23): every head after the trunk -- the policy heads (dense, "
+                          "per-entity and their trunk context, region attention, branch, play-mode, macro), their head "
+                          "norms, the value heads and the training-only heads -- gets a second copy for the USSR rows, "
+                          "each row read by the side it is observed from (I_AM_US, global 61); the trunk and the input "
+                          "projections stay shared. Both copies start as the one network the flag's absence builds. "
+                          "The two sides shared their region preferences through the shared heads "
+                          "(research/log/E9_base_regression.md sections 7-8).")
+    lad.add_argument("--ladder-side-nets", action="store_true",
+                     help="Per-side networks (owner, 2026-11-23): two complete LadderNets of this configuration in one "
+                          "module and one checkpoint, the US rows through one and the USSR rows through the other "
+                          "(I_AM_US, global 61). Both start as the one network the flag's absence builds. Exclusive "
+                          "with --ladder-side-heads.")
     lad.add_argument("--ladder-res-post-norm", action="store_true",
                      help="A LayerNorm after each residual block's add (post-LN), so the residual stream is "
                           "renormalised at every block and cannot grow. With pre-LN blocks alone it grew in a few "
@@ -1460,6 +1476,11 @@ def main():
     if args.decisiveness_turns or args.window_provoked_defcon:
         parser.error("--decisiveness-turns and --window-provoked-defcon are retired (owner, 2026-11-22): only their "
                      "defaults (0 / off) are accepted")
+    if args.ladder_side_heads and args.ladder_side_nets:
+        parser.error("--ladder-side-heads and --ladder-side-nets are alternatives: separate networks already give each "
+                     "side its own heads")
+    if (args.ladder_side_heads or args.ladder_side_nets) and args.arch != "ladder":
+        parser.error("--ladder-side-heads / --ladder-side-nets are LadderNet options; they need --arch ladder")
     if getattr(args, "ladder_token_layers", 0) and not args.no_cuda_graphs:
         # The token path runs in bf16 under autocast, whose GEMMs take a cuBLASLt workspace; inside the first graph
         # capture it lands in that graph's private pool and later captures reuse its address, so the pool's first

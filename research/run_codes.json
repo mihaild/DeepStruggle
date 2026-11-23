@@ -949,6 +949,56 @@
      "placement_order"
     ]
    }
+  },
+  "A38": {
+   "description": "A8 with per-side heads (--ladder-side-heads; owner, 2026-11-23): every head after the trunk -- the dense policy head, the per-country head and its trunk context, the branch and play-mode heads, the value heads and the training-only heads -- has a second copy for the USSR rows, each row read by I_AM_US (global 61); the trunk and the grouped input projections stay shared. Both copies start as A8's one set, so at step 0 it is A8. The test of research/log/E9_base_regression.md sections 7-8: the two sides shared their region preferences mostly through pe_country",
+   "flags": {
+    "arch": "ladder",
+    "ladder_input_mode": "grouped",
+    "ladder_aggregation": "flatten",
+    "ladder_entity_dim": 16,
+    "ladder_entity_proj_dim": 256,
+    "ladder_card_self_attention": false,
+    "ladder_cross_attention": false,
+    "ladder_head_entities": "country",
+    "ladder_head_center": true,
+    "ladder_hidden_dim": 480,
+    "ladder_res_blocks": 0,
+    "ladder_card_lookup": false,
+    "ladder_card_lookup_heads": 0,
+    "ladder_card_lookup_dim": 0,
+    "ladder_card_lookup_identity_dim": 0,
+    "ladder_branch_head": true,
+    "ladder_play_mode_head": true,
+    "per_entity_heads": 64,
+    "drop_static": true,
+    "ladder_side_heads": true
+   }
+  },
+  "A39": {
+   "description": "A8 as two networks (--ladder-side-nets; owner, 2026-11-23): two complete A8s in one module and one checkpoint, the US rows through one and the USSR rows through the other (I_AM_US, global 61) -- nothing shared but the observation and the optimiser. Both start as the same A8, so at step 0 it is A8",
+   "flags": {
+    "arch": "ladder",
+    "ladder_input_mode": "grouped",
+    "ladder_aggregation": "flatten",
+    "ladder_entity_dim": 16,
+    "ladder_entity_proj_dim": 256,
+    "ladder_card_self_attention": false,
+    "ladder_cross_attention": false,
+    "ladder_head_entities": "country",
+    "ladder_head_center": true,
+    "ladder_hidden_dim": 480,
+    "ladder_res_blocks": 0,
+    "ladder_card_lookup": false,
+    "ladder_card_lookup_heads": 0,
+    "ladder_card_lookup_dim": 0,
+    "ladder_card_lookup_identity_dim": 0,
+    "ladder_branch_head": true,
+    "ladder_play_mode_head": true,
+    "per_entity_heads": 64,
+    "drop_static": true,
+    "ladder_side_nets": true
+   }
   }
  },
  "recipes": {

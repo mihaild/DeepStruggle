@@ -41,6 +41,7 @@ if _root not in sys.path:
 
 import ts_engine as ts  # noqa: E402
 
+from ai.models.head_registry import refuse_side_split  # noqa: E402
 from bindings.ts_env import TsVectorizedEnv  # noqa: E402
 from tools.lib.player_agent import NeuralAgent  # noqa: E402
 from tools.lib.engine_fingerprint import require_fresh  # noqa: E402
@@ -191,6 +192,7 @@ class _MLP(nn.Module):
 
 @torch.no_grad()
 def hidden(model: Any, obs: np.ndarray, dev: torch.device) -> torch.Tensor:
+    refuse_side_split(model, "the trunk probe")
     return torch.cat([model._encode(torch.from_numpy(obs[k:k + 4096]).float().to(dev))[0].float()
                       for k in range(0, obs.shape[0], 4096)])
 

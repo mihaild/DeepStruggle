@@ -107,14 +107,20 @@ OptT = TypeVar("OptT", bound=torch.optim.Optimizer)
 
 
 def project_sphere(net: nn.Module) -> None:
-    """`net`'s sphere-trunk weight rows back to unit norm; a no-op for a network without a sphere trunk."""
-    sphere = getattr(net, "sphere", None)
-    if isinstance(sphere, SphereTrunk):
+    """`net`'s sphere-trunk weight rows back to unit norm -- every sphere trunk in it, a --ladder-side-nets network's
+    USSR copy's too; a no-op for a network without one."""
+    for sphere in sphere_trunks(net):
         sphere.project()
 
 
-#: A sphere block's weight matrices in a state dict: `sphere.blocks.<i>.w1.weight` / `.w2.weight`.
-SPHERE_WEIGHT_KEY = re.compile(r"^sphere\.blocks\.\d+\.w[12]\.weight$")
+def sphere_trunks(net: nn.Module) -> list[SphereTrunk]:
+    """Every sphere trunk in `net`: its own, and a --ladder-side-nets network's USSR copy's."""
+    return [m for m in net.modules() if isinstance(m, SphereTrunk)]
+
+
+#: A sphere block's weight matrices in a state dict: `sphere.blocks.<i>.w1.weight` / `.w2.weight`, and under a
+#: --ladder-side-nets network's USSR copy (`ussr_net.sphere...`).
+SPHERE_WEIGHT_KEY = re.compile(r"^(ussr_net\.)?sphere\.blocks\.\d+\.w[12]\.weight$")
 
 
 def project_sphere_state(state: Dict[str, torch.Tensor]) -> int:
@@ -133,16 +139,18 @@ def register_sphere_projection(opt: OptT, net: nn.Module) -> OptT:
     """Re-project `net`'s sphere trunk after every step `opt` takes, when `opt` optimises any of the trunk's
     parameters (audit M-6): every optimiser that trains a sphere network -- the RL update (make_optimizer), BC, the
     human injector, search distillation, value / policy / Q fits -- goes through here, so the unit-norm invariant
-    holds wherever the step is taken. Returns `opt`; unchanged for a network without a sphere trunk."""
-    sphere = getattr(net, "sphere", None)
-    if not isinstance(sphere, SphereTrunk):
+    holds wherever the step is taken. Returns `opt`; unchanged for a network without a sphere trunk. Every sphere trunk
+    in `net` is re-projected (a --ladder-side-nets network has two)."""
+    spheres = sphere_trunks(net)
+    if not spheres:
         return opt
-    mine = {id(p) for p in sphere.parameters()}
+    mine = {id(p) for sp in spheres for p in sp.parameters()}
     if not any(id(p) in mine for g in opt.param_groups for p in g["params"]):
         return opt
 
     def _project(_opt: torch.optim.Optimizer, _args: Any, _kwargs: Any) -> None:
-        sphere.project()
+        for sp in spheres:
+            sp.project()
 
     opt.register_step_post_hook(_project)
     return opt

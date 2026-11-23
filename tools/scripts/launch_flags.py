@@ -125,6 +125,7 @@ _LADDER = {
     "sphere_carry_norm": "ladder_sphere_carry_norm",
     "logit_cap_leak": "ladder_logit_cap_leak", "logit_cap_leak_up": "ladder_logit_cap_leak_up",
     "region_attn_dim": "ladder_region_attn_dim", "region_attn_heads": "ladder_region_attn_heads",
+    "side_heads": "ladder_side_heads", "side_nets": "ladder_side_nets",
 }
 #: `ladder_config` keys that are not a `--ladder-*` flag, so they are not mapped: the network's
 #: fixed attention width, markers derived from other flags (the aux coefficients, --obs-features,

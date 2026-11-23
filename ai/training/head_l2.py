@@ -14,18 +14,18 @@ from typing import Dict, List, Mapping, Tuple
 import torch
 import torch.nn as nn
 
-from ai.models.head_registry import HEAD_NORMS, POLICY_HEADS, VALUE_HEADS
+from ai.models.head_registry import HEAD_NORMS, POLICY_HEADS, VALUE_HEADS, head_of
 
 #: The modules the term pulls toward their initial weights: the policy heads (the base head, the per-entity heads
 #: and their trunk context, region attention, the branch and play-mode heads), --ladder-head-norm's LayerNorms in
-#: them, and the value heads (the categorical one included) -- the head registry's (ai/models/head_registry.py).
-#: The trunk is left free.
+#: them, and the value heads (the categorical one included) -- the head registry's (ai/models/head_registry.py), in
+#: each side copy of a side-split network (`head_of`). The trunk is left free.
 HEAD_L2_MODULES: Tuple[str, ...] = POLICY_HEADS + (HEAD_NORMS,) + VALUE_HEADS
 
 
 def head_init_params(net: nn.Module) -> Dict[str, torch.Tensor]:
     """A detached copy of every parameter of the HEAD_L2_MODULES the network has, by name: theta_0."""
-    out = {n: p.detach().clone() for n, p in net.named_parameters() if n.split(".")[0] in HEAD_L2_MODULES}
+    out = {n: p.detach().clone() for n, p in net.named_parameters() if head_of(n) in HEAD_L2_MODULES}
     if not out:
         raise ValueError(f"{type(net).__name__} has none of the modules L2 toward the initial weights acts on "
                          f"({', '.join(HEAD_L2_MODULES)})")

@@ -26,7 +26,7 @@ import torch.nn.functional as F
 
 import ts_engine as ts
 
-from ai.models.coldwar_net_v2 import VP_LIMIT
+from ai.models.coldwar_net_v2 import VP_LIMIT, set_on_every_copy
 from ai.models.hyperspherical import register_sphere_projection
 from ai.search.batched_mcts import BatchedMCTS, BatchedMCTSConfig
 from ai.training.card_event_targets import aux_label
@@ -3112,7 +3112,7 @@ class NashPGTrainer(BaseNashPGTrainer):
         if self.bf16_fp32_heads:
             for _net in (self.active_net, self.reference_net, self.teacher_net):
                 if _net is not None:
-                    setattr(_net, "fp32_heads", True)
+                    set_on_every_copy(_net, "fp32_heads", True)     # a --ladder-side-nets copy reads its own
 
         total_loss_accum = 0.0
         policy_loss_accum = 0.0

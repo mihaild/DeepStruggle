@@ -46,6 +46,7 @@ import torch.nn as nn
 
 import ts_engine as ts
 from ai.eval.paired_playouts import apply_move, compare, decider, pair_start, paired_diff
+from ai.models.head_registry import refuse_side_split
 from ai.search.pimcts import acting_player
 from bindings.action_encoder import ActionEncoder
 from bindings.ts_env import model_obs_features
@@ -391,6 +392,7 @@ def tune(model_path: str, labels: Sequence[str], worlds: int, epochs: int, pair_
 
     torch.manual_seed(seed)
     net = NeuralAgent.from_checkpoint(model_path, device="cpu").model.eval()
+    refuse_side_split(net, "tuning the win head")
     feats = int(model_obs_features(net))
     rows = [r for r in read_jsonl(labels) if len(r["moves"]) >= 2]
     with torch.no_grad():

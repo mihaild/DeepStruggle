@@ -22,11 +22,16 @@ rebuilds a copy from that record rather than from a caller's argument list.
 
 `ColdWarNetMLP` already implements the M0 shape and predates this file; `input_mode="flat"`
 reproduces it. The older class is left alone so E3-era MLP checkpoints keep loading.
+
+**Per-side parameters** (owner, 2026-11-23; A38 / A39): `side_heads` gives every head after the trunk a USSR copy
+(`ussr_heads.*`), `side_nets` the whole network (`ussr_net.*`); each row goes through its own side's copy by I_AM_US
+(global 61). See the note where they are built, and `ai/models/head_registry.py` for how the tools see the copies.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple, cast
+import copy
+from typing import Any, Callable, Dict, Tuple, cast
 
 import torch
 import torch.nn as nn
@@ -37,7 +42,7 @@ import ts_engine as ts
 from ai.models.coldwar_net_v2 import (STATIC_BOARD_SLOTS, STATIC_CARD_SLOTS,
                                       ColdWarNetV2, pad_mask, static_input_mask)
 from ai.models.token_transformer import TokenTransformer
-from ai.models.head_registry import NORM_HEADS
+from ai.models.head_registry import HEAD_NORMS, NORM_HEADS, SIDE_HEAD_MODULES, SIDE_HEADS_COPY, SIDE_NET_COPY
 from ai.models.hyperspherical import SphereTrunk
 from bindings.action_encoder import ActionEncoder
 
@@ -49,6 +54,46 @@ PLAY_MODE_BLOCK = 5
 ACTIVE_CARD_SLOT = 13
 #: The card row's "in my hand" slot (card_slots::MY_HAND): the asymmetric token layout's hand slots read it.
 MY_HAND_SLOT = 1
+#: Global feature 61, I_AM_US: 1.0 when the observation is the US's, 0.0 the USSR's (engine/src/observation.cpp).
+#: A side-split network (--ladder-side-heads / --ladder-side-nets) routes each row by it; tests/training check it
+#: against the engine.
+I_AM_US_GLOBAL = 61
+
+
+def static_routing() -> bool:
+    """Whether the forward is being traced or captured at fixed shapes -- torch.compile, torch.export / ONNX, a JIT
+    trace or a CUDA-graph capture -- where a side-split network cannot split its batch by side (a data-dependent
+    shape) and runs every row through both copies instead, keeping each row's own side's output."""
+    if torch.compiler.is_compiling() or torch.compiler.is_exporting() or torch.jit.is_tracing():
+        return True
+    if torch.onnx.is_in_onnx_export():
+        return True
+    return torch.cuda.is_available() and torch.cuda.is_current_stream_capturing()
+
+
+def select_rows(us: torch.Tensor, a: Any, b: Any) -> Any:
+    """Per row, `a`'s value where `us` (B,) is true and `b`'s elsewhere: for a tensor, or for a tuple of tensors and
+    Nones (the same structure in both)."""
+    if isinstance(a, tuple):
+        return tuple(select_rows(us, x, y) for x, y in zip(a, b))
+    if a is None:
+        return None
+    assert isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor)
+    return torch.where(us.view(-1, *([1] * (a.dim() - 1))), a, b)
+
+
+def merge_rows(a: Any, b: Any, order: torch.Tensor) -> Any:
+    """`a`'s rows then `b`'s, put back in batch order (`order[i]`: the stacked row that is batch row i)."""
+    if isinstance(a, tuple):
+        return tuple(merge_rows(x, y, order) for x, y in zip(a, b))
+    if a is None:
+        return None
+    assert isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor)
+    return torch.cat([a, b], dim=0).index_select(0, order)
+
+
+#: The one-network implementations a side-split network routes each side's rows through (`LadderNet._routed`).
+RowFn = Callable[["LadderNet", torch.Tensor, "torch.Tensor | None"], Any]
 
 #: Countries the ownership head predicts: all 84 (P29 bet 2).
 #: Width of each optional observation block, by ts.OBS_FEATURE_* bit (engine/include/ts/game_state.hpp,
@@ -235,6 +280,8 @@ class LadderNet(ColdWarNetV2):
                  macro_influence: bool = False,
                  region_attn_dim: int = 0,
                  region_attn_heads: int = 4,
+                 side_heads: bool = False,
+                 side_nets: bool = False,
                  **kwargs: Any) -> None:
         if input_mode not in INPUT_MODES:
             raise ValueError(f"input_mode must be one of {INPUT_MODES}; got {input_mode!r}")
@@ -738,60 +785,174 @@ class LadderNet(ColdWarNetV2):
             nn.init.zeros_(_last.weight)
             nn.init.zeros_(_last.bias)
 
-    def _head_norm(self, name: str) -> nn.Module | None:
-        norms = self.head_norms
+        # Per-side parameters (owner, 2026-11-23; research/log/E9_base_regression.md sections 7-8: the two sides share
+        # their region preferences through the shared weights, mostly pe_country, and barely read I_AM_US). Each row is
+        # routed by the side it is observed from (global 61, I_AM_US), so the observation and the action space are
+        # unchanged. Both copies start as copies of the one network the same configuration builds without the option
+        # (deep copies; no random numbers drawn), so at step 0 the split network computes exactly the shared one and
+        # the two differ only in what they learn. The US copy keeps the plain names, so every key of the shared
+        # network keeps its name and meaning; the USSR copy sits under one prefix (ai/models/head_registry.py).
+        #   --ladder-side-heads: every head after the trunk -- the head registry's policy and value heads, the head
+        #     norms and the training-only heads -- has a USSR copy in `ussr_heads`; the trunk and the input
+        #     projections stay shared. One trunk pass, then the batch is split by side and each half runs through its
+        #     own heads (`_per_side`).
+        #   --ladder-side-nets: a complete second LadderNet of the same configuration, `ussr_net`, for the USSR rows.
+        #     The batch is split by side and each half runs through its own network (`_routed`).
+        #   Where shapes must be static (`static_routing`: torch.compile, CUDA-graph capture, ONNX export) a split is a
+        #   data-dependent shape, so every row runs through both copies instead and keeps its own side's output: the
+        #   same function, at the cost of the copied part twice.
+        if side_heads and side_nets:
+            raise ValueError("side_heads and side_nets are alternatives: side_nets already gives each side its own heads")
+        self.side_heads = bool(side_heads)
+        self.ussr_heads: nn.ModuleDict | None = None
+        self.ussr_net: LadderNet | None = None
+        if self.side_heads:
+            copies: Dict[str, nn.Module] = {}
+            for name in SIDE_HEAD_MODULES:
+                head = getattr(self, name, None)
+                if isinstance(head, nn.Module):
+                    copies[name] = copy.deepcopy(head)
+            self.ussr_heads = nn.ModuleDict(copies)
+        if side_nets:
+            with torch.random.fork_rng(devices=[]):       # the copy's own initialisation is overwritten below
+                twin = LadderNet(**self.ladder_config())
+            twin.load_state_dict(self.state_dict())
+            self.ussr_net = twin
+
+    # ------------------------------------------------------------------ per side
+
+    def is_us(self, obs: torch.Tensor) -> torch.Tensor:
+        """(B,) bool: which rows are observed from the US seat (I_AM_US, global 61)."""
+        return obs[:, self.GLOBAL_OFFSET + I_AM_US_GLOBAL] > 0.5
+
+    def _hd(self, name: str, s: int = 0) -> Any:
+        """The head module `name` of side copy `s` (0: the plain module, the US rows' under --ladder-side-heads;
+        1: the USSR rows' copy), or None when the network has no such head."""
+        if s == 0:
+            return getattr(self, name, None)
+        copies = self.ussr_heads
+        if copies is None:
+            raise ValueError("this network has no per-side head copies (--ladder-side-heads)")
+        return copies[name] if name in copies else None
+
+    def _per_side(self, obs: torch.Tensor, one: Callable[..., Any], h: torch.Tensor,
+                  tokens: tuple[torch.Tensor, ...] | None = None, mask: torch.Tensor | None = None) -> Any:
+        """`one(s, h, tokens, mask)` with each row's own side's head copy under --ladder-side-heads: the batch split by
+        side and each half through its copy, or, where shapes must be static (`static_routing`), every row through
+        both copies and each row's own side's output kept."""
+        if self.ussr_heads is None:
+            return one(0, h, tokens, mask)
+        us = self.is_us(obs)
+        if static_routing():
+            return select_rows(us, one(0, h, tokens, mask), one(1, h, tokens, mask))
+        i_us = torch.nonzero(us).squeeze(1)
+        i_ussr = torch.nonzero(~us).squeeze(1)
+        n_us = int(i_us.numel())
+        if n_us == obs.shape[0]:
+            return one(0, h, tokens, mask)
+        if n_us == 0:
+            return one(1, h, tokens, mask)
+
+        def part(s: int, i: torch.Tensor) -> Any:
+            return one(s, h.index_select(0, i), None if tokens is None else tuple(t.index_select(0, i) for t in tokens),
+                       None if mask is None else mask.index_select(0, i))
+
+        return merge_rows(part(0, i_us), part(1, i_ussr), torch.argsort(torch.cat([i_us, i_ussr])))
+
+    def _routed(self, obs: torch.Tensor, mask: torch.Tensor | None, fn: RowFn) -> Any:
+        """`fn(net, obs, mask)` -- a one-network implementation -- with each row through its side's network under
+        --ladder-side-nets, else through this one."""
+        twin = self.ussr_net
+        if twin is None:
+            return fn(self, obs, mask)
+        us = self.is_us(obs)
+        if static_routing():
+            return select_rows(us, fn(self, obs, mask), fn(twin, obs, mask))
+        i_us = torch.nonzero(us).squeeze(1)
+        i_ussr = torch.nonzero(~us).squeeze(1)
+        n_us = int(i_us.numel())
+        if n_us == obs.shape[0]:
+            return fn(self, obs, mask)
+        if n_us == 0:
+            return fn(twin, obs, mask)
+
+        def rows(i: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor | None]:
+            return obs.index_select(0, i), (None if mask is None else mask.index_select(0, i))
+
+        a = fn(self, *rows(i_us))
+        b = fn(twin, *rows(i_ussr))
+        return merge_rows(a, b, torch.argsort(torch.cat([i_us, i_ussr])))
+
+    def forward(self, obs: torch.Tensor, mask: torch.Tensor | None = None
+                ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        return self._routed(obs, mask, _forward_one)
+
+    def forward_with_risk(self, obs: torch.Tensor, mask: torch.Tensor | None = None
+                          ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        return self._routed(obs, mask, _forward_with_risk_one)
+
+    def forward_with_value_logits(self, obs: torch.Tensor, mask: torch.Tensor | None = None
+                                  ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
+        return self._routed(obs, mask, _forward_with_value_logits_one)
+
+    def forward_value(self, obs: torch.Tensor) -> torch.Tensor:
+        return self._routed(obs, None, _forward_value_one)
+
+    @torch.no_grad()
+    def defcon_risk(self, obs: torch.Tensor) -> torch.Tensor:
+        return self._routed(obs, None, _defcon_risk_one)
+
+    def _head_norm(self, name: str, s: int = 0) -> nn.Module | None:
+        norms = self._hd(HEAD_NORMS, s)
         if norms is None or name not in norms:
             return None
         return norms[name]
 
-    def _mlp_head(self, name: str, x: torch.Tensor) -> torch.Tensor:
+    def _mlp_head(self, name: str, x: torch.Tensor, s: int = 0) -> torch.Tensor:
         """A Linear -> GELU -> Linear head, with --ladder-head-norm's LayerNorm before the GELU when there is one."""
-        head = getattr(self, name)
+        head = self._hd(name, s)
         assert isinstance(head, nn.Sequential)
-        norm = self._head_norm(name)
+        norm = self._head_norm(name, s)
         if norm is None:
             return head(x)                         # exactly the head as it was, hooks and all
         return head[2](head[1](norm(head[0](x))))
+
+    def _trunk_heads(self, obs: torch.Tensor, *heads: Tuple[str, Tuple[int, ...]]) -> tuple[torch.Tensor, ...]:
+        """Training-only heads read off one trunk pass, each (name, shape) viewed as (B, *shape), each row from its own
+        side's copy."""
+        h, _attn, _tokens = self._encode(obs)
+        ctx, h, _tokens = self._heads_in(h, None)      # fix verification V-6.4: every head honours --bf16-fp32-heads
+        with ctx:
+            return self._per_side(obs, lambda s, h_, _t, _m: tuple(self._hd(name, s)(h_).view(-1, *shape)
+                                                                   for name, shape in heads), h)
 
     def forward_card_aux(self, obs: torch.Tensor) -> torch.Tensor:
         """The card-event predictions, (B, 110, CARD_AUX_DIM): per card, the standardised
         ops-arithmetic and event-outcome targets of `ai.training.card_event_targets`."""
         if not self.card_aux:
             raise RuntimeError("this network was built without the card-event head (--aux-card-events)")
-        h, _attn, _tokens = self._encode(obs)
-        ctx, h, _tokens = self._heads_in(h, None)      # fix verification V-6.4: every head honours --bf16-fp32-heads
-        with ctx:
-            return self.card_aux_head(h).view(-1, 110, CARD_AUX_DIM)
+        return self._routed(obs, None, lambda n, o, _m: n._trunk_heads(o, ("card_aux_head", (110, CARD_AUX_DIM)))[0])
 
     def forward_opp_legal(self, obs: torch.Tensor) -> torch.Tensor:
         """The opponent-legality logits, (B, 84, 2): per country, may the opponent place influence
         there (0) and coup there (1) at its next decision."""
         if not self.opp_legal_aux:
             raise RuntimeError("this network was built without the opponent-legality head (--aux-opp-legality)")
-        h, _attn, _tokens = self._encode(obs)
-        ctx, h, _tokens = self._heads_in(h, None)
-        with ctx:
-            return self.opp_legal_head(h).view(-1, 84, 2)
+        return self._routed(obs, None, lambda n, o, _m: n._trunk_heads(o, ("opp_legal_head", (84, 2)))[0])
 
     def forward_prior_gain(self, obs: torch.Tensor) -> torch.Tensor:
         """P46c: the learned part of the prior's gain, (B, 1), read off the trunk."""
         if not self.prior_gain:
             raise RuntimeError("this network was built without the prior-gain head (--critic-prior-gain learned)")
-        h, _attn, _tokens = self._encode(obs)
-        ctx, h, _tokens = self._heads_in(h, None)
-        with ctx:
-            return self.prior_gain_head(h)
+        return self._routed(obs, None, lambda n, o, _m: n._trunk_heads(o, ("prior_gain_head", (1,)))[0])
 
     def forward_aux(self, obs: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """The auxiliary predictions: ownership logits (B, 84, 3) -- mine / opponent's / neither --
         and the final VP margin (B, 1) in the mover's frame, VP / 20."""
         if not self.aux_heads:
             raise RuntimeError("this network was built without aux heads (--aux-ownership / --aux-vp-margin)")
-        h, _attn, _tokens = self._encode(obs)
-        ctx, h, _tokens = self._heads_in(h, None)
-        with ctx:
-            own = self.aux_own_head(h).view(-1, AUX_OWN_COUNTRIES, 3)
-            return own, self.aux_vp_head(h)
+        return self._routed(obs, None, lambda n, o, _m: n._trunk_heads(o, ("aux_own_head", (AUX_OWN_COUNTRIES, 3)),
+                                                                       ("aux_vp_head", (1,))))
 
 
     def _card_lookup(self, card_raw: torch.Tensor, pre: torch.Tensor,
@@ -978,6 +1139,8 @@ class LadderNet(ColdWarNetV2):
                if self.token_main else {}),
             **({"token_card_memory": self.token_card_memory} if self.token_card_memory else {}),
             **({"macro_influence": True} if self.macro_influence else {}),
+            **({"side_heads": True} if self.side_heads else {}),
+            **({"side_nets": True} if self.ussr_net is not None else {}),
         )
 
 
@@ -1010,10 +1173,10 @@ class LadderNet(ColdWarNetV2):
         return capped.to(logits.dtype)
 
     def _policy_logits(self, h: torch.Tensor,
-                       tokens: tuple[torch.Tensor, ...] | None) -> torch.Tensor:
+                       tokens: tuple[torch.Tensor, ...] | None, s: int = 0) -> torch.Tensor:
         """The per-entity logits (`_entity_policy_logits`), plus the branch head's correction on the
-        branch block when the network has one."""
-        logits = self._entity_policy_logits(h, tokens)
+        branch block when the network has one; every head from side copy `s`."""
+        logits = self._entity_policy_logits(h, tokens, s)
         if not (self.branch_head or self.play_mode_head):
             return logits
         assert tokens is not None
@@ -1024,23 +1187,23 @@ class LadderNet(ColdWarNetV2):
             # "Event or Ops for this card" reads this card's own token (zero when no card is active).
             x = torch.cat([x, (tokens[2] * active.unsqueeze(-1)).sum(dim=1)], dim=-1)
         zero = logits.new_zeros(())
-        pm = (self._mlp_head("play_mode_head_net", x).to(logits.dtype) if self.play_mode_head
+        pm = (self._mlp_head("play_mode_head_net", x, s).to(logits.dtype) if self.play_mode_head
               else zero.expand(logits.shape[0], PLAY_MODE_BLOCK))
-        br = (self._mlp_head("branch_head_net", x).to(logits.dtype) if self.branch_head
+        br = (self._mlp_head("branch_head_net", x, s).to(logits.dtype) if self.branch_head
               else zero.expand(logits.shape[0], BRANCH_BLOCK))
         a, b, e = ActionEncoder.PLAY_MODE_OFFSET, ActionEncoder.BRANCH_OFFSET, ActionEncoder.BASE_ACTION_SIZE
         return torch.cat([logits[:, :a], logits[:, a:a + PLAY_MODE_BLOCK] + pm,
                           logits[:, a + PLAY_MODE_BLOCK:b], logits[:, b:e] + br, logits[:, e:]], dim=-1)
 
     def _entity_policy_logits(self, h: torch.Tensor,
-                              tokens: tuple[torch.Tensor, ...] | None) -> torch.Tensor:
+                              tokens: tuple[torch.Tensor, ...] | None, s: int = 0) -> torch.Tensor:
         """The dense logits plus a per-entity correction, honouring the M2-family axes.
 
         The inherited version assumes both heads exist and that a trunk context is always fed.
         Here `head_entities` may switch one head off and `head_context` may remove the only path
         from the trunk into the correction -- so the concatenation is built rather than fixed.
         """
-        base = self.policy_head(h)
+        base = self._hd("policy_head", s)(h)
         if not self.per_entity_heads or tokens is None:
             return base
 
@@ -1054,8 +1217,11 @@ class LadderNet(ColdWarNetV2):
         # sample rather than concatenating it onto every entity.
         ctx: torch.Tensor | None = None
         if self.head_context:
-            assert self.pe_trunk is not None
-            ctx = self.pe_trunk(h)
+            pe_trunk = self._hd("pe_trunk", s)
+            assert pe_trunk is not None
+            ctx = pe_trunk(h)
+        pe_card, pe_country, pe_macro = self._hd("pe_card", s), self._hd("pe_country", s), self._hd("pe_macro", s)
+        region_attn = self._hd("region_attn", s)
 
         _A = ActionEncoder
         card_block = base[:, :_A.PLAY_MODE_OFFSET]
@@ -1063,19 +1229,19 @@ class LadderNet(ColdWarNetV2):
         country_block = base[:, _A.NODE_OFFSET:_A.BRANCH_OFFSET]
         gap_end = base[:, _A.BRANCH_OFFSET:_A.BASE_ACTION_SIZE] * 0.0
 
-        card_corr = (self._entity_out(self.pe_card, torch.cat([h_cards, card_nodes], dim=-1), ctx,
-                                      self._head_norm("pe_card"))
-                     if self.pe_card is not None else card_block * 0.0)
+        card_corr = (self._entity_out(pe_card, torch.cat([h_cards, card_nodes], dim=-1), ctx,
+                                      self._head_norm("pe_card", s))
+                     if pe_card is not None else card_block * 0.0)
         country_in = torch.cat([h_board, board_nodes], dim=-1)
-        if self.region_attn is not None:
-            country_in = self.region_attn(country_in)
-        country_corr = (self._entity_out(self.pe_country, country_in, ctx, self._head_norm("pe_country"))
-                        if self.pe_country is not None else country_block * 0.0)
+        if region_attn is not None:
+            country_in = region_attn(country_in)
+        country_corr = (self._entity_out(pe_country, country_in, ctx, self._head_norm("pe_country", s))
+                        if pe_country is not None else country_block * 0.0)
         parts = [card_corr, gap_mid, country_corr, gap_end]
         if base.shape[-1] > _A.BASE_ACTION_SIZE:      # P42's until-control slots
             macro_block = base[:, _A.BASE_ACTION_SIZE:]
-            parts.append(self._entity_out(self.pe_macro, country_in, ctx, self._head_norm("pe_macro"))
-                         if self.pe_macro is not None else macro_block * 0.0)
+            parts.append(self._entity_out(pe_macro, country_in, ctx, self._head_norm("pe_macro", s))
+                         if pe_macro is not None else macro_block * 0.0)
         return base + torch.cat(parts, dim=-1)
 
     # ----------------------------------------------------------------- encoder
@@ -1179,12 +1345,42 @@ class LadderNet(ColdWarNetV2):
         """The sphere trunk's weight rows back to unit norm (no-op without one); run after every optimiser step."""
         if self.sphere is not None:
             self.sphere.project()
+        if self.ussr_net is not None:
+            self.ussr_net.project_weights()
 
     def extract_features(self, obs: torch.Tensor, return_attn_weights: bool = False):
+        if self.ussr_net is not None:
+            # Each row's trunk from its side's network; the attention maps of two networks are not one map.
+            if return_attn_weights:
+                raise ValueError("a --ladder-side-nets network has two trunks; it returns no single attention map")
+            return self._routed(obs, None, lambda n, o, _m: n._encode(o)[0])
         h, attn, _tokens = self._encode(obs)
         if return_attn_weights:
             return h, attn
         return h
+
+
+def _forward_one(net: LadderNet, obs: torch.Tensor, mask: torch.Tensor | None) -> Any:
+    return ColdWarNetV2.forward(net, obs, mask)
+
+
+def _forward_with_risk_one(net: LadderNet, obs: torch.Tensor, mask: torch.Tensor | None) -> Any:
+    return ColdWarNetV2.forward_with_risk(net, obs, mask)
+
+
+def _forward_with_value_logits_one(net: LadderNet, obs: torch.Tensor, mask: torch.Tensor | None) -> Any:
+    return ColdWarNetV2.forward_with_value_logits(net, obs, mask)
+
+
+def _forward_value_one(net: LadderNet, obs: torch.Tensor, _mask: torch.Tensor | None) -> Any:
+    return ColdWarNetV2.forward_value(net, obs)
+
+
+def _defcon_risk_one(net: LadderNet, obs: torch.Tensor, _mask: torch.Tensor | None) -> Any:
+    h, _attn, _tokens = net._encode(obs)
+    ctx, h, _tokens = net._heads_in(h, None)
+    with ctx:
+        return net._per_side(obs, lambda s, h_, _t, _m: torch.sigmoid(net._hd("defcon_risk_head", s)(h_)), h)
 
 
 #: Slots 0..7 of a card row are the location one-hot; 8..13 are ops, rel_side, era, one_time,
@@ -1367,6 +1563,10 @@ def ladder_config_from_state_dict(sd: Dict[str, Any]) -> Dict[str, Any] | None:
         **({"token_card_memory": int(sd["tok_mem_slots_buf"])} if "tok_mem_slots_buf" in sd else {}),
         **({"macro_influence": True}
            if int(sd["policy_head.3.weight"].shape[0]) > ActionEncoder.BASE_ACTION_SIZE else {}),
+        # Per-side parameters: the USSR copy of the heads, or of the whole network, under its own prefix. Every key
+        # read above is the US copy's (the plain names), which has the same shape as the USSR one.
+        **({"side_heads": True} if any(k.startswith(SIDE_HEADS_COPY + ".") for k in sd) else {}),
+        **({"side_nets": True} if any(k.startswith(SIDE_NET_COPY + ".") for k in sd) else {}),
     )
 
 def create_ladder_net(device: torch.device | str, **config: Any) -> LadderNet:

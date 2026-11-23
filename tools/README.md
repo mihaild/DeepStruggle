@@ -106,6 +106,7 @@ policy and value restored exactly).
 | `--adv-norm-floor c`, `--entropy-ceiling H`, `--target-kl k` | P25's loop-closing levers: an advantage-std floor from its 20M-step EMA, a one-sided per-seat entropy ceiling, a per-seat early stop of the policy terms. Not combinable with `--wolf-seat-weight` |
 | `--entropy-normalize` | the bonus rewards entropy / log(legal count); `--entropy-coef 0.021` with it matches the default bonus on E4's decision mix |
 | `--ladder-token-main` (`--ladder-entity-proj-dim 0`, `--ladder-token-layers L`, `--ladder-token-dim t`, `--ladder-token-heads` 4, `--ladder-token-mlp-mult` 2) | P41 J5: the token transformer as the main path (`ai/models/token_transformer.py`): 195 tokens, pre-RMSNorm, an MLP per token type; the trunk reads the global token and each type's mean, the play-mode and branch heads the active card's token. `--ladder-token-chunk` for large minibatches (each pass checkpointed); `--ladder-token-compile` runs the blocks through `torch.compile`, the same function and weights; `--ladder-token-card-memory SLOTS` is the asymmetric layout (owner, 2026-11-04): the global token, the 84 countries and SLOTS hand slots (cards in my hand or in play; at most 12 were seen in random play, so 16) are the active tokens, the 110 cards a read-only memory each block attends by keys and values, about half the cost; more held cards than slots fails on the device |
+| `--ladder-side-heads` / `--ladder-side-nets` | per-side parameters (owner, 2026-11-23; A38 / A39 on A8): every head after the trunk (policy, value, head norms and the training-only heads) gets a second copy for the USSR rows (`ussr_heads.*`), or the whole network does (`ussr_net.*`, two LadderNets in one checkpoint); each row is routed by I_AM_US (global 61), so the observation and actions are unchanged. Both copies start as the shared network (step 0 plays as A8). Eager forwards split the batch by side (about A8's cost: on the CPU 1.0-1.1x); where shapes must be static -- the compiled update, CUDA-graph rollouts, ONNX -- every row runs through both copies (CPU: side heads ~1.7x, side nets ~2x A8's forward+backward). Parameters: A8 1.48M, A38 2.04M, A39 2.97M. Exclusive; a shared state does not resume into either, and the grow / widen resumes, the value / policy / Q fits and the trunk probes refuse them. Motivation: [E9_base_regression.md](../research/log/E9_base_regression.md) sections 7-8 |
 | `--head-l2-init-coef c` | P44 step 1's arm: c x Σ‖θ − θ₀‖² over the policy heads (base, per-entity and their trunk context, branch, play-mode, `--ladder-head-norm`'s norms) and the two value heads, θ₀ the run's initial weights, kept in the resume state (a resume without it is refused). Juliani and Ash 2024: L2 toward the initial weights with LayerNorm kept PPO's plasticity where resets failed. Logs `head_l2_init_dist` |
 | `--resume-fresh-optimizer` | With `--resume`: weights, π_ref, the pool and the clocks restored, every Adam moment and step count dropped (P44 0b: does a restart alone produce the distil-then-RL bleed). The saved optimiser state is never transformed or loaded (grow / widen flags included), so its group layout cannot matter; the launch's own groups and rates apply |
 | `--zero-avoid-coef c` | P41 J1: c x KL(uniform ‖ π) over the legal moves on the learner's rows, beside the entropy bonus; zero-avoiding, so no legal move's probability can collapse. Logs `zero_avoid_kl` ; `--zero-avoid-ramp-steps N` raises it from 0 over the first N steps; `--zero-avoid-scope setup` keeps it on the learner's setup placements only (P41's exploiters: openings stay reachable, the rest trains without it) |
@@ -207,7 +208,10 @@ and reads windows (`--window-steps`) with their win/loss base rates beside each 
 * **Growing in place.** `--resume-widen` widens the grouped projections by an integer factor;
   `--resume-grow-sphere` (with `--ladder-sphere-blocks N --ladder-sphere-carry-norm`) inserts a sphere
   trunk whose output keeps the stem's norm, at alpha 0 -- the identity (P39 arm 6). Both keep the
-  network's function, pi_ref's and the saved Adam moments; they combine in one resume.
+  network's function, pi_ref's and the saved Adam moments; they combine in one resume. Neither (nor
+  `--resume-grow-tokens` or growing into the macro view) is defined for a side-split network
+  (`--ladder-side-heads` / `--ladder-side-nets`), which refuses them; a shared state resumed into a
+  side-split network refuses too (its USSR copy would be missing).
 
 #### Naming the run
 
@@ -668,7 +672,9 @@ PYTHONPATH=.:build/release .venv/bin/python tools/export_onnx.py --checkpoint <c
 The file describes itself in ONNX `metadata_props` (`ts.obs_size`, `ts.action_size`,
 `ts.merged_influence`, `ts.checkpoint_sha256`, `ts.engine_fingerprint`, ...). Before writing,
 it proves the value heads ignore the mask and that ONNX Runtime agrees with torch (same favourite
-move, probabilities within 1e-3, values within 1e-4), else exits 1. ~12.6 MB per model. The local
+move, probabilities within 1e-3, values within 1e-4), else exits 1. ~12.6 MB per model. A side-split
+network (`--ladder-side-heads` / `--ladder-side-nets`) exports with every row through both copies,
+the same inputs and outputs, so the page runs it unchanged. The local
 workbench server calls the same `export()` on demand. `tools/onnx_to_checkpoint.py` goes the other
 way (a torch checkpoint rebuilt from an export, for searchers). The page itself is built by
 `tools/scripts/build_web.sh` (Emscripten from `tools/scripts/install_emsdk.sh`); rebuild it after
@@ -691,8 +697,9 @@ A *syntax* prior: it can only distil the policy that produced it, biases include
 Lists every `.pt` under a directory (default: the shared data tree's `checkpoints/`) with size, date
 and the architecture the evaluation loader (`tools.lib.player_agent.NeuralAgent`) builds from its
 weights; each is loaded in full on the CPU, so pass a run directory rather than the whole tree.
-`resume_*.pt` are listed as training state. A file that fails to load (a retired architecture
-included) is listed with its error and the command exits 1.
+`resume_*.pt` are listed as training state. A side-split network is listed as `LadderNet (side heads)` /
+`LadderNet (side nets)`. A file that fails to load (a retired architecture included) is listed with its
+error and the command exits 1.
 
 ```bash
 PYTHONPATH=.:build/release python tools/inspect_checkpoints.py [directory]

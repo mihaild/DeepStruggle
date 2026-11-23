@@ -1,13 +1,14 @@
 """ColdWarNetV2: Graph-Card Cross-Attention Neural Network for Twilight Struggle."""
 
 import contextlib
+from typing import Any, Callable
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import ts_engine as ts
-from ai.models.head_registry import POLICY_HEADS
+from ai.models.head_registry import POLICY_HEADS, copy_prefixes
 from bindings.action_encoder import ActionEncoder
 
 
@@ -477,18 +478,34 @@ class ColdWarNetV2(nn.Module):
                     None if tokens is None else tuple(t.float() for t in tokens))
         return contextlib.nullcontext(), h, tokens
 
-    def _value_scalars(self, h: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """(v_win, v_vp), from whichever value head this instance has.
+    def _hd(self, name: str, s: int = 0) -> Any:
+        """The head module `name` of side copy `s`, or None when the network has no such head. A ColdWarNetV2 has one
+        copy (s = 0); LadderNet's --ladder-side-heads adds the USSR rows' copy (s = 1)."""
+        if s:
+            raise ValueError(f"{type(self).__name__} has no per-side head copies")
+        return getattr(self, name, None)
+
+    def _per_side(self, obs: torch.Tensor, one: Callable[..., Any], h: torch.Tensor,
+                  tokens: tuple[torch.Tensor, ...] | None = None, mask: torch.Tensor | None = None) -> Any:
+        """The heads' outputs for `obs`: `one(s, h, tokens, mask)` computes them with head copy `s` from the trunk's
+        rows given. One copy here; LadderNet's --ladder-side-heads runs each side's rows through its own copy."""
+        return one(0, h, tokens, mask)
+
+    def _value_scalars(self, h: torch.Tensor, s: int = 0) -> tuple[torch.Tensor, torch.Tensor]:
+        """(v_win, v_vp), from whichever value head this instance has (of side copy `s`).
 
         Keeping the derivation here means every caller -- forward, forward_with_risk, the
         tournament code, the probes -- sees the same two tensors it always did, whichever head
         produced them.
         """
+        win_head = self._hd("val_win_head", s)
         if not self.categorical_value:
-            assert self.val_win_head is not None and self.val_vp_head is not None
-            return self.val_win_head(h), self.val_vp_head(h)
-        assert self.value_dist_head is not None and self.val_win_head is not None
-        probs = torch.softmax(self.value_dist_head(h), dim=-1)
+            vp_head = self._hd("val_vp_head", s)
+            assert win_head is not None and vp_head is not None
+            return win_head(h), vp_head(h)
+        dist_head = self._hd("value_dist_head", s)
+        assert dist_head is not None and win_head is not None
+        probs = torch.softmax(dist_head(h), dim=-1)
         support = self.value_support.to(probs.dtype)
         # E[VP] divided by VP_LIMIT, because `v_vp` is a *normalised* quantity by contract --
         # rollout_buffer stores returns_vp in [-1, 1] and bootstraps with
@@ -499,7 +516,7 @@ class ColdWarNetV2(nn.Module):
         v_vp = (probs * support).sum(dim=-1, keepdim=True) / float(VP_LIMIT)
         # v_win comes from its own regressed head, not from the sign mass of this
         # distribution -- see the note where the heads are built.
-        return self.val_win_head(h), v_vp
+        return win_head(h), v_vp
 
     def forward_value(self, obs: torch.Tensor) -> torch.Tensor:
         """forward()'s v_win alone: the trunk and the value heads, without the policy heads, whose output a
@@ -508,7 +525,7 @@ class ColdWarNetV2(nn.Module):
         h, _attn, tokens = self._encode(obs)
         ctx, h, tokens = self._heads_in(h, tokens)
         with ctx:
-            return self._value_scalars(h)[0]
+            return self._per_side(obs, lambda s, h_, _t, _m: self._value_scalars(h_, s)[0], h)
 
     def forward_with_value_logits(
         self, obs: torch.Tensor, mask: torch.Tensor | None = None
@@ -520,15 +537,20 @@ class ColdWarNetV2(nn.Module):
         """
         h, _attn, tokens = self._encode(obs)
         ctx, h, tokens = self._heads_in(h, tokens)
-        with ctx:
-            raw_logits = self._cap_logits(pad_to_mask(self._policy_logits(h, tokens), mask), mask)
-            masked_logits = mask_logits(raw_logits, mask)
-            v_win, v_vp = self._value_scalars(h)
+
+        def one(s: int, h: torch.Tensor, tokens: tuple[torch.Tensor, ...] | None, mask: torch.Tensor | None
+                ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
+            raw_logits = self._cap_logits(pad_to_mask(self._policy_logits(h, tokens, s), mask), mask)
+            v_win, v_vp = self._value_scalars(h, s)
             value_logits = None
             if self.categorical_value:
-                assert self.value_dist_head is not None
-                value_logits = self.value_dist_head(h)
-        return masked_logits, v_win, v_vp, value_logits
+                dist_head = self._hd("value_dist_head", s)
+                assert dist_head is not None
+                value_logits = dist_head(h)
+            return mask_logits(raw_logits, mask), v_win, v_vp, value_logits
+
+        with ctx:
+            return self._per_side(obs, one, h, tokens, mask)
 
     def two_hot(self, vp: torch.Tensor) -> torch.Tensor:
         """Project VP-valued targets onto the atom support as a two-hot distribution.
@@ -649,7 +671,7 @@ class ColdWarNetV2(nn.Module):
         return logits
 
     def _policy_logits(self, h: torch.Tensor,
-                       tokens: tuple[torch.Tensor, ...] | None) -> torch.Tensor:
+                       tokens: tuple[torch.Tensor, ...] | None, s: int = 0) -> torch.Tensor:
         """The action logits, per-entity where the action names an entity.
 
         Cards and countries occupy their own blocks; the rest -- resolution, roll die,
@@ -661,6 +683,8 @@ class ColdWarNetV2(nn.Module):
         as holding almost none of it. Here a country's logit is computed from that country's own
         token and raw slots, conditioned on the trunk.
         """
+        if s:
+            raise ValueError(f"{type(self).__name__} has no per-side head copies")
         base = self.policy_head(h)
         if not self.per_entity_heads:
             return base
@@ -715,11 +739,15 @@ class ColdWarNetV2(nn.Module):
         """
         h, _attn, tokens = self._encode(obs)
         ctx, h, tokens = self._heads_in(h, tokens)
+
+        def one(s: int, h: torch.Tensor, tokens: tuple[torch.Tensor, ...] | None, mask: torch.Tensor | None
+                ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            raw_logits = self._cap_logits(pad_to_mask(self._policy_logits(h, tokens, s), mask), mask)
+            v_win, v_vp = self._value_scalars(h, s)
+            return mask_logits(raw_logits, mask), v_win, v_vp
+
         with ctx:
-            raw_logits = self._cap_logits(pad_to_mask(self._policy_logits(h, tokens), mask), mask)
-            masked_logits = mask_logits(raw_logits, mask)
-            v_win, v_vp = self._value_scalars(h)
-        return masked_logits, v_win, v_vp
+            return self._per_side(obs, one, h, tokens, mask)
 
     def forward_with_risk(
         self, obs: torch.Tensor, mask: torch.Tensor | None = None
@@ -731,12 +759,15 @@ class ColdWarNetV2(nn.Module):
         """
         h, _attn, tokens = self._encode(obs)
         ctx, h, tokens = self._heads_in(h, tokens)
+
+        def one(s: int, h: torch.Tensor, tokens: tuple[torch.Tensor, ...] | None, mask: torch.Tensor | None
+                ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+            raw_logits = self._cap_logits(pad_to_mask(self._policy_logits(h, tokens, s), mask), mask)
+            v_win, v_vp = self._value_scalars(h, s)
+            return mask_logits(raw_logits, mask), v_win, v_vp, self._hd("defcon_risk_head", s)(h)
+
         with ctx:
-            raw_logits = self._cap_logits(pad_to_mask(self._policy_logits(h, tokens), mask), mask)
-            masked_logits = mask_logits(raw_logits, mask)
-            v_win, v_vp = self._value_scalars(h)
-            risk = self.defcon_risk_head(h)
-        return masked_logits, v_win, v_vp, risk
+            return self._per_side(obs, one, h, tokens, mask)
 
     @torch.no_grad()
     def defcon_risk(self, obs: torch.Tensor) -> torch.Tensor:
@@ -744,7 +775,7 @@ class ColdWarNetV2(nn.Module):
         h, _attn, _tokens = self._encode(obs)
         ctx, h, _tokens = self._heads_in(h, None)                          # fix verification V-6.4
         with ctx:
-            return torch.sigmoid(self.defcon_risk_head(h))
+            return self._per_side(obs, lambda s, h_, _t, _m: torch.sigmoid(self._hd("defcon_risk_head", s)(h_)), h)
 
     @torch.no_grad()
     def sample_action(
@@ -934,14 +965,18 @@ POLICY_HEAD_MODULES: tuple[str, ...] = POLICY_HEADS
 
 
 def policy_head_norms(model: nn.Module) -> dict[str, float]:
-    """The L2 norm of each policy-head module's parameters."""
+    """The L2 norm of each policy-head module's parameters, by module path: each side copy of a side-split network
+    (--ladder-side-heads / --ladder-side-nets) under its own prefix, e.g. `ussr_heads.pe_country`."""
     out: dict[str, float] = {}
-    for top in POLICY_HEAD_MODULES:
-        mod = getattr(model, top, None)
-        if isinstance(mod, nn.Module):
+    for pre in copy_prefixes(model):
+        for top in POLICY_HEAD_MODULES:
+            try:
+                mod = model.get_submodule(pre + top)
+            except AttributeError:
+                continue
             params = [p.detach().float() for p in mod.parameters()]
             if params:
-                out[top] = float(torch.sqrt(torch.stack([(p ** 2).sum() for p in params]).sum()))
+                out[pre + top] = float(torch.sqrt(torch.stack([(p ** 2).sum() for p in params]).sum()))
     return out
 
 
@@ -951,6 +986,14 @@ def fresh_policy_head_norms(model: nn.Module) -> dict[str, float]:
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(0)
         return policy_head_norms(create_like(model))
+
+
+def set_on_every_copy(net: nn.Module, name: str, value: Any) -> None:
+    """Set a run-time setting that is not a weight (`fp32_heads`, `token_chunk`) on `net` and on every network inside
+    it -- --ladder-side-nets' USSR copy, which reads its own."""
+    for m in net.modules():
+        if isinstance(m, ColdWarNetV2):
+            setattr(m, name, value)
 
 
 def create_like(model: nn.Module, device: torch.device | str = "cpu") -> ColdWarNetV2:

@@ -23,14 +23,15 @@ import torch.nn.functional as F
 
 import ts_engine as ts
 from ai.models.coldwar_net import ColdWarNet, create_coldwar_net
-from ai.models.head_registry import HEAD_NORMS
+from ai.models.head_registry import HEAD_NORMS, SIDE_COPIES, copy_prefixes, is_side_split
 from ai.models.coldwar_net_v2 import (POLICY_HEAD_MODULES, ColdWarNetV2, create_coldwar_net_v2, create_like,
-                                      fresh_policy_head_norms, policy_head_norms)
+                                      fresh_policy_head_norms, policy_head_norms, set_on_every_copy)
 from ai.models.grow import (MACRO_START_BIAS, POLICY_OUT, grow_macro_optimizer_state, grow_macro_state_dict,
                             grow_tokens_optimizer_state, grow_tokens_state_dict, widen_factor,
                             widen_optimizer_state, widen_state_dict)
 from ai.models.hyperspherical import SphereTrunk, register_sphere_projection
 from ai.models.ladder_net import LadderNet, create_ladder_net
+from ai.models.token_transformer import TokenTransformer
 from ai.models.mup import (base_shapes_for, combine_lr_mults, mup_lr_mults, policy_head_lr_mults,
                            zero_output_layers)
 from ai.rewards.region_reward import RegionTargetedReward
@@ -1543,7 +1544,7 @@ def save_resume_state(path: str, model: nn.Module, trainer: Any, iteration: int,
 
 #: Training-only heads that a resumed branch may add to a state written without them: each reads the
 #: trunk and is used only by its own loss, so forward() -- policy and value -- is unchanged by adding it.
-ADDABLE_HEADS: Tuple[str, ...] = ("card_aux_head.", "aux_own_head.", "aux_vp_head.",
+_ADDABLE: Tuple[str, ...] = ("card_aux_head.", "aux_own_head.", "aux_vp_head.",
                                  "opp_legal_head.",
                                  # zero-initialised, so the policy starts exactly as the saved one
                                  "branch_head_net.", "play_mode_head_net.",
@@ -1556,6 +1557,9 @@ ADDABLE_HEADS: Tuple[str, ...] = ("card_aux_head.", "aux_own_head.", "aux_vp_hea
                                  # --ladder-logit-cap: a constant, no weights; the greedy move is
                                  # unchanged and the sampled policy moves by the cap alone
                                  "logit_cap")
+#: ... and the same heads in a side-split network's USSR copy (--ladder-side-heads / --ladder-side-nets), added with
+#: their originals. The copies themselves are never addable: a shared state resumed into a side-split network refuses.
+ADDABLE_HEADS: Tuple[str, ...] = _ADDABLE + tuple(f"{c}.{p}" for c in SIDE_COPIES for p in _ADDABLE)
 
 
 def _load_allowing_added_heads(module: nn.Module, state: Dict[str, Any],
@@ -1625,10 +1629,12 @@ def add_rule_bits_to(net: nn.Module, bits: int) -> None:
     if bits & ~sum(OBS_FEATURE_BITS[n] for n in RULE_FEATURES):
         raise ValueError(f"only rule bits can be added to a trained network, not {bits:#x}")
     new = int(getattr(net, "obs_feature_bits", 0) or 0) | int(bits)
-    object.__setattr__(net, "obs_feature_bits", new)   # a plain int attribute, not a parameter or module
-    buf = getattr(net, "obs_features", None)
-    if isinstance(buf, torch.Tensor):
-        buf.fill_(new)
+    # The network and every network inside it (a --ladder-side-nets network's USSR copy records its own set).
+    for m in [net] + [m for m in net.modules() if m is not net and hasattr(m, "obs_feature_bits")]:
+        object.__setattr__(m, "obs_feature_bits", new)   # a plain int attribute, not a parameter or module
+        buf = getattr(m, "obs_features", None)
+        if isinstance(buf, torch.Tensor):
+            buf.fill_(new)
 
 
 def check_state_obs_features(model: nn.Module, state_dict: Mapping[str, Any], source: str) -> None:
@@ -1662,9 +1668,10 @@ def reset_policy_head(model: nn.Module, optimizer: torch.optim.Optimizer, seed: 
         torch.manual_seed(int(seed))
         fresh = create_like(model)
     done: List[str] = []
-    for top in POLICY_HEAD_MODULES + (HEAD_NORMS,):
-        mod, new = getattr(model, top, None), getattr(fresh, top, None)
-        if not (isinstance(mod, nn.Module) and isinstance(new, nn.Module)):
+    for top in [pre + t for pre in copy_prefixes(model) for t in POLICY_HEAD_MODULES + (HEAD_NORMS,)]:
+        try:                                   # every side copy's heads too (ai/models/head_registry.py)
+            mod, new = model.get_submodule(top), fresh.get_submodule(top)
+        except AttributeError:
             continue
         with torch.no_grad():
             for p, q in zip(mod.parameters(), new.parameters()):
@@ -1699,6 +1706,11 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
     A state written before the seed was recorded has none, and an explicit seed then wins --
     honouring the flag is less surprising than silently ignoring it.
     """
+    if is_side_split(model) and (widen or grow_tokens or grow_sphere or grow_macro):
+        # The growers rewrite the shared network's keys by name; a side-split network's USSR copy would be left as
+        # saved or refused key by key. Refused here, whole, rather than grown half-way.
+        raise ValueError("--resume-widen / --resume-grow-tokens / --resume-grow-sphere / growing into the macro view "
+                         "are not defined for a side-split network (--ladder-side-heads / --ladder-side-nets)")
     blob = torch.load(path, map_location=trainer.device, weights_only=False)
     if add_rules:
         # --resume-add-rules: the branch plays rule bits its weights were not trained with. A rule bit has no
@@ -1714,6 +1726,8 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
                 raise ValueError(f"--resume-add-rules: the resume state's {key} already plays "
                                  f"{', '.join(_obs_feature_names(had & add_rules))}")
             sd["obs_features"] = torch.tensor(had | add_rules, dtype=torch.int64)
+            if "ussr_net.obs_features" in sd:          # a --ladder-side-nets network's USSR copy records its own
+                sd["ussr_net.obs_features"] = torch.tensor(had | add_rules, dtype=torch.int64)
         print(f"[resume add rules] {', '.join(_obs_feature_names(add_rules))}: added to the network, pi_ref and "
               f"the pool; the weights are unchanged", flush=True)
     check_state_obs_features(model, blob["model_state_dict"], f"the resume state {path}")
@@ -2765,11 +2779,20 @@ def train_pipeline(
         if token_chunk:
             if not getattr(model, "token_layers", 0):
                 raise ValueError("--ladder-token-chunk needs --ladder-token-layers")
-            setattr(model, "token_chunk", int(token_chunk))
+            set_on_every_copy(model, "token_chunk", int(token_chunk))     # a --ladder-side-nets copy reads its own
         if token_compile:
             if not getattr(model, "token_main", False):
                 raise ValueError("--ladder-token-compile needs --ladder-token-main")
-            setattr(getattr(model, "tok_main"), "compiled", True)
+            for _m in model.modules():
+                if isinstance(_m, TokenTransformer):
+                    _m.compiled = True
+        if is_side_split(model):
+            _shared_n = sum(p.numel() for n, p in model.named_parameters()
+                            if not n.startswith(tuple(f"{c}." for c in SIDE_COPIES)))
+            _ussr_n = sum(p.numel() for p in model.parameters()) - _shared_n
+            print(f"[side split] {'every head' if getattr(model, 'side_heads', False) else 'the whole network'} per side, "
+                  f"routed by I_AM_US (global 61): {_ussr_n:,} parameters in the USSR copy beside {_shared_n:,} "
+                  f"(--ladder-side-{'heads' if getattr(model, 'side_heads', False) else 'nets'})", flush=True)
     elif arch == "mlp":
         model = create_coldwar_net_mlp(dev, categorical_value=categorical_value,
                                        drop_static=drop_static)
