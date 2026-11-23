@@ -1,13 +1,13 @@
 # The E9 base's regression after ~950M (2026-11-22..23)
 
-**Conclusion (2026-11-23): no defect -- the recipe.** The E9 base's weak 950 -> 1,200M stretch is ordinary for
-pure self-play (`--opponent-frac 0`, the flagship since B6): runs of that recipe family, trained before and after
-every change investigated here, mostly stall or lose ground against their own past over 950 -> 1,200M (40-53%),
-while every pooled run measured (`--opponent-frac 0.3`) gains (54-59%, section 5). Comparing the base against R169
--- one of the two pure-self-play runs that happened to improve there -- made a normal stretch look like a regression.
-The E9 engine, the 2026-11-22 fixes, the resume, torch.compile, the GPU and the toolchain are each ruled out (sections
-2-4). The base continues; whether pure self-play needs a pool (or a longer pi_ref horizon) to improve reliably at
-this stage is the owner's question.
+**Conclusion (2026-11-23): no defect -- the base's dip is the recipe's ordinary dynamics, pool or not.** Runs of
+this recipe family make real, temporary losses of strength -- 4-8 points against a fixed opponent, lasting ~300M
+steps -- with and without an opponent pool (section 6: R119, pooled, and B6, pure self-play, the same recipe and seed,
+each dip in 5 of 23 points against their own past, both around 1.3-1.5B). The E9 base's 950 -> 1,200M stretch is such a
+dip; comparing it with R169 -- which happened not to dip there -- made it look like a regression. The E9 engine, the
+2026-11-22 fixes, the resume, torch.compile, the GPU and the toolchain are each ruled out (sections 2-4). Section 5's
+first reading (pooled runs never dip) was wrong: it measured every pooled run at 1,200M only. Why a run this far from
+its plateau loses ground at all is open.
 
 All strength numbers are greedy (temperature 0) head-to-head scores of 80M SWAs (uniform weight averages of the
 window's 10M snapshots, `tools/scripts/average_weights.py`), 2,000 deals a side (+-0.8) unless marked 1,000
@@ -95,7 +95,7 @@ machine: the GPU's device-to-host latency fault overnight 2026-11-21/22 and the 
 * **Before the reboot too:** three pure-self-play runs trained before it, 1,120-1,200M vs own 870-950M (1,000 deals a
   side): R166 (both extra critics, compiled -- nearly R169) 47.7%, R165 47.4%, R167 44.3%.
 
-## 5. Pool or no pool
+## 5. Pool or no pool: a first, too narrow reading (superseded by section 6)
 
 | run, 1,120-1,200M vs own 870-950M (1,000 deals a side) | opponent pool | score |
 |:---|:---|---:|
@@ -115,3 +115,41 @@ Caveats: beating one's own past is what a pool trains for, so this metric flatte
 fixed-opponent check (section 2: S and the base lose ~4 points against B6's soup over the stretch, R169 holds) says
 the pure-self-play loss is real; and the pooled runs are older recipes on other seeds. P47 found the pooled
 recipe's bias at 11-14B steps, not here; the two findings are about different stages.
+
+## 6. The dip census: R119 (pool 0.3) and B6 (no pool), 600M -> 12B
+
+The 80M SWA ending at t against (a) the run's own 80M SWA ending at t - 250M and (b) a fixed independent opponent (the
+E7 R34 soup, greedy); 400 deals a side (+-1.7). Same recipe and seed 45; B6 is R119 with `--opponent-frac 0`.
+
+| t (M) | R119 vs own past | R119 vs fixed | B6 vs own past | B6 vs fixed |
+|---:|---:|---:|---:|---:|
+| 600 | 66.8 | 30.2 | 65.1 | 32.3 |
+| 700 | 59.2 | 29.9 | 61.0 | 40.9 |
+| 800 | 58.4 | 27.9 | 60.5 | 39.6 |
+| 900 | 52.9 | 28.9 | 53.0 | 39.2 |
+| 1000 | 54.9 | 26.9 | 56.4 | 42.6 |
+| 1100 | 55.1 | 26.9 | 51.1 | 42.6 |
+| 1200 | 55.9 | 33.6 | 53.4 | 45.6 |
+| 1300 | 56.5 | 32.9 | 45.9 | 42.2 |
+| 1400 | 46.7 | 29.1 | 42.6 | 37.7 |
+| 1500 | 45.6 | 34.7 | 45.7 | 43.1 |
+| 1600 | 52.3 | 33.1 | 60.8 | 42.0 |
+| 1700 | 53.1 | 36.4 | 59.1 | 47.0 |
+| 1800 | 55.1 | 37.8 | 55.4 | 49.1 |
+| 1900 | 54.4 | 36.4 | 52.9 | 48.4 |
+| 2000 | 50.4 | 38.1 | 54.1 | 48.3 |
+| 2500 | 52.2 | 39.8 | 50.9 | 50.8 |
+| 3000 | 53.4 | 45.4 | 47.6 | 56.2 |
+| 4000 | 52.9 | 46.5 | 50.0 | 59.1 |
+| 5000 | 49.7 | 53.2 | 51.6 | 60.9 |
+| 6000 | 48.0 | 53.1 | 53.3 | 60.4 |
+| 8000 | 51.0 | 58.1 | 51.1 | 63.6 |
+| 10000 | 50.2 | 58.8 | 50.0 | 64.2 |
+| 12000 | 48.8 | 61.6 | 46.7 | 65.1 |
+
+* Both runs dip: below 50% against their own past in 5 of 23 points each; both at 1,300-1,500M. Against the fixed
+  opponent the dips are real losses: B6 45.6 -> 37.7 (1,200 -> 1,400M), recovered by ~1,700M; R119 32.9 -> 29.1.
+* Pure self-play is the stronger run against the fixed opponent at every point after 600M (P47's finding).
+* No scheduled change explains the common timing: the learning rate is constant and the KL, clip and entropy settings
+  fixed; the logged statistics drift smoothly through the dip (the Event share of plays rises a little in both around
+  1.25-1.35B). The shared seed and recipe are the likelier reason the two runs dip together.
