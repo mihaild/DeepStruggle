@@ -153,3 +153,51 @@ E7 R34 soup, greedy); 400 deals a side (+-1.7). Same recipe and seed 45; B6 is R
 * No scheduled change explains the common timing: the learning rate is constant and the KL, clip and entropy settings
   fixed; the logged statistics drift smoothly through the dip (the Event share of plays rises a little in both around
   1.25-1.35B). The shared seed and recipe are the likelier reason the two runs dip together.
+
+## 7. What the dipping network gets worse at
+
+Five dips (the fresh rerun, the base and S over 950 -> 1,200M; R119 and B6 at 1,400 vs 1,150M) against five healthy
+stretches (R169, R119 and B6 at 1,200 vs 950M; B6 and R119 at 1,700 vs 1,450M), later SWA A vs earlier SWA B of the
+same run, 2,000 deals a side greedy (T = 1 where noted). Scripts, tables and the recorded games: the job's
+`tmp/dip_why/` (`summary.md` first).
+
+**Where the games are lost (net points of A's score):**
+
+| pair | A as US, Europe decided* | A as USSR, final scoring | A's score |
+|:---|---:|---:|---:|
+| fresh | -3.8 | -5.4 | 43.4 |
+| base | -3.7 | -5.5 | 42.7 |
+| S | -1.9 | -4.8 | 45.5 |
+| R119 1,400 | -3.0 | -3.5 | 45.4 |
+| B6 1,400 | -2.9 | -5.8 | 41.6 |
+| healthy (5 pairs) | -0.5 to -1.7 | -0.3 to -1.9 | 52.4 to 55.4 |
+
+\* Europe Control, or the loser holding a Europe Scoring card it cannot play without losing. The deficit sits in
+turns 7-11; turns 1-6 are about even; DEFCON, Wargames and early endings carry none.
+
+**What changed in the policy (same positions, A minus B).** Every dip moves both seats from placing influence to
+realigning and couping: the influence play mode loses 10-16 points of probability for the US and 8-12 for the USSR
+(healthy: -7 to +2); per game, US influence plays -4.8 to -7.2 and realignments +2.8 to +5.7, USSR influence plays
+-3.9 to -5.6 with coups +1.4 to +1.9, realignments +0.4 to +2.3, and more Space and Events. Influence leaves Europe
+for Central America: in self-play, US placements in Europe fall from 14-15 to 10-11 a game and the USSR's from
+12.5-13.4 to 8-10; US influence and realignments go to Cuba and Mexico. At final scoring against B, A as US gives up
+1.4-4.2 VP in Europe (and some in Asia and the Middle East) for 1.5-2.4 in Central America; A as USSR loses Europe
+the same way. Policy entropy is unchanged. Healthy stretches show none of it (R169: about half the shift, 52.4%).
+
+**Mostly not forgetting.** A 2x2 seat matrix on the same deals (US from {B, A} x USSR from {B, A}): switching the US
+from B to A loses 5-9 points against B's USSR and 5-9.5 against A's own USSR (greedy; one exception, R119 1,400 vs
+B's USSR, -0.4); at T = 1, 0.9-5.5 points against A's own USSR. A is worse in absolute terms, as the fixed-opponent
+drops say. One part is forgetting: B's USSR wins by Europe Control against A's US in 5.5-7.1% of games, a line in
+only 0.9-1.6% of A's own self-play -- A's USSR stopped going for Europe as A's US stopped defending it.
+
+**The critic** is unbiased with equal Brier on its own self-play, but on head-to-head positions A's is the more
+over-optimistic about A (+0.10 to +0.13 against B's +0.03 to +0.11): it is calibrated to a self-play in which the new
+style goes unpunished. At T = 1 the dips are smaller (S and R119 1,400 about 50% against ~45% greedy).
+
+**Interpretation (not measured).** Both seats drift together into a style consistent with itself -- Central
+American realignments, coups and quick Events, giving up the long-term presence in Europe (and Asia) that pays only
+at final scoring. Since both sides neglect Europe alike, self-play sends no signal against it until the drift goes far
+enough to be punished; the runs recover by ~1,700M. Candidate remedies: opponents that punish the drift (a pool
+weighted toward snapshots ~250M back -- R119's uniform 0.3 pool still dipped); a longer pi_ref horizon (it refreshes
+every 200,000 steps); and an early alarm on the influence share of play modes and Europe placements per seat, which
+move before strength drops.
