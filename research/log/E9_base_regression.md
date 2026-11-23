@@ -201,3 +201,32 @@ enough to be punished; the runs recover by ~1,700M. Candidate remedies: opponent
 weighted toward snapshots ~250M back -- R119's uniform 0.3 pool still dipped); a longer pi_ref horizon (it refreshes
 every 200,000 steps); and an early alarm on the influence share of play modes and Europe placements per seat, which
 move before strength drops.
+
+## 8. The two sides share their region preferences (owner's hypothesis, 2026-11-23)
+
+The observation is perspective-relative (my / the opponent's influence, VP, ...) and the deciding side is one input
+bit (`I_AM_US`, global 61) plus side-specific static rows; the per-country head `pe_country` is one MLP for both
+sides. The owner's question: does a region preference learned for one side move the other side's with it -- which
+would explain why the dipped USSR follows the US out of Europe instead of punishing it? Networks: B6 1,150, R119 1,150
+and the E9 base 870-950 (each dips next), B6 1,450 and R119 950 (healthy); ~3,000 placement and ~1,800 play-mode
+positions a seat from T = 1 self-play. Scripts and tables: the job's `tmp/side_coupling/` (`summary.md`).
+
+* **Gradient transfer** (an Adam-preconditioned step with the real optimizer state, on one half of the games,
+  measured on the other half; within-side control 0.81-1.07, a random direction <= 0.002): US Central America ->
+  USSR Central America 0.22-0.27, USSR -> US 0.52-0.65; US Europe -> USSR Europe 0.35-0.54, USSR -> US 0.45-0.61; the
+  influence play mode either way 0.45-0.61. A plain gradient step transfers more (0.34-1.27). Region-specific: a
+  Central America step lowers the other side's Europe too, but barely moves its play mode. US-USSR gradient cosine
+  0.60-0.83.
+* **Where:** `pe_country` carries 66-90% of the gradient dot product (cross-side cosine 0.70-0.91); the trunk
+  (0.72-0.79), `policy_head` (0.73-0.87) and the play-mode head (0.93-0.96) are also shared; only the input
+  projections are fairly side-specific (0.18-0.44). A step on the inputs alone transfers least.
+* **Lockstep in training:** snapshot-to-snapshot changes of the two seats' region and play-mode shares on fixed
+  positions correlate at lag 0 (B6 1,000-1,800M: +0.57 to +0.73; the E9 base 800-1,290M: +0.63 to +0.70) and not at
+  lags +-1 to +-3; self-play behaviour agrees (+0.39 to +0.68).
+* **The side bit is barely used:** flipping `I_AM_US` alone changes the country distribution by TV 0.04-0.08 (the top
+  choice unchanged 90-95% of the time), against TV 0.24 for B6's change into its dip.
+* **A standing property:** as strong in the healthy networks as in those about to dip.
+
+Not shown: that the coupling causes the dips (lag-0 co-movement could also be both seats receiving one training
+signal). That needs a network with the sides separated -- the next experiment, which postpones P56 (owner,
+2026-11-23).
