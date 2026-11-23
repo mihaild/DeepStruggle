@@ -10,6 +10,7 @@
     "refused": "REFUSED"
   },
   "badPosition": "Could not open the position in the link -- starting a new game instead.\n\n{{error}}",
+  "resume": { "modelUnavailable": "The game stored in this browser was played with a model that cannot be had again, so it cannot be played back as it was played -- opening the position in the link instead.\n\n{{error}}" },
   "notReplay": "Not a replay: {{error}}",
   "notYourMove": "it is {{side}}'s move -- the model plays that side in this view",
   "devOnlyTitle": "Shows the full state -- switch to the Developer view to use it",

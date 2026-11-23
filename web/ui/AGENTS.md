@@ -33,7 +33,8 @@ web/ui/
 │   │                           # rolls.ts (the latest action round's dice, from the steps),
 │   │                           # record.ts (a game for the stats database: log, tags, summary),
 │   │                           # saved_game.ts (the game kept in the browser, for a reload),
-│   │                           # seats.ts (the rule bits a side plays: live and played back)
+│   │                           # seats.ts (the rule bits a side plays: live and played back),
+│   │                           # resume.ts (a reload's playback: models' bits, person rules)
 │   ├── result_dialog.ts        # Game over: the result, how it was played, submit to the stats database
 │   ├── build_info.ts           # the commit the page was built from, the stats endpoint
 │   ├── analysis/               # model.ts (ONNX sources + onnxruntime-web), hf_catalog.ts (the
@@ -564,8 +565,13 @@ web/ui/
      than a new game from a loaded position, which could not be re-driven from the seed. A new game
      clears the seats, so `replayRecord` seats each step as it was played (`seatAsRecorded`: the
      step's setting, its model's `obs_features` as the record's `ModelInfo` holds them, the person
-     rules) -- played back unseated, a step can be refused or land elsewhere. A stored record whose
-     model lacks `obs_features` (stored before 2026-11-23) is refused, and the link opens as a position.
+     rules) -- played back unseated, a step can be refused or land elsewhere. A record stored before
+     `ModelInfo` held `obs_features` (2026-11-23) still resumes (`game/resume.ts`): each model's bits
+     come from the file the record names -- the loaded model if its sha256 matches, else fetched from
+     its source (`modelFileFeatures`) and required to hash to it -- and, as the record does not say which
+     deploy it was played on, the person rules the site has had are tried newest first until one lands
+     on the link's position. A model that cannot be had is refused with a visible message
+     (`app:resume.modelUnavailable`), and the link opens as a position.
    - **The forced die is for one roll.** The HUD's die selector goes back to Auto once a move of
      yours has rolled with it (`afterOwnMove`): one click on a face no longer forces every roll
      after it. Auto-play always rolls.

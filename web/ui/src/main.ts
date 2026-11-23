@@ -19,7 +19,7 @@ import { AnalysisPanel, AutoSide, LiveAnalysis, ModelPick } from "./analysis_vie
 import { WasmEngine } from "./engine/wasm_engine";
 import { GameSession } from "./game/session";
 import { decodePosition, encodePosition } from "./game/position";
-import { Model, sourceFromParam, sourceToParam } from "./analysis/model";
+import { Model, modelFileFeatures, sourceFromParam, sourceToParam } from "./analysis/model";
 import { analyze } from "./analysis/readout";
 import {
   DEFAULT_ROLLOUT, LEAVES, RolloutSpec, STOPS, parseRolloutParam, parseSearchParam, rolloutParam,
@@ -31,7 +31,8 @@ import { lastTurnOf } from "./game/last_turn";
 import { recentRolls } from "./game/rolls";
 import { LogEntry, groupLog, mentionsVp, movesVp, replayItems } from "./game/log_view";
 import { EnglishLogItem, englishItem, lineHtml, messageHtml, playerLabel } from "./game/log";
-import { MoveHow, buildSubmission, sha256Hex, summarize } from "./game/record";
+import { ModelInfo, MoveHow, buildSubmission, sha256Hex, summarize } from "./game/record";
+import { replayToPosition, withModelBits } from "./game/resume";
 import { loadStoredGame, storeGame } from "./game/saved_game";
 import { SEATS, sideRules } from "./game/seats";
 import { ResultDialog } from "./result_dialog";
@@ -289,8 +290,16 @@ export class TSApp {
     try {
       const target = await decodePosition(token);
       const start = stored.record.start_position ? await decodePosition(stored.record.start_position) : null;
-      this.session.replayRecord(stored.record, start, stored.submitted);
-      if (this.engine.saveJson() === target) {
+      let record = stored.record;
+      try {
+        record = await withModelBits(record, (info, sha) => this.modelForResume(info, sha));
+      } catch (e) {
+        window.alert(t("app:resume.modelUnavailable", { error: String(e instanceof Error ? e.message : e) }));
+        return false;
+      }
+      const engine = this.engine;
+      if (replayToPosition(this.session, record, start, stored.submitted, target, engine.currentRules,
+                           () => engine.saveJson())) {
         // A game that had ended has had its dialog: reopening the page does not offer it again.
         this.wasOver = !!this.session.result;
         return true;
@@ -299,6 +308,16 @@ export class TSApp {
       console.warn("The stored game did not play back:", e);
     }
     return false;
+  }
+
+  /** A model a stored game was played with, for its seats: the loaded one if it is that file, else
+   *  fetched from the source the record names (game/resume.ts checks the sha256). */
+  private async modelForResume(info: ModelInfo, sha: string): Promise<{ sha256: string; features: number }> {
+    if (this.model && this.modelSha === sha) return { sha256: sha, features: this.model.obsFeatures };
+    const source = info.source ? sourceFromParam(info.source) : null;
+    if (!source) throw new Error(`${info.label}: the game names no source to fetch it from`);
+    const { bytes, features } = await modelFileFeatures(source);
+    return { sha256: await sha256Hex(bytes), features };
   }
 
   /** This browser's copy of the game on the board, for a reload (game/saved_game.ts). */

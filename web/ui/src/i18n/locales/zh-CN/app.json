@@ -10,6 +10,7 @@
     "refused": "操作被拒绝"
   },
   "badPosition": "无法打开链接中的局面，将开始新游戏。\n\n{{error}}",
+  "resume": { "modelUnavailable": "此浏览器保存的对局所用的模型已无法获取，无法按原样重放，将改为打开链接中的局面。\n\n{{error}}" },
   "notReplay": "不是有效回放：{{error}}",
   "notYourMove": "现在轮到{{side}}——当前视角下由模型操作该方",
   "devOnlyTitle": "此工具显示完整状态；请切换到开发者模式使用",

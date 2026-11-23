@@ -166,7 +166,8 @@ export class GameSession {
    * with its forced die and tags. Its id, settings and events come back with it. Throws, leaving a
    * half-played game, if the engine refuses a step -- the caller then starts afresh.
    */
-  replayRecord(rec: GameRecordData, saveJson: string | null, submitted: boolean): void {
+  replayRecord(rec: GameRecordData, saveJson: string | null, submitted: boolean,
+               personRules: number = this.engine.currentRules): void {
     this.newGame(rec.seed);
     if (rec.start_position) {
       if (!saveJson) throw new Error("the record starts from a position that was not given");
@@ -188,7 +189,7 @@ export class GameSession {
     rec.steps.forEach((s, i) => {
       overridesAt(i);
       this.setting = s.tag.setting;
-      this.seatAsRecorded(rec, i);
+      this.seatAsRecorded(rec, i, personRules);
       const why = this.apply(s.action, s.tag.forcedDie, { source: s.tag.source, analysis: s.tag.analysis });
       if (why) throw new Error(`step ${i + 1} of the saved game was refused: ${why}`);
     });
@@ -203,9 +204,9 @@ export class GameSession {
    * Seat both sides for step `i` of `rec` as the live game seated them (game/seats.ts): newGame clears
    * the seats, and a step replayed under other rules can be refused, or -- an Event offered or not,
    * a starred card removed or discarded -- land elsewhere. A step moved by a model whose rule bits the
-   * record does not hold (one stored before they were recorded) cannot be seated so: refused.
+   * record does not hold is refused: game/resume.ts fills them in from the model first.
    */
-  private seatAsRecorded(rec: GameRecordData, i: number): void {
+  private seatAsRecorded(rec: GameRecordData, i: number, personRules: number): void {
     const st = rec.settings[rec.steps[i].tag.setting];
     const auto = st?.auto ?? "";
     let features: number | null = null;
@@ -217,7 +218,7 @@ export class GameSession {
       }
       features = m.obs_features;
     }
-    for (const [side, player] of SEATS) this.engine.seat(player, sideRules(side, auto, features, this.engine.currentRules));
+    for (const [side, player] of SEATS) this.engine.seat(player, sideRules(side, auto, features, personRules));
   }
 
   get canUndo(): boolean {

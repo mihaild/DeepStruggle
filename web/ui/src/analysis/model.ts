@@ -90,6 +90,21 @@ async function download(source: ModelSource, url: string): Promise<Uint8Array> {
   return new Uint8Array(await res.arrayBuffer());
 }
 
+/** A model file's bytes from its source (the browser's model cache first, as `Model.fetch`) and the
+ *  obs_features its metadata names, without opening a session: what a reload needs to seat it. */
+export async function modelFileFeatures(source: ModelSource): Promise<{ bytes: Uint8Array; features: number }> {
+  let bytes: Uint8Array;
+  if (source.kind === "file") throw new Error(`${sourceLabel(source)} was a dropped file, which cannot be fetched again`);
+  if (source.kind === "local") {
+    bytes = await download(source, `/api/local/models/onnx?path=${encodeURIComponent(source.path)}`);
+  } else {
+    const sha256 = await hfFileSha256(source.repo, source.revision, source.path).catch(() => null);
+    bytes = (sha256 ? await cachedModel(sha256).catch(() => null) : null)
+      ?? await download(source, hfFileUrl(source.repo, source.revision, source.path));
+  }
+  return { bytes, features: featureBits(onnxMetadata(bytes)) };
+}
+
 export interface Forward {
   logits: Float32Array;   // rows * actionSize
   vWin: Float32Array;     // rows

@@ -11,6 +11,7 @@ import { GameSession } from "../../../web/ui/src/game/session";
 import { MoveHow, Submission, buildSubmission, decodeLog } from "../../../web/ui/src/game/record";
 import { D1Database, D1Statement, handle, invalid } from "../../../web/stats_worker/src/handler";
 import { SEATS, sideRules } from "../../../web/ui/src/game/seats";
+import { replayToPosition, withModelBits } from "../../../web/ui/src/game/resume";
 
 const engine = await WasmEngine.load(pathToFileURL(process.argv[2]).href);
 const BUILD = { commit: "0123456789abcdef0123456789abcdef01234567", dirty: false, engine_fingerprint: engine.fingerprint };
@@ -117,13 +118,13 @@ const resumed = {
 // A reload of a game whose seats matter: the model's side plays opp_event_gated, the person's side
 // the person rules. Played back unseated -- what replayRecord did before it seated each step -- the
 // game is refused or lands elsewhere; seated from its record, it is the game that was played.
-function seatedGame(seed: number): { save: string; record: ReturnType<GameSession["record"]> } {
+function seatedGame(seed: number, person = engine.currentRules): { save: string; record: ReturnType<GameSession["record"]> } {
   const s = new GameSession(engine);
   const pick = chooser(seed);
   s.newGame(seed);
   for (let n = 0; n < 20000 && !engine.isTerminal(); n++) {
     s.setSettings({ view: "USSR", auto: "US", model: SHA_C, search: "policy" }, MODEL_C);
-    for (const [side, player] of SEATS) engine.seat(player, sideRules(side, "US", MODEL_C.obs_features, engine.currentRules));
+    for (const [side, player] of SEATS) engine.seat(player, sideRules(side, "US", MODEL_C.obs_features, person));
     move(s, pick, 0, { source: side() === "US" ? "auto" : "human", analysis: false });
   }
   return { save: engine.saveJson(), record: s.record() };
@@ -136,7 +137,13 @@ function unseatedReplayDiffers(rec: ReturnType<GameSession["record"]>, save: str
   }
   return engine.saveJson() !== save;
 }
-let seatedResume = { seed: 0, unseated_differs: false, same_position: false, without_bits_refused: "" };
+let seatedResume = { seed: 0, unseated_differs: false, same_position: false, without_bits_refused: "",
+  legacy_same_position: false, legacy_other_file: "", legacy_older_rules: false };
+// A record stored before ModelInfo held obs_features: the reload takes them from the model file the
+// record names (here a stand-in for the fetch, which checks the sha256 as the page does).
+const legacy = (rec: ReturnType<GameSession["record"]>) => ({ ...rec, models: { [SHA_C]: { ...MODEL_C, obs_features: undefined } } });
+const fetched = async (_info: unknown, _sha: string) => ({ sha256: SHA_C, features: MODEL_C.obs_features });
+const otherFile = async (_info: unknown, _sha: string) => ({ sha256: "f".repeat(64), features: MODEL_C.obs_features });
 for (let seed = 1; seed <= 40; seed++) {
   const { save, record } = seatedGame(seed);
   if (!unseatedReplayDiffers(record, save)) continue;
@@ -150,7 +157,26 @@ for (let seed = 1; seed <= 40; seed++) {
   } catch (e) {
     refused = String(e);
   }
-  seatedResume = { seed, unseated_differs: true, same_position: same, without_bits_refused: refused };
+  const filled = await withModelBits(legacy(record), fetched);
+  const legacySame = replayToPosition(new GameSession(engine), filled, null, false, save, engine.currentRules,
+                                      () => engine.saveJson());
+  let otherRefused = "";
+  await withModelBits(legacy(record), otherFile).catch(e => { otherRefused = String(e); });
+  seatedResume = { seed, unseated_differs: true, same_position: same, without_bits_refused: refused,
+    legacy_same_position: legacySame, legacy_other_file: otherRefused, legacy_older_rules: false };
+  break;
+}
+// A game stored on an earlier deploy, whose person side played opp_event_gated only: the record does not
+// say which deploy, so the reload tries the person rules the site has had, newest first.
+for (let seed = 1; seed <= 40; seed++) {
+  const { save, record } = seatedGame(seed, 1 << 3);
+  const now = new GameSession(engine);
+  let differs = true;
+  try { now.replayRecord(record, null, false); differs = engine.saveJson() !== save; } catch { /* refused: differs */ }
+  if (!differs) continue;
+  const filled = await withModelBits(legacy(record), fetched);
+  seatedResume.legacy_older_rules = replayToPosition(new GameSession(engine), filled, null, false, save,
+                                                     engine.currentRules, () => engine.saveJson());
   break;
 }
 

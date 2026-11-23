@@ -121,6 +121,15 @@ def test_a_reload_seats_each_step_as_it_was_played(played: Dict[str, Any]) -> No
     assert "whose rule bits the record does not hold" in r["without_bits_refused"]
 
 
+def test_a_game_stored_before_the_bits_were_recorded_still_resumes(played: Dict[str, Any]) -> None:
+    """Games in progress when the page started recording obs_features: the bits come from the model file
+    the record names (its sha256 checked), and the person rules from those the site has had."""
+    r = played["seated_resume"]
+    assert r["legacy_same_position"]
+    assert "is now another file" in r["legacy_other_file"]
+    assert r["legacy_older_rules"], "a game played under opp_event_gated alone resumes to its position"
+
+
 def test_the_worker_keeps_a_game_once_and_refuses_junk(played: Dict[str, Any]) -> None:
     r = played["responses"]
     assert played["invalid_clean"] is None
