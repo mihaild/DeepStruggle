@@ -19,7 +19,9 @@ import pytest
 from tests.web.js_runner import PUBLIC, run_ts
 from tools import game_stats as cli
 from tools.lib.engine_fingerprint import fingerprint
-from tools.lib.game_stats import SubmissionDict, decode_log, summarize_submission, verify
+from tests.game_stats_helpers import tiny_checkpoint
+from tools.lib.game_stats import (BuildHistory, ModelFiles, ReplayContext, SubmissionDict, decode_log,
+                                  summarize_submission, verify)
 
 
 @pytest.fixture(scope="module")
@@ -29,14 +31,25 @@ def played(tmp_path_factory: pytest.TempPathFactory) -> Dict[str, Any]:
     return out
 
 
-def test_a_submitted_game_replays_to_its_end_in_python(played: Dict[str, Any]) -> None:
+@pytest.fixture(scope="module")
+def checkpoints(tmp_path_factory: pytest.TempPathFactory) -> str:
+    """The two models the games name (ck-a, ck-b), reading the base layout as game_stats.ts seats them."""
+    root = str(tmp_path_factory.mktemp("checkpoints"))
+    for name in ("ck-a", "ck-b"):
+        tiny_checkpoint(root, name, 0)
+    return root
+
+
+def test_a_submitted_game_replays_to_its_end_in_python(played: Dict[str, Any], checkpoints: str) -> None:
+    ctx = ReplayContext(fingerprint(), ModelFiles(checkpoints), BuildHistory({}))
     for name in ("clean", "messy"):
         sub: SubmissionDict = played[name]
-        v = verify(sub, fingerprint())
+        v = verify(sub, ctx)
         assert v.status == "ok", f"{name}: {v.status} {v.detail}"
 
 
-def test_rating_verifies_the_exact_record_before_counting_it(played: Dict[str, Any], tmp_path: Path) -> None:
+def test_rating_verifies_the_exact_record_before_counting_it(played: Dict[str, Any], tmp_path: Path,
+                                                             checkpoints: str) -> None:
     clean = played["clean"]
     forged = copy.deepcopy(clean)
     forged["id"] = "forged-result"
@@ -46,7 +59,8 @@ def test_rating_verifies_the_exact_record_before_counting_it(played: Dict[str, A
     wrong_hash["final_hash"] = "0" * 64
     export, output = tmp_path / "games.json", tmp_path / "fit.json"
     export.write_text(json.dumps([clean, played["messy"], forged, wrong_hash]))
-    assert cli.main(["rating", str(export), "--bootstrap", "0", "--json", str(output)]) == 0
+    assert cli.main(["rating", str(export), "--bootstrap", "0", "--json", str(output),
+                     "--checkpoints-dir", checkpoints]) == 0
     fit = json.loads(output.read_text())
     assert len(fit["fits"]) == 1 and fit["fits"][0]["games"] == 1
     assert fit["skipped"] == {"not clean": 1, "verification: mismatch": 2}

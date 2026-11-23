@@ -7,8 +7,11 @@ module reads an export of that table and
 
 * decodes the compact log and summarizes how each game was played -- the same rules as the
   page's `summarize()`, recomputed here rather than trusted from the row;
-* re-drives a game in this build's engine and checks it lands on the submitted final position
-  (`final_hash`), writing the full .tslog.json on request;
+* re-drives a game in this build's engine with each side seated as the page seated it -- the
+  auto-play side with its model's obs_features, read from the model's checkpoint, a person's side
+  with its build's person rules -- and checks its end (`verify`): exactly, final position included,
+  for a game played on this engine; on winner, margin, end turn and the ending's name (through
+  E9's renames) for one played on another, whose save JSON no longer hashes alike;
 * fits each model player's rating on Playdek's scale from the clean games (`fit_rating`).
 
 The rating model is Elo's logistic on a 400-point scale -- the scale Playdek's rating is reported
@@ -27,15 +30,24 @@ import base64
 import hashlib
 import json
 import math
+import os
+import pathlib
 import struct
+import subprocess
 import zlib
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Literal, Optional, Sequence, Tuple, TypedDict, cast
+from typing import (Any, Callable, Dict, Iterable, List, Literal, Mapping, Optional, Sequence, Tuple, TypedDict,
+                    cast)
 
 import numpy as np
+import onnx
 
 import ts_engine as ts
+from tools.lib.engine_fingerprint import commits_by_fingerprint
 from tools.lib.game_step import drain_chance, step_checked
+from tools.lib.player_agent import NeuralAgent
+
+_ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 LOG_VERSION = 1
 _STEP_BYTES = 7
@@ -250,61 +262,381 @@ def outcome(state: ts.GameState) -> ResultDict:
     }
 
 
+# ---- the seats: which rules each side played ---------------------------------------------------
+#
+# The page seats each side with rule bits (web/ui/src/main.ts `seatSides`, engine/AGENTS.md on rule
+# bits): the auto-play side with its model's obs_features, a person's side with the person rules of
+# that build (WasmEngine.currentRules, obs_features::PERSON_RULES). The rules decide what is offered
+# -- an Event that would do nothing, a discard question asked or not -- so a game re-driven unseated
+# plays the pre-rule-bit engine and is refused where the person was asked something it does not ask.
+# A replay seats both sides as the page did, step by step: each step's `setting` names the auto side
+# and model then in force.
+
+OPP_EVENT_GATED = int(ts.OBS_FEATURE_OPP_EVENT_GATED)
+OWN_EVENT_GATED = int(ts.OBS_FEATURE_OWN_EVENT_GATED)
+ALWAYS_ASK_DISCARD = int(ts.OBS_FEATURE_ALWAYS_ASK_DISCARD)
+_RULE_NAMES = ((OPP_EVENT_GATED, "opp_event_gated"), (OWN_EVENT_GATED, "own_event_gated"),
+               (ALWAYS_ASK_DISCARD, "always_ask_discard"))
+
+
+def rule_names(bits: int) -> str:
+    """`bits`' person rules by name, "none" for 0."""
+    return "|".join(name for bit, name in _RULE_NAMES if bits & bit) or "none"
+
+
+@dataclass(frozen=True)
+class PersonRules:
+    """The rule bits the page seated a person's side with, from commit `since` on."""
+    since: str
+    #: None where what the page seated a person with cannot be reproduced.
+    bits: Optional[int]
+    why: str
+
+
+#: What a person's side played, by build, newest first, from the git history of web/ui/src/main.ts
+#: (`seatSides`), bindings/wasm/ts_engine_wasm.cpp (`ts_obs_features_rules`, the page's currentRules)
+#: and engine/include/ts/game_state.hpp (obs_features::RULES, PERSON_RULES).
+PERSON_RULES_HISTORY: Tuple[PersonRules, ...] = (
+    PersonRules("464bb90916f72a6ca8144e1bdd439ca55b9d9d68", OPP_EVENT_GATED | OWN_EVENT_GATED | ALWAYS_ASK_DISCARD,
+                "PERSON_RULES gains own_event_gated and always_ask_discard (2026-11-11)"),
+    PersonRules("f383abd28cfc57c3cb60442d3a388ace90e0a063", OPP_EVENT_GATED,
+                "the page seats each side (seatSides); a person plays every rule bit then, opp_event_gated "
+                "(bd7a3eb's PERSON_RULES left out the canonical orders it added to RULES; 2026-11-06)"),
+    PersonRules("d2cc85f65c6a22a472ef4601150455a3d2a05afd", None,
+                "opp_event_gated is a rule bit, and the page's mask seats a person's side with whichever "
+                "model last analysed it (2026-11-06, until f383abd)"),
+    PersonRules("", 0, "no rule bits: every seat plays the same rules"),
+)
+
+#: E9's ending classifier (audit T-10): from the engine's records, where an older build classified by
+#: the score. For a reason the current engine gives, the names an older build gave the same ending:
+#: final scoring clamps VP to +/-20, so a game decided there read "20 VP"; a held scoring card read
+#: "20 VP" (one holder) or "wargames" (both, VP 0). Every other name is unchanged since the
+#: classifier was written (f21985c, 2026-09-25, before the first stored game).
+E9_REASONS_COMMIT = "f95503ced34cb0f82fe7835f1ab74edbf1288db3"
+PRE_E9_REASON_NAMES: Dict[str, Tuple[str, ...]] = {
+    "final scoring": ("20 VP",),
+    "held scoring card": ("20 VP", "wargames"),
+}
+
+
+def same_reason(replayed: str, submitted: str, old_names: bool) -> bool:
+    """Whether a submitted ending reason names the replayed ending, through E9's renames when the
+    build may have used the old names."""
+    return submitted == replayed or (old_names and submitted in PRE_E9_REASON_NAMES.get(replayed, ()))
+
+
+class Unverifiable(Exception):
+    """What a game was played with cannot be established here: its replay could only guess."""
+
+
+def _sha256_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+class ModelFiles:
+    """The obs_features bits of the models games were played with, read from each model itself.
+
+    A submission names a model by its ONNX file's sha256, with the checkpoint it was exported from
+    (`ts.checkpoint`, relative to the checkpoints directory). The bits are read from that checkpoint's
+    weights (NeuralAgent: LadderNet's obs_features buffer). Where the ONNX the page loaded lies beside
+    it -- a file of the recorded sha256 -- the chain is checked too: that ONNX must name the checkpoint's
+    own sha256 (`ts.checkpoint_sha256`), and the rule bits the page read from its metadata
+    (`ts.obs_features`) must be the weights'. A checkpoint that is not here makes the game
+    unverifiable: its seat's rules would be a guess.
+    """
+
+    def __init__(self, root: str) -> None:
+        self.root = root
+        self._known: Dict[str, int] = {}
+
+    def features(self, sha: str, info: Optional[ModelInfoDict]) -> int:
+        if sha in self._known:
+            return self._known[sha]
+        if info is None:
+            raise Unverifiable(f"model {sha[:12]} is not among the record's models")
+        label, ck = info["label"], info["checkpoint"]
+        if not ck or os.path.isabs(ck) or ".." in pathlib.PurePath(ck).parts:
+            raise Unverifiable(f"model {label} names no checkpoint under the checkpoints directory ({ck!r})")
+        path = os.path.join(self.root, ck)
+        if not os.path.isfile(path):
+            raise Unverifiable(f"model {label}: its checkpoint {ck} is not in {self.root}, so the rule bits "
+                               f"its seat played cannot be read")
+        bits = int(NeuralAgent.from_checkpoint(path, device="cpu").obs_features)
+        if bits & int(ts.OBS_FEATURE_CANONICAL_LEARNED):
+            raise Unverifiable(f"model {label} plays canonical_learned, whose order is the network's own logits at "
+                               f"each run's start: a replay would have to run it")
+        onnx_path = os.path.splitext(path)[0] + ".onnx"
+        if os.path.isfile(onnx_path) and _sha256_file(onnx_path) == sha:
+            meta = {p.key: p.value for p in onnx.load(onnx_path, load_external_data=False).metadata_props}
+            exported_from = meta.get("ts.checkpoint_sha256")
+            if exported_from is not None and exported_from != _sha256_file(path):
+                raise Unverifiable(f"model {label}: the ONNX the page played was exported from another "
+                                   f"checkpoint than {ck}")
+            read = int(meta.get("ts.obs_features", "0"))
+            if read & int(ts.OBS_FEATURES_RULES) != bits & int(ts.OBS_FEATURES_RULES):
+                raise Unverifiable(f"model {label}: the page read rule bits {read:#x} from its ONNX, the "
+                                   f"checkpoint's weights hold {bits:#x}")
+        self._known[sha] = bits
+        return bits
+
+
+class BuildHistory:
+    """What this clone's git history says about the build a game was played on.
+
+    `commits(fingerprint)` are the commits whose engine sources hash to the build's engine fingerprint
+    (engine_fingerprint.commits_by_fingerprint, computed on first use); `descends(a, c)` whether
+    commit `c` contains `a` -- None where git cannot say (a commit this clone lacks). The page's engine
+    and the page are built from one checkout, so a build's engine sources name the rules its page
+    seated.
+    """
+
+    def __init__(self, index: Optional[Mapping[str, Sequence[str]]] = None,
+                 descends: Optional[Callable[[str, str], Optional[bool]]] = None,
+                 root: Optional[pathlib.Path] = None) -> None:
+        self._index = index
+        self._descends = descends
+        self._root = root
+        self._cache: Dict[Tuple[str, str], Optional[bool]] = {}
+
+    def commits(self, fingerprint: str) -> Sequence[str]:
+        if self._index is None:
+            self._index = commits_by_fingerprint(self._root)
+        return self._index.get(fingerprint, ())
+
+    def descends(self, ancestor: str, commit: str) -> Optional[bool]:
+        if self._descends is not None:
+            return self._descends(ancestor, commit)
+        key = (ancestor, commit)
+        if key not in self._cache:
+            code = subprocess.run(["git", "merge-base", "--is-ancestor", ancestor, commit],
+                                  cwd=str(self._root or _ROOT), capture_output=True).returncode
+            self._cache[key] = True if code == 0 else False if code == 1 else None
+        return self._cache[key]
+
+
+@dataclass(frozen=True)
+class ReplayContext:
+    """What re-driving games needs besides the games: this build's engine fingerprint, the models'
+    files and the git history that names other builds."""
+    fingerprint: str
+    models: ModelFiles
+    builds: BuildHistory
+
+
+@dataclass(frozen=True)
+class BuildRules:
+    """What a game's build seated a person with: the candidates to replay, newest first."""
+    candidates: Tuple[int, ...]
+    #: How they were chosen, for the verdict.
+    basis: str
+    #: Whether the build may have named endings as before E9 (PRE_E9_REASON_NAMES).
+    old_reason_names: bool
+
+
+def build_rules(sub: SubmissionDict, ctx: ReplayContext) -> BuildRules:
+    """The person rules `sub`'s build seated, from its engine fingerprint.
+
+    This build: its own PERSON_RULES. A fingerprint some commit here hashes to: the PERSON_RULES_HISTORY
+    entry that commit descends from. Any other -- a build of a tree this clone lacks, such as the
+    twilightstruggle.app deployments, built from a repository whose history is not here -- every rule
+    set the page has had that can be reproduced, newest first, whichever its date: that repository
+    carried the 2026-11-11 person rules (464bb90, made for it) before they were merged here, and its
+    games of 2026-10-31..11-10 replay only with them. The set that replays is named in the verdict.
+    Raises Unverifiable for a build whose page seated a person in a way that cannot be reproduced.
+    """
+    fp = sub["build"]["engine_fingerprint"]
+    if fp == ctx.fingerprint:
+        return BuildRules((int(ts.OBS_FEATURES_PERSON_RULES),), "this build", False)
+    eras: List[PersonRules] = []
+    e9: List[Optional[bool]] = []
+    commits = list(ctx.builds.commits(fp))
+    for commit in commits:
+        era = None
+        for entry in PERSON_RULES_HISTORY:
+            known = True if not entry.since else ctx.builds.descends(entry.since, commit)
+            if known is None:
+                era = None
+                break
+            if known:
+                era = entry
+                break
+        if era is None:
+            eras = []
+            break
+        if era not in eras:
+            eras.append(era)
+        e9.append(ctx.builds.descends(E9_REASONS_COMMIT, commit))
+    if eras:
+        eras.sort(key=PERSON_RULES_HISTORY.index)
+        where = f"engine of commit {commits[0][:10]}" + (f" and {len(commits) - 1} more" if len(commits) > 1 else "")
+        for era in eras:
+            if era.bits is None:
+                raise Unverifiable(f"{where}, from {era.since[:7]} on: {era.why}")
+        return BuildRules(tuple(cast(int, e.bits) for e in eras), where, not all(x is True for x in e9))
+    every = tuple(cast(int, e.bits) for e in PERSON_RULES_HISTORY if e.bits is not None)
+    return BuildRules(every, "an engine no commit here has; every person rule set the page has had, newest first",
+                      True)
+
+
+def _setting(sub: SubmissionDict, i: int, st: Step) -> SettingsDict:
+    if st.setting >= len(sub["settings"]):
+        raise ValueError(f"step {i + 1} names setting {st.setting} of {len(sub['settings'])}")
+    return sub["settings"][st.setting]
+
+
+@dataclass(frozen=True)
+class Seating:
+    """Each step's seats, as the page seated them: the auto-play side its model's obs_features, a
+    person's side (and an auto side with no model) the person rules."""
+    person: int
+    #: Per step: (US, USSR) obs_features.
+    seats: Tuple[Tuple[int, int], ...]
+
+    def seat(self, state: ts.GameState, i: int) -> None:
+        us, ussr = self.seats[i]
+        state.seat_obs_features(ts.Player.US, us)
+        state.seat_obs_features(ts.Player.USSR, ussr)
+
+
+def seating(sub: SubmissionDict, steps: Sequence[Step], person: int, models: ModelFiles) -> Seating:
+    """The seats of every step of `sub` with `person` on a person's side. Raises Unverifiable when a
+    model's rule bits cannot be read, ValueError for a step naming a setting the record lacks."""
+    seats: List[Tuple[int, int]] = []
+    for i, st in enumerate(steps):
+        s = _setting(sub, i, st)
+        auto = models.features(s["model"], sub["models"].get(s["model"])) if s["auto"] and s["model"] else person
+        seats.append((auto if s["auto"] == "US" else person, auto if s["auto"] == "USSR" else person))
+    return Seating(person, tuple(seats))
+
+
+class StepRefused(Exception):
+    """The engine refused a recorded step: which one, the decision, its card, and why."""
+
+
+def describe_step(state: ts.GameState, i: int, n: int, st: Step) -> str:
+    """Step `i` (0-based) of `n` as it was offered: turn, round, mover, decision, card."""
+    dt = ts.DecisionType(st.decision_type) if st.decision_type <= int(ts.DecisionType.ROLL_DIE) else None
+    card = st.primary_id if st.decision_type in (1, 2, 3, 4) else int(state.ctx().pending_op_card)
+    where = f"T{int(state.turn)} AR{int(state.action_round)}"
+    what = f"{dt.name if dt is not None else st.decision_type} {st.primary_id}/{st.secondary_id}"
+    return (f"step {i + 1} of {n} ({where}, {st.mover or 'nobody'} {what}"
+            + (f", card {ts.CardData.get_card_name(card)}" if 0 < card <= 110 else "") + ")")
+
+
+def replay(sub: SubmissionDict, seed: int, steps: Sequence[Step], seats: Seating,
+           on_step: Optional[Callable[[int, Step, ts.GameState], None]] = None) -> ts.GameState:
+    """Re-drive `sub` with `seats`; `on_step` sees each step's state before it is played. Raises
+    StepRefused where the engine refuses a step."""
+    state = start_state(seed, sub["start_position"])
+    for i, st in enumerate(steps):
+        seats.seat(state, i)
+        if on_step is not None:
+            on_step(i, st, state)
+        where = describe_step(state, i, len(steps), st)
+        try:
+            play_step(state, st)
+        except Exception as e:   # the engine's refusal, whatever its type: it is the finding
+            raise StepRefused(f"{where}: {e}") from e
+    return state
+
+
 @dataclass
 class Verdict:
     """What re-driving a submitted game in this build found."""
-    status: Literal["ok", "mismatch", "refused", "other-engine", "bad-log"]
+    status: Literal["ok", "mismatch", "refused", "other-engine", "unverifiable", "bad-log"]
     detail: str = ""
+    #: The record names another engine than this build's.
+    other_engine: bool = False
+    #: The seats it replayed with, when it replayed.
+    seating: Optional[Seating] = None
+    #: Whether it landed on the submitted final position (informational for another engine).
+    hash_matches: Optional[bool] = None
 
 
 #: What decode_log raises on a log that is not one.
 BAD_LOG = (ValueError, zlib.error, struct.error)
 
 
-def verify(sub: SubmissionDict, engine_fingerprint: str, *, replay_other_engine: bool = False) -> Verdict:
-    """Re-drive `sub` in this build and check it ends where the page said, as the page said.
+def verify(sub: SubmissionDict, ctx: ReplayContext) -> Verdict:
+    """Re-drive `sub` in this build, its sides seated as the page seated them, and check its end.
 
-    A game the record says was played on another engine is "other-engine" without being re-driven,
-    unless `replay_other_engine`: then it is re-driven here all the same, and "ok" if it ends where
-    the page said. The fingerprint is the submitter's own claim, so it cannot excuse a record from
-    the check; a game that does not replay here stays "other-engine", since from this build an
-    engine change and a forged record look alike.
+    Played on this build's engine: it must end where the page said, exactly -- terminal, the same
+    result (reason included), the submitted final position (`final_hash`) and the page's summary.
+
+    Played on another engine (its fingerprint is the submitter's claim, which cannot excuse it from
+    being re-driven): it is "ok" when it replays here, seated with its build's person rules
+    (`build_rules`), to a terminal position with the submitted winner, margin and end turn, its reason
+    the submitted one or its pre-E9 name (PRE_E9_REASON_NAMES), and the same summary. The final hash
+    is informational: it hashes the save JSON, whose format grows new fields, so it never matches
+    across builds even when every move is the same. One that does not replay so is "other-engine",
+    with where each candidate was refused: from here an engine change and a forged record look alike.
+
+    "unverifiable": what the game was played with cannot be established here (a model's checkpoint
+    is missing, or the build seated a person in a way that cannot be reproduced).
     """
-    where = (f"played on engine {sub['build']['engine_fingerprint'][:12]} "
-             f"(commit {sub['build']['commit'][:12] or '?'}); this build is {engine_fingerprint[:12]}")
-    if sub["build"]["engine_fingerprint"] == engine_fingerprint:
-        return _replay(sub)
-    if not replay_other_engine:
-        return Verdict("other-engine", where)
-    v = _replay(sub)
-    if v.status == "ok":
-        return Verdict("ok", f"{where}; replays here")
-    return Verdict("other-engine", f"{where}; does not replay here ({v.status}: {v.detail})")
+    fp = sub["build"]["engine_fingerprint"]
+    other = fp != ctx.fingerprint
+    commit = sub["build"]["commit"].split("@")[-1][:12] or "?"
+    where = f"played on engine {fp[:12]} (commit {commit}); this build is {ctx.fingerprint[:12]}" if other else ""
 
+    def said(text: str) -> str:
+        return f"{where}; {text}" if where else text
 
-def _replay(sub: SubmissionDict) -> Verdict:
-    """Re-drive `sub` in this build, whatever engine it names."""
     try:
         seed, steps = decode_log(sub["log"])
+        for i, st in enumerate(steps):
+            _setting(sub, i, st)
     except BAD_LOG as e:
-        return Verdict("bad-log", str(e))
+        return Verdict("bad-log", str(e), other)
     try:
-        state = start_state(seed, sub["start_position"])
-        for st in steps:
-            play_step(state, st)
-    except Exception as e:  # the engine's refusal, whatever its type: it is the finding
-        return Verdict("refused", str(e))
-    problems = []
-    if not ts.Engine.is_terminal(state):
-        problems.append("the game is not over after its steps")
-    elif outcome(state) != sub["result"]:
-        problems.append(f"result {outcome(state)} != submitted {sub['result']}")
-    if final_hash(state) != sub["final_hash"]:
-        problems.append("final position differs from the submitted one")
-    recomputed = summarize_submission(sub)
-    if recomputed != sub["summary"]:
-        problems.append("the page's summary differs from this one")
-    return Verdict("mismatch", "; ".join(problems)) if problems else Verdict("ok")
+        rules = build_rules(sub, ctx)
+        candidates = [seating(sub, steps, person, ctx.models) for person in rules.candidates]
+    except Unverifiable as e:
+        return Verdict("unverifiable", said(str(e)), other)
+    summary_ok = summarize_submission(sub) == sub["summary"]
+    failures: List[str] = []
+    for seats in candidates:
+        try:
+            state = replay(sub, seed, steps, seats)
+        except StepRefused as e:
+            failures.append(f"person rules {rule_names(seats.person)}: refused at {e}")
+            continue
+        got = outcome(state)
+        hash_ok = final_hash(state) == sub["final_hash"]
+        want = sub["result"]
+        problems = []
+        if not ts.Engine.is_terminal(state):
+            problems.append("the game is not over after its steps")
+        elif not other and got != want:
+            problems.append(f"result {got} != submitted {want}")
+        elif other and ((got["winner"], got["margin"], got["end_turn"]) != (want["winner"], want["margin"], want["end_turn"])
+                        or not same_reason(got["reason"], want["reason"], rules.old_reason_names)):
+            problems.append(f"ends {got['winner']} {got['margin']:+d} T{got['end_turn']} ({got['reason']}), "
+                            f"submitted {want['winner']} {want['margin']:+d} T{want['end_turn']} ({want['reason']})")
+        if not other and not hash_ok:
+            problems.append("final position differs from the submitted one")
+        if not summary_ok:
+            problems.append("the page's summary differs from this one")
+        if problems:
+            failures.append(f"person rules {rule_names(seats.person)}: " + "; ".join(problems))
+            continue
+        if not other:
+            return Verdict("ok", "", False, seats, True)
+        renamed = f"; reason {want['reason']!r} is {got['reason']!r} here" if got["reason"] != want["reason"] else ""
+        return Verdict("ok", said(f"replays here with person rules {rule_names(seats.person)} ({rules.basis}){renamed}; "
+                                  f"final position hash {'matches' if hash_ok else 'differs (informational)'}"),
+                       True, seats, hash_ok)
+    if not candidates:
+        failures.append(f"no person rules to try ({rules.basis})")
+    if not other:
+        last = failures[-1].split(": ", 1)[1]
+        return Verdict("refused" if "refused at" in failures[-1] else "mismatch", last, False)
+    return Verdict("other-engine", said(f"does not replay here ({rules.basis}): " + " / ".join(failures)), True)
 
 
 def load_export(path: str) -> List[SubmissionDict]:
@@ -370,11 +702,12 @@ class RatingCheck:
     unverified: bool = False
 
 
-def rating_check(sub: SubmissionDict, fingerprint: str, *, max_undos: Optional[int] = None,
+def rating_check(sub: SubmissionDict, ctx: ReplayContext, *, max_undos: Optional[int] = None,
                  include_unverified: bool = False) -> RatingCheck:
-    """Every game that would count is re-driven on this build, whatever engine it names: the record's
-    fingerprint is the submitter's claim. Most games outlive an engine change and replay here; one
-    that does not cannot be told from a forgery, so it counts only with `include_unverified`."""
+    """Whether `sub` counts: clean, rated, and `verify`'s "ok" -- the same check, whatever engine the
+    record names. One played on another engine that is not verified here ("other-engine", or
+    "unverifiable" for want of a model file) cannot be told from a forgery, so it counts only with
+    `include_unverified`; a game on this build's engine always has to verify."""
     try:
         s = summarize_submission(sub)
     except BAD_LOG:
@@ -385,10 +718,10 @@ def rating_check(sub: SubmissionDict, fingerprint: str, *, max_undos: Optional[i
            "no rating" if sub["playdek"]["rating"] <= 0 else None)
     if why is not None:
         return RatingCheck(s, why)
-    verdict = verify(sub, fingerprint, replay_other_engine=True)
+    verdict = verify(sub, ctx)
     if verdict.status == "ok":
-        return RatingCheck(s, None, other_engine_replayed=sub["build"]["engine_fingerprint"] != fingerprint)
-    if verdict.status == "other-engine" and include_unverified:
+        return RatingCheck(s, None, other_engine_replayed=verdict.other_engine)
+    if verdict.other_engine and verdict.status in ("other-engine", "unverifiable") and include_unverified:
         return RatingCheck(s, None, unverified=True)
     return RatingCheck(s, f"verification: {verdict.status}")
 

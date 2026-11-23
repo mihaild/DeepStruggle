@@ -24,8 +24,9 @@ from __future__ import annotations
 import hashlib
 import json
 import pathlib
+import subprocess
 import sys
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 
 #: Written next to the built extension by check_engine_fresh.sh after a successful build.
 STAMP_NAME: str = ".engine_fingerprint"
@@ -74,6 +75,58 @@ def fingerprint(root: Optional[pathlib.Path] = None) -> str:
         digest.update(hashlib.sha256(path.read_bytes()).hexdigest().encode())
         digest.update(b"\0")
     return digest.hexdigest()
+
+
+def commits_by_fingerprint(root: Optional[pathlib.Path] = None) -> Dict[str, List[str]]:
+    """Every engine fingerprint this clone's history has had, with the commits (newest first) whose
+    sources hash to it.
+
+    Computed from the git objects with `fingerprint`'s own rule -- the same files, ordered the same
+    way, nothing checked out -- at each commit of any ref that changed `engine/`, `bindings/` or the
+    root CMakeLists.txt (the fingerprint can change nowhere else). The rule is unchanged since
+    9a9ad4b (2026-09-24), which added the root CMakeLists.txt, so it reproduces the stamp of any build
+    made since. A build of a tree no commit here has (an uncommitted change, another repository's
+    merge) matches nothing. Raises OSError / CalledProcessError where git cannot answer.
+    """
+    base = root or _REPO_ROOT
+
+    def git(*args: str) -> str:
+        return subprocess.run(["git", *args], cwd=str(base), capture_output=True, text=True, check=True).stdout
+
+    commits = git("log", "--all", "--format=%H", "--", "CMakeLists.txt", "engine", "bindings").split()
+    blob_digest: Dict[str, str] = {}
+    out: Dict[str, List[str]] = {}
+    with subprocess.Popen(["git", "cat-file", "--batch"], cwd=str(base), stdin=subprocess.PIPE,
+                          stdout=subprocess.PIPE) as cat:
+        assert cat.stdin is not None and cat.stdout is not None
+
+        def digest_of(oid: str) -> str:
+            if oid not in blob_digest:
+                cat.stdin.write(oid.encode() + b"\n")
+                cat.stdin.flush()
+                size = int(cat.stdout.readline().split()[2])
+                blob_digest[oid] = hashlib.sha256(cat.stdout.read(size)).hexdigest()
+                cat.stdout.read(1)
+            return blob_digest[oid]
+
+        for commit in commits:
+            files: List[Tuple[pathlib.PurePosixPath, str]] = []
+            for line in git("ls-tree", "-r", commit, "--", "CMakeLists.txt", "engine", "bindings").splitlines():
+                meta, path = line.split("\t", 1)
+                _, kind, oid = meta.split()
+                p = pathlib.PurePosixPath(path)
+                if kind == "blob" and (path == "CMakeLists.txt" or p.suffix in _SUFFIXES or p.name in _NAMES):
+                    files.append((p, oid))
+            files.sort(key=lambda f: f[0].parts)   # how sorted() orders the Paths of source_files
+            digest = hashlib.sha256()
+            for p, oid in files:
+                digest.update(str(p).encode())
+                digest.update(b"\0")
+                digest.update(digest_of(oid).encode())
+                digest.update(b"\0")
+            out.setdefault(digest.hexdigest(), []).append(commit)
+        cat.stdin.close()
+    return out
 
 
 def read_stamp(build_dir: pathlib.Path) -> Optional[str]:

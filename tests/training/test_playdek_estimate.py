@@ -13,7 +13,8 @@ import yaml
 
 from tools import playdek_estimate as cli
 from tools.lib import leaderboard as lb
-from tools.lib.game_stats import RatedGame, RatingCheck, SubmissionDict, _map_rating
+from tools.lib.game_stats import (BuildHistory, ModelFiles, RatedGame, RatingCheck, ReplayContext, SubmissionDict,
+                                  _map_rating)
 from tools.lib.playdek_estimate import (KEYED_DEFAULT_SEARCH, OLD_DEFAULT_SEARCH, HumanGame, PlayedGame, estimate, fit,
                                         player_index, positions, rated_games, sds_for_prior_games)
 
@@ -190,13 +191,14 @@ def test_only_a_game_already_here_may_skip_replaying(monkeypatch: pytest.MonkeyP
     received_at, so what arrived before the cutoff is known, and nothing new can claim to have."""
     seen: List[bool] = []
 
-    def check(sub: SubmissionDict, fingerprint: str, *, include_unverified: bool = False) -> RatingCheck:
+    def check(sub: SubmissionDict, ctx: ReplayContext, *, include_unverified: bool = False) -> RatingCheck:
         seen.append(include_unverified)
         return RatingCheck(None, "not clean")
 
     monkeypatch.setattr(cli, "rating_check", check)
     sub: Any = {}
-    played, left_out = cli.counted_games([("2026-10-30T23:59:59Z", sub), (cli.UNVERIFIED_BEFORE + "T00:00:00Z", sub)], "fp")
+    played, left_out = cli.counted_games([("2026-10-30T23:59:59Z", sub), (cli.UNVERIFIED_BEFORE + "T00:00:00Z", sub)],
+                                      ReplayContext("fp", ModelFiles("/nonexistent"), BuildHistory({})))
     assert seen == [True, False]
     assert not played and left_out == {"not clean": 2}
 

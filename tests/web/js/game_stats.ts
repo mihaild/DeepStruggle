@@ -57,10 +57,14 @@ function play(s: GameSession, seed: number, messy: boolean): void {
   for (let n = 0; n < 20000 && !engine.isTerminal(); n++) {
     const mover = side();
     // The messy game switches model a while in, as the page does when another is loaded.
-    const b = messy && n >= 200;
+    const b = messy && n >= 120;
     const devView = messy && mover === "USSR" && human >= 9 && human < 13;
     s.setSettings({ view: devView ? "DEV" : "USSR", auto: "US", model: b ? SHA_B : SHA_A, search: "policy" },
                   b ? MODEL_B : MODEL_A);
+    // Seated as the page seats each side (main.ts seatSides): the auto side its model's obs_features
+    // (these models read the base layout, 0), the person's side the current person rules.
+    engine.seat(1, 0);
+    engine.seat(-1, engine.currentRules);
     if (mover === "US") {
       // The model's side. In the messy game the human makes three of its moves.
       model++;

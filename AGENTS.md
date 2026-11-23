@@ -260,7 +260,8 @@ A finished game can be submitted to the **stats database** with the player's Pla
 rating: the page sends the game's compact record (seed, steps, who made each move and under which
 settings, the build's commit) to a Cloudflare Worker that keeps it in D1
 ([`web/stats_worker/README.md`](web/stats_worker/README.md)). The page is the only writer; nothing
-is hosted here. `tools/game_stats.py` exports the table, re-drives each game in the engine, and
+is hosted here. `tools/game_stats.py` exports the table, re-drives each game in the engine with each side
+seated as the page seated it (a model's rule bits from its checkpoint, a person's from the build), and
 fits each model player's rating on Playdek's scale from the clean games
 ([`tools/README.md`](tools/README.md) §2d).
 

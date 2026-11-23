@@ -4,16 +4,18 @@
     PYTHONPATH=.:build/release python tools/game_stats.py fetch --output data/game_stats/games.json [--local]
     PYTHONPATH=.:build/release python tools/game_stats.py show data/game_stats/games.json
     tools/scripts/check_engine_fresh.sh && PYTHONPATH=.:build/release python tools/game_stats.py \\
-        verify data/game_stats/games.json [--write-replays]
+        verify data/game_stats/games.json [--write-replays] [--checkpoints-dir DIR]
     PYTHONPATH=.:build/release python tools/game_stats.py rating data/game_stats/games.json \\
         [--ussr-advantage 0] [--max-undos N] [--json out.json]
 
 The page submits a finished game to the stats database (web/stats_worker/, Cloudflare D1);
-`fetch` exports its table with wrangler. `verify` re-drives every game played on this build's
-engine and checks it ends on the submitted position; a game from another engine names the commit
-to check out. `rating` re-drives every game it would count, whatever engine it names, and fits
-each model player's rating on Playdek's
-scale from the clean games (tools/lib/game_stats.py has the model). See tools/README.md, "Games against people".
+`fetch` exports its table with wrangler. `verify` re-drives every game in this build, each side
+seated as the page seated it (the auto side with its model's rule bits, read from the checkpoint
+under --checkpoints-dir; a person's side with its build's person rules), and checks its end:
+exactly for a game played on this engine, on winner, margin and end turn for one played on another.
+`rating` applies the same check to the games it would count and fits each model player's rating
+on Playdek's scale from the clean games (tools/lib/game_stats.py has the model). See
+tools/README.md, "Games against people".
 """
 
 from __future__ import annotations
@@ -24,14 +26,15 @@ import json
 import os
 import subprocess
 import sys
-from typing import Dict, List, Optional, Sequence, cast
+from typing import Dict, List, Optional, Sequence, Tuple, cast
 
 import ts_engine as ts
 from bindings.action_encoder import ActionEncoder
+from tools.lib.data_root import checkpoints_dir
 from tools.lib.engine_fingerprint import fingerprint as engine_fingerprint, require_fresh
-from tools.lib.game_stats import (RatedGame, rating_check, SubmissionDict, decode_log, fit_rating, load_export,
-                                  outcome, play_step, player_key, rated_game, start_state, summarize_submission,
-                                  verify)
+from tools.lib.game_stats import (BuildHistory, ModelFiles, RatedGame, ReplayContext, Seating, Step, SubmissionDict,
+                                  decode_log, fit_rating, load_export, outcome, player_key, rated_game, rating_check,
+                                  replay, summarize_submission, verify)
 from web.server.replay import ReplayLogger, replays_dir
 from web.server.replay_types import GameStateDict, ReplayActionDict
 
@@ -39,6 +42,9 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WORKER_DIR = os.path.join(_ROOT, "web", "stats_worker")
 #: The D1 database's name in web/stats_worker/wrangler.toml.
 DATABASE = "ts-game-stats"
+CHECKPOINTS_HELP = ("where the models' checkpoints are (default: the shared data tree's checkpoints/): a game is "
+                    "re-driven with each auto side seated with its model's rule bits, read from the checkpoint a "
+                    "record names; a game whose checkpoint is not there is unverifiable")
 
 
 def cmd_fetch(a: argparse.Namespace) -> int:
@@ -79,21 +85,34 @@ def cmd_show(a: argparse.Namespace) -> int:
     return 0
 
 
-def _rebuild(sub: SubmissionDict) -> str:
-    """The full .tslog.json of a verified game, written flat into the replays directory."""
+def replay_context(a: argparse.Namespace) -> ReplayContext:
+    """This build, the models' files under --checkpoints-dir, and this clone's git history."""
+    return ReplayContext(engine_fingerprint(), ModelFiles(a.checkpoints_dir or checkpoints_dir()), BuildHistory())
+
+
+def _rebuild(sub: SubmissionDict, seats: Seating) -> str:
+    """The full .tslog.json of a verified game, re-driven with the seats it verified with, written
+    flat into the replays directory."""
     seed, steps = decode_log(sub["log"])
-    state = start_state(seed, sub["start_position"])
     model_side = summarize_submission(sub)["model_side"]
     log = ReplayLogger(game_id=f"stats_{sub['id']}", seed=seed,
                        us_player="model" if model_side == "US" else "human",
                        ussr_player="model" if model_side == "USSR" else "human")
     log.start_position = sub["start_position"]
-    for i, st in enumerate(steps):
-        before_turn, before_ar, phase = int(state.turn), int(state.action_round), str(state.current_phase.name)
+    pending: List[Tuple[int, Step, int, int, str, int, str]] = []
+
+    def before(i: int, st: Step, state: ts.GameState) -> None:
+        # The step's own record is written once the next step (or the end) shows the state after it.
+        flush(state)
         ma = st.micro_action()
         flat = int(ts.encode_micro_action(state, ma))
         desc = ActionEncoder.get_action_name(state, flat) if flat >= 0 else f"{ma.decision_type.name} {st.primary_id}"
-        play_step(state, st)
+        pending.append((i, st, int(state.turn), int(state.action_round), str(state.current_phase.name), flat, desc))
+
+    def flush(state: ts.GameState) -> None:
+        if not pending:
+            return
+        i, st, turn, ar, phase, flat, desc = pending.pop()
         action: ReplayActionDict = {
             "flat_action_idx": flat,
             "decision_type": st.decision_type,
@@ -103,9 +122,12 @@ def _rebuild(sub: SubmissionDict) -> str:
             "card_id": st.primary_id if st.decision_type in (1, 2, 3, 4) else None,
             "target_id": st.secondary_id if st.decision_type in (5, 6, 7) else None,
         }
-        log.log_step(step_index=i + 1, turn=before_turn, ar=before_ar, phase=phase, player=st.mover or "NONE",
+        log.log_step(step_index=i + 1, turn=turn, ar=ar, phase=phase, player=st.mover or "NONE",
                      action=action, description=f"[{st.source}] {desc}",
                      state_snapshot=cast(GameStateDict, ts.state_to_dict(state)))
+
+    state = replay(sub, seed, steps, seats, on_step=before)
+    flush(state)
     r = outcome(state)
     log.set_result(r["winner"], r["margin"], r["end_turn"], r["reason"])
     return log.save(os.path.join(replays_dir(), f"stats_{sub['id']}.tslog.json"))
@@ -113,19 +135,22 @@ def _rebuild(sub: SubmissionDict) -> str:
 
 def cmd_verify(a: argparse.Namespace) -> int:
     require_fresh()
-    fp = engine_fingerprint()
+    ctx = replay_context(a)
     counts: Dict[str, int] = {}
     for sub in load_export(a.export):
-        v = verify(sub, fp)
-        counts[v.status] = counts.get(v.status, 0) + 1
+        v = verify(sub, ctx)
+        key = f"{v.status} (other engine)" if v.status == "ok" and v.other_engine else v.status
+        counts[key] = counts.get(key, 0) + 1
         line = f"{sub['id']}  {v.status}"
         if v.detail:
             line += f"  {v.detail}"
-        if v.status == "ok" and a.write_replays:
-            line += f"  -> {_rebuild(sub)}"
+        if v.status == "ok" and v.seating is not None and a.write_replays:
+            line += f"  -> {_rebuild(sub, v.seating)}"
         print(line)
     print("game_stats: " + ", ".join(f"{n} {k}" for k, n in sorted(counts.items())))
-    return 0 if not set(counts) - {"ok", "other-engine"} else 1
+    # A record that fails on its own engine, or is no log at all, is a finding; another engine's game
+    # that does not replay here, or one whose model file is not here, is not.
+    return 0 if not {k.split(" ")[0] for k in counts} - {"ok", "other-engine", "unverifiable"} else 1
 
 
 def cmd_rating(a: argparse.Namespace) -> int:
@@ -134,9 +159,9 @@ def cmd_rating(a: argparse.Namespace) -> int:
     skipped: Dict[str, int] = {}
     other_engine_replayed = 0
     unverified = 0
-    fingerprint = engine_fingerprint()
+    ctx = replay_context(a)
     for sub in load_export(a.export):
-        check = rating_check(sub, fingerprint, max_undos=a.max_undos, include_unverified=a.include_unverified)
+        check = rating_check(sub, ctx, max_undos=a.max_undos, include_unverified=a.include_unverified)
         other_engine_replayed += check.other_engine_replayed
         unverified += check.unverified
         if check.why is not None or check.summary is None:
@@ -160,9 +185,10 @@ def cmd_rating(a: argparse.Namespace) -> int:
     if skipped:
         print("\nLeft out: " + ", ".join(f"{n} {k}" for k, n in sorted(skipped.items())))
     if other_engine_replayed:
-        print(f"\nVerified: {other_engine_replayed} played on another engine replay on this one")
+        print(f"\nVerified: {other_engine_replayed} played on another engine replay on this one to their "
+              "submitted winner, margin and end turn")
     if unverified:
-        print(f"\nUnverified: {unverified} played on another engine and not replaying on this one, "
+        print(f"\nUnverified: {unverified} played on another engine and not verified on this one, "
               "counted (--include-unverified)")
     if a.json:
         with open(a.json, "w", encoding="utf-8") as fh:
@@ -186,6 +212,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("export")
     p.add_argument("--write-replays", action="store_true",
                    help="write each verified game's full .tslog.json into the replays directory")
+    p.add_argument("--checkpoints-dir", default=None, help=CHECKPOINTS_HELP)
     p.set_defaults(fn=cmd_verify)
     p = sub.add_parser("rating", help="fit each model player's rating on Playdek's scale")
     p.add_argument("export")
@@ -201,6 +228,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--min-games", type=int, default=1)
     p.add_argument("--bootstrap", type=int, default=1000)
     p.add_argument("--json", default=None, help="also write the fits here")
+    p.add_argument("--checkpoints-dir", default=None, help=CHECKPOINTS_HELP)
     p.set_defaults(fn=cmd_rating)
     return ap
 

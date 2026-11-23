@@ -514,23 +514,54 @@ PYTHONPATH=.:build/release python tools/game_stats.py rating data/game_stats/gam
     --ussr-advantage 0 --json data/game_stats/fit.json
 ```
 
-* `verify` re-drives each game played on this build's engine and checks it reaches the submitted
-  final position (`final_hash`), result and summary; `--write-replays` writes the full
-  `.tslog.json` (flat in `data/replays/`, each step's description prefixed with who made it). A
-  game from another engine is reported with its commit: check that out to verify it. Nothing in
-  the database is trusted for being there -- the checks are against accidents and bugs, and
-  anyone can post anything.
+* `verify` re-drives each game in this build and checks where it ends; `--write-replays` writes
+  the full `.tslog.json` of each verified game (flat in `data/replays/`, each step's description
+  prefixed with who made it). Nothing in the database is trusted for being there -- the checks are
+  against accidents and bugs, and anyone can post anything.
+  * **Seats.** The page seats each side with rule bits (`web/ui/src/main.ts` `seatSides`; rule bits:
+    `engine/AGENTS.md`): the auto-play side with its model's obs_features, a person's side with the
+    person rules of its build. They decide what the engine asks -- an Event that would do nothing,
+    a discard question -- so an unseated replay plays the pre-rule-bit engine and is refused where the
+    person was asked something it does not ask. A replay seats both sides step by step, from each
+    step's `setting` (the auto side and model then in force; it can change mid-game). A model's bits
+    are read from the model itself: the checkpoint the record names (`ts.checkpoint`, under
+    `--checkpoints-dir`, default the shared `data/checkpoints/`), and where the ONNX the page played
+    (the recorded sha256) lies beside it, that ONNX must be an export of that checkpoint and say the
+    same rule bits. A game whose checkpoint is not here is **unverifiable**, with the reason: its
+    seat would be a guess.
+  * **Person rules** (`PERSON_RULES_HISTORY`, from the git history of `seatSides`,
+    `ts_obs_features_rules` and `obs_features::PERSON_RULES`): none before f383abd (2026-11-06; before
+    d2cc85f there were no rule bits), `opp_event_gated` from f383abd, and
+    `opp_event_gated|own_event_gated|always_ask_discard` from 464bb90 (2026-11-11). Between d2cc85f and
+    f383abd the page seated a person with whichever model last analysed it: unverifiable. A build is
+    placed from its engine fingerprint: `commits_by_fingerprint` hashes every engine-changing commit
+    here with `fingerprint()`'s own rule (unchanged since before the first stored game), and the
+    entry that commit descends from is the build's -- this build's own `PERSON_RULES` for a game on
+    this engine. A fingerprint no commit here has (the twilightstruggle.app deployments are built from
+    a repository whose history is not here) is tried with every reproducible set, newest first,
+    whatever the game's date: that repository had the 2026-11-11 rules before they were merged here,
+    and its games from 2026-10-31 replay only with them. The verdict names the set that replayed.
+  * **This engine**: the game must end exactly as submitted -- terminal, the same result (reason
+    included), the submitted final position (`final_hash`) and the page's summary.
+  * **Another engine** (the record's fingerprint is the submitter's claim, so it cannot excuse a
+    game from the check): "ok" when it replays here, seated, to a terminal position with the
+    submitted winner, margin and end turn, its ending's name the submitted one or the name a build
+    before E9 gave it (f95503c, audit T-10: final scoring that clamps to 20 VP read "20 VP"; a held
+    scoring card "20 VP", or "wargames" when both held one), and the same summary. The final hash is
+    reported, not required: it hashes the save JSON, whose format grows fields, so it differs across
+    builds even when every move is the same. One that does not replay so stays out as
+    "other-engine", with the step, turn, decision and card where each set was refused: from here an
+    engine change and a forged record look alike.
 * **Clean** (recomputed from the log by `tools/lib/game_stats.summarize`, never read from the row):
   one model with one search auto-played one side all game; the human played the other, always in a
   player view, never for the model, never with the model's readout on screen or its suggestion;
   no forced dice, no debug overrides, not from a loaded position. Take-backs are counted
   (`--max-undos` to leave them out), not disqualifying.
-* `rating` fits each **model player** -- model file and search -- on the clean games, after
-  re-driving each one on this build as `verify` does, *whatever engine its record names*: the
-  fingerprint is the submitter's own claim, so it cannot excuse a game from the check. One played
-  on this engine that fails is left out. One played on another engine counts when it replays here
-  to its submitted end, as most games do across an engine change (the output says how many); one
-  that does not cannot be told from a forged record, so it is left out unless `--include-unverified`.
+* `rating` fits each **model player** -- model file and search -- on the clean games that pass
+  `verify`'s check, whatever engine their record names (the output says how many from another
+  engine verified). One from another engine that does not verify ("other-engine", or
+  "unverifiable" for want of its model's checkpoint) cannot be told from a forged record, so it is
+  left out unless `--include-unverified`; one on this engine always has to verify.
   Only the clean games with a rating are re-driven. The fit uses Elo's
   logistic on a 400-point scale against each human's self-reported Playdek rating, with
   `--ussr-advantage` the USSR's edge between equal players (not fitted; the default 0 assumes
@@ -549,9 +580,10 @@ PYTHONPATH=.:build/release python tools/game_stats.py rating data/game_stats/gam
   PYTHONPATH=.:build/release python tools/playdek_estimate.py --export <dump> --output playdek.json
   ```
 
-  Its games pass the same check as `rating`, except that a game from another engine that does not
-  replay here also counts if the Worker stamped it before `UNVERIFIED_BEFORE`: E7's games are wanted,
-  and nothing new can claim to predate that. A player's estimate is its leaderboard Elo on the newest
+  Its games pass the same check as `rating`, except that a game from another engine that is not
+  verified here also counts if the Worker stamped it before `UNVERIFIED_BEFORE`: E7's games are wanted,
+  and nothing new can claim to predate that. `--checkpoints-dir` as for `rating`: where the models'
+  checkpoints are not (as on CI, which has none), every later game is unverifiable and left out. A player's estimate is its leaderboard Elo on the newest
   epoch's scale (an older epoch's through the newer one's anchor) + one shared offset + a deviation
   shared by its network + its own. Their priors are set by a weight (owner, 2026-11-17): the games
   between models count as `k` games against people, so the deviation's sd is what `k` games at even

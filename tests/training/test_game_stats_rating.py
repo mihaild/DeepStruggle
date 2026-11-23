@@ -16,14 +16,11 @@ from typing import Any, Dict, List, Tuple, cast
 
 import numpy as np
 import pytest
-import ts_engine as ts
 
-from bindings.action_encoder import ActionEncoder
+from tests.game_stats_helpers import CHECKPOINT, MODEL, PERSON, SHA, play_seated, submission, tiny_checkpoint
 from tools import game_stats as cli
-from tools.lib.game_stats import (RatedGame, SettingsDict, Step, SubmissionDict, Verdict, decode_log, final_hash,
-                                  fit_rating, load_export, outcome, play_step, start_state, summarize, verify)
-
-SHA = "c" * 64
+from tools.lib.game_stats import (BuildHistory, ModelFiles, RatedGame, ReplayContext, SettingsDict, Step,
+                                  SubmissionDict, Verdict, decode_log, fit_rating, load_export, summarize, verify)
 
 
 def _games(true_rating: float, n: int, seed: int, ussr_advantage: float = 0.0,
@@ -96,7 +93,7 @@ def _submission(i: int, login: str, rating: int, human_side: str, winner: str,
         "build": {"commit": "abc", "dirty": False, "engine_fingerprint": "f" * 64},
         "playdek": {"login": login, "rating": rating}, "note": "",
         "result": {"winner": winner, "margin": 20, "end_turn": 8, "reason": "20 VP"},
-        "settings": settings, "models": {SHA: {"label": "E7 test", "source": "", "checkpoint": ""}},
+        "settings": settings, "models": {SHA: {"label": "E7 test", "source": "", "checkpoint": CHECKPOINT}},
         "events": [], "start_position": None, "log": _log(i, steps), "n_steps": len(steps),
         "final_hash": "0" * 64,
     }
@@ -115,8 +112,7 @@ def test_rating_counts_only_clean_games_per_model_player(tmp_path: Any, capsys: 
                                                        monkeypatch: pytest.MonkeyPatch) -> None:
     verified: List[str] = []
 
-    def accept(sub: Any, fingerprint: str, *, replay_other_engine: bool = False) -> Verdict:
-        assert replay_other_engine, "rating re-drives every game, whatever engine it names"
+    def accept(sub: Any, ctx: ReplayContext) -> Verdict:
         verified.append(sub["id"])
         return Verdict("ok", "unit fixture")
 
@@ -149,28 +145,12 @@ def test_rating_counts_only_clean_games_per_model_player(tmp_path: Any, capsys: 
 
 def _played(i: int, seed: int, human_side: str, fingerprint: str) -> Dict[str, Any]:
     """A whole game really played in this build -- random legal moves, the model auto-playing one
-    side -- recorded as record.ts records one, so it replays to its end."""
+    side, both seated as the page seats them -- recorded as record.ts records one."""
     model_side = "US" if human_side == "USSR" else "USSR"
-    rng = np.random.default_rng(seed)
-    state = start_state(seed, None)
-    steps: List[Step] = []
-    while not ts.Engine.is_terminal(state):
-        mover = {ts.Player.US: "US", ts.Player.USSR: "USSR"}.get(state.ctx().decision_player, "")
-        action = ActionEncoder.decode(state, int(rng.choice(np.flatnonzero(ActionEncoder.get_legal_mask(state)))))
-        st = Step(int(action.decision_type), action.primary_id, action.secondary_id, action.flags, 0,
-                  "auto" if mover == model_side else "human", False, mover, False, 0)
-        play_step(state, st)
-        steps.append(st)
-    raw = bytearray(struct.pack("<BII", 1, seed, len(steps)))
-    for st in steps:
-        info = ("human", "suggested", "auto").index(st.source) | ({"US": 1, "USSR": 2}.get(st.mover, 0) << 3)
-        raw += bytes([st.decision_type, st.primary_id, st.secondary_id, st.flags, 0, info, 0])
-    sub = _submission(i, "p", 2000, human_side, "US")
-    settings: List[SettingsDict] = [{"view": human_side, "auto": model_side, "model": SHA, "search": "policy"}]
-    sub.update(log=base64.urlsafe_b64encode(zlib.compress(bytes(raw))).decode().rstrip("="),
-               n_steps=len(steps), result=outcome(state), final_hash=final_hash(state), settings=settings,
-               summary=summarize(steps, settings, [], None, finished=True))
-    sub["build"]["engine_fingerprint"] = fingerprint
+    steps, state = play_seated(seed, [model_side], MODEL, PERSON)
+    sub = submission(seed, steps, state, [model_side], fingerprint, game=f"game-{i:04d}-xxxx")
+    sub["playdek"] = {"login": "p", "rating": 2000}
+    sub["models"][SHA]["label"] = "E7 test"
     return sub
 
 
@@ -179,6 +159,7 @@ def test_rating_replays_every_game_whatever_engine_it_names(tmp_path: Any) -> No
     game from being re-driven. One that replays here counts; one that does not is left out, since
     an engine change and a forged record look alike from here, unless --include-unverified."""
     here = cli.engine_fingerprint()
+    tiny_checkpoint(str(tmp_path), CHECKPOINT, MODEL)
     refused = _submission(0, "p", 2000, "USSR", "US")
     refused["build"]["engine_fingerprint"] = here
     genuine = _played(1, 17, "USSR", "f" * 64)
@@ -189,24 +170,28 @@ def test_rating_replays_every_game_whatever_engine_it_names(tmp_path: Any) -> No
     unplayable = _submission(2, "p", 2000, "USSR", "US")   # another engine, and not a game at all
     export, output = tmp_path / "games.json", tmp_path / "fit.json"
     export.write_text(json.dumps([refused, genuine, forged, unplayable]))
+    common = ["rating", str(export), "--bootstrap", "0", "--json", str(output), "--checkpoints-dir", str(tmp_path)]
 
-    assert cli.main(["rating", str(export), "--bootstrap", "0", "--json", str(output)]) == 0
+    assert cli.main(common) == 0
     fit = json.loads(output.read_text())
     assert [f["games"] for f in fit["fits"]] == [1]
     assert fit["skipped"] == {"verification: refused": 1, "verification: other-engine": 2}
     assert fit["other_engine_replayed"] == 1 and fit["unverified_other_engine"] == 0
 
-    assert cli.main(["rating", str(export), "--bootstrap", "0", "--json", str(output),
-                     "--include-unverified"]) == 0
+    assert cli.main(common + ["--include-unverified"]) == 0
     fit = json.loads(output.read_text())
     assert [f["games"] for f in fit["fits"]] == [3]
     assert fit["skipped"] == {"verification: refused": 1}
     assert fit["other_engine_replayed"] == 1 and fit["unverified_other_engine"] == 2
 
 
-def test_verify_alone_still_names_another_engine_without_replaying() -> None:
-    """`verify` reports a game per build: one from another engine names its commit, as before."""
-    genuine = cast(SubmissionDict, _played(1, 17, "USSR", "f" * 64))
-    assert verify(genuine, cli.engine_fingerprint()).status == "other-engine"
-    assert verify(genuine, cli.engine_fingerprint(), replay_other_engine=True).status == "ok"
-    assert verify(genuine, "f" * 64).status == "ok"
+def test_verify_replays_every_game_as_rating_does(tmp_path: Any, capsys: pytest.CaptureFixture[str]) -> None:
+    """`verify` and `rating` apply one check: another engine's game that replays here is "ok"."""
+    tiny_checkpoint(str(tmp_path), CHECKPOINT, MODEL)
+    genuine = _played(1, 17, "USSR", "f" * 64)
+    export = tmp_path / "games.json"
+    export.write_text(json.dumps([genuine]))
+    assert cli.main(["verify", str(export), "--checkpoints-dir", str(tmp_path)]) == 0
+    assert "game_stats: 1 ok (other engine)" in capsys.readouterr().out
+    assert verify(cast(SubmissionDict, genuine),
+                  ReplayContext(cli.engine_fingerprint(), ModelFiles(str(tmp_path)), BuildHistory({}))).status == "ok"

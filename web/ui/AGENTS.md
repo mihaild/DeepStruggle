@@ -542,7 +542,10 @@ web/ui/
    - **The log** (`encodeLog`): seed, then 7 bytes a step (MicroAction, forced die, tags), zlib +
      base64url -- about 2 KB a game where the replay is megabytes. `tools/lib/game_stats.py`
      decodes the same bytes, re-drives the game in the Python engine (`init_game` + `drain_chance`
-     with each step's forced die) and checks `final_hash`, the sha256 of the save JSON at the end.
+     with each step's forced die), each side seated per step as `seatSides` seated it (the step's
+     `setting` names the auto side and model), and checks `final_hash`, the sha256 of the save JSON
+     at the end -- on a game from another engine only winner, margin, end turn and the ending's name,
+     since the save JSON's format changes across builds.
      `summarize()` (clean = one model and search on one side, the human the other in a player
      view, no moves for the model, no hints, no forced dice, no debug, not from a loaded position;
      take-backs counted, not disqualifying) has a Python twin that must agree --
@@ -675,7 +678,7 @@ PYTHONPATH=.:build/release .venv/bin/python -m pytest -q tests/web
 | `test_recent_rolls.py` | `game/rolls.ts`, `roll_tray.ts` and the log's dice lines (`game/describe.ts`) under node: the turn's last coup shown in the next headline and gone a half round later, every die of one click, a replay file's snapshot roll, the Olympic sponsor's die without its +2 (tray and log) |
 | `test_value_readings.py` | `trace_view.ts` under node: the decider of each replay position, the calibrated P(US wins), VP ×20, the terminal case, the `ΔP` chip |
 | `test_web_workbench.py` | the bundled rules metadata, the page's DOM, replay snapshots |
-| `test_game_stats.py` | `game/record.ts` and the stats Worker under node: two games played in the page's `GameSession` (a clean one, one with every mark) re-drive in the Python engine to the submitted final position, the page's summary is Python's, the log is under 7 bytes a step, a stored record plays back as a reload does, and the Worker keeps a game once, refuses another origin, a game without a login and the fourth an hour |
+| `test_game_stats.py` | `game/record.ts` and the stats Worker under node: two games played in the page's `GameSession` (a clean one, one with every mark), each side seated as `seatSides` seats it, re-drive in the Python engine to the submitted final position, the page's summary is Python's, the log is under 7 bytes a step, a stored record plays back as a reload does, and the Worker keeps a game once, refuses another origin, a game without a login and the fourth an hour |
 | `test_i18n.py` | the language catalogs: every translation is of an English id with its parameters and the language's own plural forms, card/country/region names keyed by the rules' ids, every `data-i18n*` key in the two pages English and the markup reading as it |
 | `test_effects_panel.py` | the "in effect" panel covers every effect flag the display state exports (`bindings/state_json.cpp`), each in `EFFECT_INFO_MAP` with its words in `effects.json`; the flags that are no effect (how a game ended, Space Race attempts) are listed |
 | `test_e2e_game_stats.py` | in Chromium: a finished game opens the result dialog once with its notes (download only without an endpoint), Escape closes it without a take-back, the Result button reopens it; a forced die goes back to Auto once it has rolled; a reload plays the stored game back (same id, steps and undo) |
