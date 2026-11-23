@@ -224,3 +224,4 @@ The subdirectories `E7_blunder_bank/`, `E7_leak_by_kind_*/`, `E7_rollout_root_tu
 | [`P54_compile_alone.md`](P54_compile_alone.md) | compile alone costs nothing measurable (adopted for new launches); bf16 is what cost P53's arms |
 | [`P55_critic_everywhere.md`](P55_critic_everywhere.md) | both extra critics on the compiled update (R169) are not weaker than compile alone or B6: the baseline since |
 | [`audit_2026-11-22_verification.md`](audit_2026-11-22_verification.md) | the 2026-11-22 external audit checked finding by finding (what is true, what touches current runs, the proposed fixes), and the second external pass over the fixes ([`fix_verification.md`](../gemini_findings/fix_verification.md)) |
+| [`E9_base_regression.md`](E9_base_regression.md) | the E9 base's weak 950 -> 1,200M stretch hunted down (engine, fixes, resume, compile, GPU, toolchain all ruled out): pure self-play often loses ground there, pooled runs gain |
