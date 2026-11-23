@@ -70,6 +70,9 @@ export interface ModelInfo {
   source: string;
   /** The checkpoint it was exported from (ts.checkpoint in the ONNX metadata). */
   checkpoint: string;
+  /** The obs_features bits the page read from it (ts.obs_features), whose rule bits its seat played:
+   *  a reload seats it so again. Absent in records made before 2026-11-23. */
+  obs_features?: number;
 }
 
 /** What happened besides moves. */

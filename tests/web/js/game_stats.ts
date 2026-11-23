@@ -10,13 +10,17 @@ import { WasmEngine } from "../../../web/ui/src/engine/wasm_engine";
 import { GameSession } from "../../../web/ui/src/game/session";
 import { MoveHow, Submission, buildSubmission, decodeLog } from "../../../web/ui/src/game/record";
 import { D1Database, D1Statement, handle, invalid } from "../../../web/stats_worker/src/handler";
+import { SEATS, sideRules } from "../../../web/ui/src/game/seats";
 
 const engine = await WasmEngine.load(pathToFileURL(process.argv[2]).href);
 const BUILD = { commit: "0123456789abcdef0123456789abcdef01234567", dirty: false, engine_fingerprint: engine.fingerprint };
 const SHA_A = "a".repeat(64);
 const SHA_B = "b".repeat(64);
-const MODEL_A = { label: "model A", source: "hf:x/y@main:a.onnx", checkpoint: "ck-a" };
-const MODEL_B = { label: "model B", source: "hf:x/y@main:b.onnx", checkpoint: "ck-b" };
+const MODEL_A = { label: "model A", source: "hf:x/y@main:a.onnx", checkpoint: "ck-a", obs_features: 0 };
+const MODEL_B = { label: "model B", source: "hf:x/y@main:b.onnx", checkpoint: "ck-b", obs_features: 0 };
+// An E8.1-like model: the headline reveal and the opponent's-card Event gate, a rule bit its seat plays.
+const SHA_C = "e".repeat(64);
+const MODEL_C = { label: "model C", source: "hf:x/y@main:c.onnx", checkpoint: "ck-c", obs_features: 4 | 8 };
 
 /** A deterministic choice among the legal flat actions. */
 function chooser(seed: number) {
@@ -61,10 +65,9 @@ function play(s: GameSession, seed: number, messy: boolean): void {
     const devView = messy && mover === "USSR" && human >= 9 && human < 13;
     s.setSettings({ view: devView ? "DEV" : "USSR", auto: "US", model: b ? SHA_B : SHA_A, search: "policy" },
                   b ? MODEL_B : MODEL_A);
-    // Seated as the page seats each side (main.ts seatSides): the auto side its model's obs_features
-    // (these models read the base layout, 0), the person's side the current person rules.
-    engine.seat(1, 0);
-    engine.seat(-1, engine.currentRules);
+    // Seated as the page seats each side (main.ts seatSides, game/seats.ts): the auto side its model's
+    // obs_features (these models read the base layout, 0), the person's side the current person rules.
+    for (const [side, player] of SEATS) engine.seat(player, sideRules(side, "US", 0, engine.currentRules));
     if (mover === "US") {
       // The model's side. In the messy game the human makes three of its moves.
       model++;
@@ -110,6 +113,46 @@ const resumed = {
   same_tags: JSON.stringify(reloaded.tags) === JSON.stringify(cleanRecord.steps.map(x => x.tag)),
   resume_event: reloaded.events[reloaded.events.length - 1]?.kind,
 };
+
+// A reload of a game whose seats matter: the model's side plays opp_event_gated, the person's side
+// the person rules. Played back unseated -- what replayRecord did before it seated each step -- the
+// game is refused or lands elsewhere; seated from its record, it is the game that was played.
+function seatedGame(seed: number): { save: string; record: ReturnType<GameSession["record"]> } {
+  const s = new GameSession(engine);
+  const pick = chooser(seed);
+  s.newGame(seed);
+  for (let n = 0; n < 20000 && !engine.isTerminal(); n++) {
+    s.setSettings({ view: "USSR", auto: "US", model: SHA_C, search: "policy" }, MODEL_C);
+    for (const [side, player] of SEATS) engine.seat(player, sideRules(side, "US", MODEL_C.obs_features, engine.currentRules));
+    move(s, pick, 0, { source: side() === "US" ? "auto" : "human", analysis: false });
+  }
+  return { save: engine.saveJson(), record: s.record() };
+}
+function unseatedReplayDiffers(rec: ReturnType<GameSession["record"]>, save: string): boolean {
+  const s = new GameSession(engine);
+  s.newGame(rec.seed);
+  for (const st of rec.steps) {
+    if (s.apply(st.action, st.tag.forcedDie, { source: st.tag.source, analysis: st.tag.analysis })) return true;
+  }
+  return engine.saveJson() !== save;
+}
+let seatedResume = { seed: 0, unseated_differs: false, same_position: false, without_bits_refused: "" };
+for (let seed = 1; seed <= 40; seed++) {
+  const { save, record } = seatedGame(seed);
+  if (!unseatedReplayDiffers(record, save)) continue;
+  const back = new GameSession(engine);
+  back.replayRecord(record, null, false);
+  const same = engine.saveJson() === save;
+  let refused = "";
+  try {
+    const old = { ...record, models: { [SHA_C]: { ...MODEL_C, obs_features: undefined } } };
+    new GameSession(engine).replayRecord(old, null, false);
+  } catch (e) {
+    refused = String(e);
+  }
+  seatedResume = { seed, unseated_differs: true, same_position: same, without_bits_refused: refused };
+  break;
+}
 
 play(session, 5150, true);
 const messy = await submission(session, "Bob");
@@ -159,7 +202,7 @@ const responses = {
 const stored = rows.get(clean.id)!;
 
 console.log(JSON.stringify({
-  fingerprint: engine.fingerprint, clean, messy, resumed, roundtrip,
+  fingerprint: engine.fingerprint, clean, messy, resumed, seated_resume: seatedResume, roundtrip,
   invalid_clean: invalid(clean), invalid_no_login: invalid(noLogin),
   responses, stored_body_is_submission: stored[19] === JSON.stringify(clean),
 }));

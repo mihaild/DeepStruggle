@@ -110,6 +110,17 @@ def test_a_reload_plays_the_stored_game_back(played: Dict[str, Any]) -> None:
     assert played["resumed"] == {"same_position": True, "same_id": True, "same_tags": True, "resume_event": "resume"}
 
 
+def test_a_reload_seats_each_step_as_it_was_played(played: Dict[str, Any]) -> None:
+    """GameSession.replayRecord starts a new game, which clears the seats: played back unseated, a game
+    whose seats mattered is refused or lands elsewhere. It seats each step from its record (the step's
+    setting, the model's recorded obs_features, the person rules), and a record without a model's bits
+    is refused rather than played back under other rules."""
+    r = played["seated_resume"]
+    assert r["unseated_differs"], "no seed in 1..40 plays a game whose seats matter"
+    assert r["same_position"]
+    assert "whose rule bits the record does not hold" in r["without_bits_refused"]
+
+
 def test_the_worker_keeps_a_game_once_and_refuses_junk(played: Dict[str, Any]) -> None:
     r = played["responses"]
     assert played["invalid_clean"] is None

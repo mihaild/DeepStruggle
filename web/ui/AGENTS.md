@@ -32,7 +32,8 @@ web/ui/
 │   │                           # last_turn.ts (what the other side's latest turn did to the map),
 │   │                           # rolls.ts (the latest action round's dice, from the steps),
 │   │                           # record.ts (a game for the stats database: log, tags, summary),
-│   │                           # saved_game.ts (the game kept in the browser, for a reload)
+│   │                           # saved_game.ts (the game kept in the browser, for a reload),
+│   │                           # seats.ts (the rule bits a side plays: live and played back)
 │   ├── result_dialog.ts        # Game over: the result, how it was played, submit to the stats database
 │   ├── build_info.ts           # the commit the page was built from, the stats endpoint
 │   ├── analysis/               # model.ts (ONNX sources + onnxruntime-web), hf_catalog.ts (the
@@ -350,7 +351,8 @@ web/ui/
      (`WasmEngine.currentRules`, the engine's `PERSON_RULES`: not P43's canonical orders, which
      orders a model's setup clicks, `engine/AGENTS.md` §21). So nothing a person is offered or suggested, readout and search
      included, is an Event that cannot fire, while an older model on the auto-play side keeps the
-     rule it was trained with. `WasmEngine.mask(merged)` reads the seats and changes nothing.
+     rule it was trained with. `WasmEngine.mask(merged)` reads the seats and changes nothing. The rule
+     is `game/seats.ts` `sideRules`, shared with a reload's playback (below).
    - **The repo's catalogue (`hfCatalog`, `analysis/hf_catalog.ts`, re-exported by `model.ts`) is one
      request**: `models.json`
      at the repo root, written by `tools/publish_hf.py` on every publish (each `.onnx` with its
@@ -559,7 +561,11 @@ web/ui/
    - **Reloads keep the game.** After every move the record is stored in localStorage
      (`saved_game.ts`). On boot, a `pos=` link whose position the stored game plays to is that
      game, played back from its seed (`replayRecord`) -- id, history and undo intact -- rather
-     than a new game from a loaded position, which could not be re-driven from the seed.
+     than a new game from a loaded position, which could not be re-driven from the seed. A new game
+     clears the seats, so `replayRecord` seats each step as it was played (`seatAsRecorded`: the
+     step's setting, its model's `obs_features` as the record's `ModelInfo` holds them, the person
+     rules) -- played back unseated, a step can be refused or land elsewhere. A stored record whose
+     model lacks `obs_features` (stored before 2026-11-23) is refused, and the link opens as a position.
    - **The forced die is for one roll.** The HUD's die selector goes back to Auto once a move of
      yours has rolled with it (`afterOwnMove`): one click on a face no longer forces every roll
      after it. Auto-play always rolls.
@@ -678,7 +684,7 @@ PYTHONPATH=.:build/release .venv/bin/python -m pytest -q tests/web
 | `test_recent_rolls.py` | `game/rolls.ts`, `roll_tray.ts` and the log's dice lines (`game/describe.ts`) under node: the turn's last coup shown in the next headline and gone a half round later, every die of one click, a replay file's snapshot roll, the Olympic sponsor's die without its +2 (tray and log) |
 | `test_value_readings.py` | `trace_view.ts` under node: the decider of each replay position, the calibrated P(US wins), VP ×20, the terminal case, the `ΔP` chip |
 | `test_web_workbench.py` | the bundled rules metadata, the page's DOM, replay snapshots |
-| `test_game_stats.py` | `game/record.ts` and the stats Worker under node: two games played in the page's `GameSession` (a clean one, one with every mark), each side seated as `seatSides` seats it, re-drive in the Python engine to the submitted final position, the page's summary is Python's, the log is under 7 bytes a step, a stored record plays back as a reload does, and the Worker keeps a game once, refuses another origin, a game without a login and the fourth an hour |
+| `test_game_stats.py` | `game/record.ts` and the stats Worker under node: two games played in the page's `GameSession` (a clean one, one with every mark), each side seated as `seatSides` seats it, re-drive in the Python engine to the submitted final position, the page's summary is Python's, the log is under 7 bytes a step, a stored record plays back as a reload does -- each step seated as played, also for a game that unseated would land elsewhere -- and the Worker keeps a game once, refuses another origin, a game without a login and the fourth an hour |
 | `test_i18n.py` | the language catalogs: every translation is of an English id with its parameters and the language's own plural forms, card/country/region names keyed by the rules' ids, every `data-i18n*` key in the two pages English and the markup reading as it |
 | `test_effects_panel.py` | the "in effect" panel covers every effect flag the display state exports (`bindings/state_json.cpp`), each in `EFFECT_INFO_MAP` with its words in `effects.json`; the flags that are no effect (how a game ended, Space Race attempts) are listed |
 | `test_e2e_game_stats.py` | in Chromium: a finished game opens the result dialog once with its notes (download only without an endpoint), Escape closes it without a take-back, the Result button reopens it; a forced die goes back to Auto once it has rolled; a reload plays the stored game back (same id, steps and undo) |

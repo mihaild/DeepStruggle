@@ -67,7 +67,8 @@ function validSetting(v: unknown): boolean {
 
 /** A model the page moved with, by its sha256 (record.ts ModelInfo). */
 function validModel(v: unknown): boolean {
-  return isObj(v) && isStr(v.label, 200) && isStr(v.source, 1024) && isStr(v.checkpoint, 1024);
+  return isObj(v) && isStr(v.label, 200) && isStr(v.source, 1024) && isStr(v.checkpoint, 1024)
+    && (v.obs_features === undefined || isInt(v.obs_features, 0, 0xffffffff));
 }
 
 /** What happened besides moves (record.ts RecordEvent), a debug override's change included. */

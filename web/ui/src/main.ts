@@ -33,6 +33,7 @@ import { LogEntry, groupLog, mentionsVp, movesVp, replayItems } from "./game/log
 import { EnglishLogItem, englishItem, lineHtml, messageHtml, playerLabel } from "./game/log";
 import { MoveHow, buildSubmission, sha256Hex, summarize } from "./game/record";
 import { loadStoredGame, storeGame } from "./game/saved_game";
+import { SEATS, sideRules } from "./game/seats";
 import { ResultDialog } from "./result_dialog";
 import { BUILD_COMMIT, BUILD_DIRTY } from "./build_info";
 import { escapeHtml, num } from "./html";
@@ -315,7 +316,8 @@ export class TSApp {
       auto: this.analysisPanel.autoSide,
       model: m ? this.modelSha : "",
       search: this.searchSpec ? rolloutParam(this.searchSpec) : "policy",
-    }, m ? { label: m.meta.label, source: sourceToParam(m.source) ?? "", checkpoint: m.meta.checkpoint } : undefined);
+    }, m ? { label: m.meta.label, source: sourceToParam(m.source) ?? "", checkpoint: m.meta.checkpoint,
+             obs_features: m.obsFeatures } : undefined);
   }
 
   /** How a move by the side to move is made: who made it, and whether the readout was on screen. */
@@ -896,9 +898,9 @@ export class TSApp {
     const offered = () => [engine.mask(false), engine.mask(true)].map(m => m.join("")).join("|");
     const before = offered();
     let changed = false;
-    for (const [side, player] of [["US", 1], ["USSR", -1]] as const) {
-      const features = side === auto && this.model ? this.model.obsFeatures : engine.currentRules;
-      changed = engine.seat(player, features) || changed;
+    for (const [side, player] of SEATS) {
+      changed = engine.seat(player, sideRules(side, auto, this.model ? this.model.obsFeatures : null,
+                                              engine.currentRules)) || changed;
     }
     return changed && offered() !== before;
   }

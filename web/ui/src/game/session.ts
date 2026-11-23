@@ -19,6 +19,7 @@ import { Message, message, messageIfKnown, renderEnglish } from "../i18n";
 import { endingArg } from "../i18n/enums";
 import { ReplayStep } from "../replay_controls";
 import { DebugOverride, GameRecordData, ModelInfo, MoveHow, RecordEvent, RecordEventKind, Settings, StepTag } from "./record";
+import { SEATS, sideRules } from "./seats";
 
 const MAX_UNDO = 300;
 
@@ -187,6 +188,7 @@ export class GameSession {
     rec.steps.forEach((s, i) => {
       overridesAt(i);
       this.setting = s.tag.setting;
+      this.seatAsRecorded(rec, i);
       const why = this.apply(s.action, s.tag.forcedDie, { source: s.tag.source, analysis: s.tag.analysis });
       if (why) throw new Error(`step ${i + 1} of the saved game was refused: ${why}`);
     });
@@ -195,6 +197,27 @@ export class GameSession {
     this.startedAt = rec.started_at;
     this.submitted = submitted;
     this.event("resume", "page reloaded");
+  }
+
+  /**
+   * Seat both sides for step `i` of `rec` as the live game seated them (game/seats.ts): newGame clears
+   * the seats, and a step replayed under other rules can be refused, or -- an Event offered or not,
+   * a starred card removed or discarded -- land elsewhere. A step moved by a model whose rule bits the
+   * record does not hold (one stored before they were recorded) cannot be seated so: refused.
+   */
+  private seatAsRecorded(rec: GameRecordData, i: number): void {
+    const st = rec.settings[rec.steps[i].tag.setting];
+    const auto = st?.auto ?? "";
+    let features: number | null = null;
+    if (st && auto && st.model) {
+      const m = rec.models[st.model];
+      if (m?.obs_features === undefined) {
+        throw new Error(`step ${i + 1} of the saved game was moved under model ${m?.label ?? st.model.slice(0, 12)}, `
+          + "whose rule bits the record does not hold");
+      }
+      features = m.obs_features;
+    }
+    for (const [side, player] of SEATS) this.engine.seat(player, sideRules(side, auto, features, this.engine.currentRules));
   }
 
   get canUndo(): boolean {

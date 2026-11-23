@@ -36,8 +36,8 @@ import struct
 import subprocess
 import zlib
 from dataclasses import dataclass, field
-from typing import (Any, Callable, Dict, Iterable, List, Literal, Mapping, Optional, Sequence, Tuple, TypedDict,
-                    cast)
+from typing import (Any, Callable, Dict, Iterable, List, Literal, Mapping, NotRequired, Optional, Sequence, Tuple,
+                    TypedDict, cast)
 
 import numpy as np
 import onnx
@@ -71,6 +71,9 @@ class ModelInfoDict(TypedDict):
     label: str
     source: str
     checkpoint: str
+    #: The obs_features the page read from the model (records since 2026-11-23); the submitter's claim,
+    #: so verify reads the bits from the model itself.
+    obs_features: NotRequired[int]
 
 
 class EventDict(TypedDict):
