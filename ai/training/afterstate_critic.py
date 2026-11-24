@@ -58,7 +58,7 @@ Without `--afterstate-advantage` (R169's afterstate critic) the first walk and i
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Iterator, List, Optional, Sequence, Tuple
 
 import numpy as np
 import torch
@@ -664,6 +664,62 @@ def node_tensors(rows: Sequence[AfterstateRows], horizon: int, num_envs: int, de
             torch.from_numpy(ntgt).to(device))
 
 
+def _last_moments(rows: Sequence[AfterstateRows], players: np.ndarray, num_envs: int
+                  ) -> Iterator[Tuple[AfterstateRows, np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
+    """Per step's rows that hold a side's last decision's walk: (rows, the index of each walk's last row, its side
+    index q -- 0 US, 1 USSR --, its env, and which of those walks is that side's last decision's)."""
+    lastdec = np.full((2, num_envs), -1, dtype=np.int64)
+    for qi, pl in ((0, 1), (1, -1)):
+        for t in range(players.shape[0]):
+            lastdec[qi] = np.where(players[t] == pl, t, lastdec[qi])
+    for r in rows:
+        if len(r.envs) == 0:
+            continue
+        envs = np.asarray(r.envs)
+        last = np.flatnonzero(np.r_[envs[1:] != envs[:-1], True])       # an env's rows in a step are one walk
+        e = envs[last]
+        q = np.where(np.asarray(r.sides)[last] > 0, 0, 1)
+        sel = lastdec[q, e] == r.step                                    # the walk of that side's last decision
+        if sel.any():
+            yield r, last, q, e, sel
+
+
+def last_moment_vp_values(rows: Sequence[AfterstateRows], players: np.ndarray, num_envs: int,
+                          vp_fn: Callable[[torch.Tensor], torch.Tensor]) -> np.ndarray:
+    """(2, num_envs): `last_moment_values` for the auxiliary VP head -- per env, the US's and the USSR's own v_vp (read
+    by `vp_fn`, the side's own network) at the latest captured moment of its last decision, in its own frame; NaN
+    where there is none. The bootstrap past the buffer of the per-player returns_vp (2026-11-24,
+    RolloutBuffer._vp_returns_per_player) for a side not to move at the end, in place of the negated v_vp of the side
+    to move.
+
+    A moment that waits on a die (a row with outcomes) is NaN too: its v_win is the outcomes' average with a finished
+    game counting its result, and a finished face has no VP here. It does not arise where the value is needed: a walk
+    ends at a die only when the state after it is not kept -- the game over (a done, the chain cut), or the side's own
+    next decision, which makes this decision not its last one or the side the one to move at the end. Should it arise,
+    the trainer refuses the rollout (`missing_last_moments`) rather than read the critic blind."""
+    out = np.full((2, num_envs), np.nan, dtype=np.float32)
+    pend_q: List[np.ndarray] = []
+    pend_e: List[np.ndarray] = []
+    pend_o: List[torch.Tensor] = []
+    for r, last, q, e, sel in _last_moments(rows, players, num_envs):
+        waits = np.zeros(len(r.envs), dtype=bool)
+        if r.face_row is not None and len(r.face_row):
+            waits[np.asarray(r.face_row, dtype=np.int64)] = True
+        if r.exact:
+            waits |= np.asarray(r.kinds) == BEFORE_ROLL
+        keep = sel & ~waits[last]
+        if not keep.any():
+            continue
+        pend_q.append(q[keep])
+        pend_e.append(e[keep])
+        pend_o.append(r.obs.index_select(0, torch.from_numpy(last[keep]).to(r.obs.device)))
+    if pend_o:
+        with torch.no_grad():
+            v = vp_fn(torch.cat(pend_o)).reshape(-1).float().cpu().numpy()
+        out[np.concatenate(pend_q), np.concatenate(pend_e)] = v
+    return out
+
+
 def last_moment_values(rows: Sequence[AfterstateRows], players: np.ndarray, num_envs: int,
                        value_fn: Optional[Callable[[torch.Tensor], torch.Tensor]] = None) -> np.ndarray:
     """(2, num_envs): per env, for the US (row 0) and the USSR (row 1), the value of the latest captured moment of that
@@ -677,22 +733,9 @@ def last_moment_values(rows: Sequence[AfterstateRows], players: np.ndarray, num_
     `value_fn`, only the few this needs -- at most one a side and env (fix verification V-5, 2026-11-22: reading the
     whole rollout's rows for them was wasted inference)."""
     out = np.full((2, num_envs), np.nan, dtype=np.float32)
-    lastdec = np.full((2, num_envs), -1, dtype=np.int64)
-    for qi, pl in ((0, 1), (1, -1)):
-        for t in range(players.shape[0]):
-            lastdec[qi] = np.where(players[t] == pl, t, lastdec[qi])
     pending: List[Tuple[np.ndarray, np.ndarray, torch.Tensor]] = []
-    for r in rows:
+    for r, last, q, e, sel in _last_moments(rows, players, num_envs):
         n = len(r.envs)
-        if n == 0:
-            continue
-        envs = np.asarray(r.envs)
-        last = np.flatnonzero(np.r_[envs[1:] != envs[:-1], True])       # an env's rows in a step are one walk
-        e = envs[last]
-        q = np.where(np.asarray(r.sides)[last] > 0, 0, 1)
-        sel = lastdec[q, e] == r.step                                    # the walk of that side's last decision
-        if not sel.any():
-            continue
         if r.values is None:
             if value_fn is None:
                 raise ValueError("last_moment_values: the rows' values were not read and no value_fn was given")

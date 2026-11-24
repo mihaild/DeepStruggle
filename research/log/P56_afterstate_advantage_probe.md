@@ -285,3 +285,48 @@ gap in the table above.
 > * R169 and every run without the flag train bit-identically (CPU, R169's flags, same seed, 4 updates: identical
 >   metrics, weights, optimizer, torch / numpy / game RNG states).
 
+## The VP head's target under `--per-player-gae` (2026-11-24)
+
+The owner's principle for T1: no target or advantage may combine critic values from different sides. The advantage
+and the win return were per player; the auxiliary VP head's target `returns_vp` (`vp_coef` 0.05,
+`F.mse_loss(cur_v_vp, b_ret_vp)`; the categorical value head's two-hot target is the same return) was still made by
+the interleaved pass (`RolloutBuffer._gae_backward`): `next = sign x returns_vp[t+1]` across a change of mover, and at
+the rollout's end `last_v_vp`, the v_vp of whichever side moves next, negated for the other side. Each side's VP head
+was so partly trained on the other side's VP estimate at the rollout's end -- under A39 another network's.
+
+**Now, under `--per-player-gae` only** (`RolloutBuffer._vp_returns_per_player`, C++ `ts.vp_returns_per_player`): the
+interleaved trace's step, unchanged -- at a done the mover's VP / 20, else 0.1 x it + 0.9 x the next return -- with
+"next" the mover's next OWN decision's return. Where something else comes first: a done after the decision gives the
+game's final VP in the side's frame (`vps` is the VP after the step; the interleaved trace reached the same fact
+through the opponent's rows; a fact, not a critic value); a `--slice-turn-boundaries` cut gives nothing (the trace's
+`non_terminal = 0`); the buffer's end gives the side's OWN VP estimate -- `last_v_vp` for the side to move, and for
+the other its own v_vp at the last captured moment of its last decision (`last_moment_vp_values`: the moment
+`last_moment_values` reads for v_win, its observation read through the network, so the side's own copy under A39).
+A side not to move with no such moment while its chain reaches the end stops the run, as for v_win
+(`missing_last_moments`), never the negated v_vp of the side to move. A moment waiting on a die is no VP estimate
+(its v_win is the outcomes' average with a finished face counting its result, and a finished face has no VP here);
+it cannot be the one needed -- a walk ends at a die only when the state after it is not kept, which is the game over
+(a done) or the side's own next decision (so it is the side to move, or the decision is not its last) -- and would
+stop the run if it were. Held rows (P40's searched opponent) have no per-player counterpart; `compute_gae` refuses
+the pair as before. One difference by construction: the trace's 0.9 now decays per own decision, not per decision of
+either side, so the VP target reaches about twice as many game moves.
+
+**`defcon_risk_target`**, the other target the interleaved pass still makes under the flag (T-4(3)), needed nothing:
+it is built from engine facts alone -- `defcon_blunder` (the side whose own choice lost the game to DEFCON 1 or a
+Cuban Missile Crisis coup), dones and movers -- and reads no critic value. Nothing else the trainer trains on comes
+from that pass under the flag (the advantage and `returns_win` are the per-player pass's).
+
+**Tests** (`tests/training/test_per_player_vp_return.py`): on a real CPU rollout (8 envs x 160, an untrained
+network's games, terminal rows, both sides' chains reaching the end) the return equals a plain-Python forward-scan
+recomputation within 2e-6, with and without turn slicing; perturbing every VP estimate of one side (its bootstrap
+past the buffer, its per-row v_vp) leaves the other side's returns bit for bit (the interleaved trace moves under
+the same perturbation), while its own estimate moves its own; a missing own estimate is refused; without the flag
+`returns_vp` is the interleaved pass's and the new argument is not read. Before/after the change, a CPU trainer
+(3 rollouts and updates, same seed) without the flag gave identical losses, weights and targets.
+
+**Cost.** The C++ pass: 0.27 ms on a 128 x 512 buffer (the per-player win pass 0.71 ms, the interleaved pass, still
+run, 10 ms; CPU). The v_vp read: one forward over at most two rows an env per rollout, 5 ms of a 626 ms CPU rollout
+(128 envs, the small test network; 0.8%); on the GPU one ~1,000-row batch beside the rollout's 128 batches of 512.
+
+**T1 (`E9-A39-R169-S45@1600M+R170`) was launched before this change** and trains its VP head on the old target; a
+continuation on this code changes that (a run-code question for the owner, as any flag-behaviour change).

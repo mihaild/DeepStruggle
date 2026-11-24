@@ -276,6 +276,7 @@ class RolloutBuffer:
         per_player_gae: bool = False,
         afterstate_node: Optional[Tuple[torch.Tensor, ...]] = None,
         last_side_values: Optional[torch.Tensor] = None,
+        last_side_vp: Optional[torch.Tensor | np.ndarray] = None,
     ) -> None:
         """Computes Generalized Advantage Estimation (GAE) with Zero-Sum Alternating Perspective Alignment.
 
@@ -293,6 +294,11 @@ class RolloutBuffer:
         The error lands hardest on the last decision before the side switches -- a card played for
         its event is scored by the opponent's opinion of the result, formed without seeing the
         deciding player's hand. Requires ``next_values_own`` to have been supplied to ``add``.
+
+        ``per_player_gae`` also takes the auxiliary VP head's target ``returns_vp`` along each side's own chain
+        (`_vp_returns_per_player`, 2026-11-24), so it needs ``last_side_vp``: (2, num_envs), the US's and the USSR's
+        own VP estimate at their last captured moment (`last_moment_vp_values`), read for a side not to move at the
+        end; ``last_v_vp`` is the side to move's. ``last_side_vp`` is ignored without ``per_player_gae``.
         """
         if same_perspective_bootstrap and not self.has_next_values_own:
             raise ValueError(
@@ -307,6 +313,10 @@ class RolloutBuffer:
         if mode != "off" and per_player_gae:
             raise ValueError("block lambda is defined on the interleaved GAE recursion; "
                              "per_player_gae replaces it.")
+        if per_player_gae and last_side_vp is None:
+            raise ValueError("per_player_gae takes returns_vp along each side's own chain and needs last_side_vp, each "
+                             "side's own VP estimate past the buffer; the interleaved trace's negated bootstrap of the "
+                             "side to move is the cross-side value it removes")
         key = (float(gamma), float(gae_lambda), bool(slice_turn_boundaries),
                int(defcon_risk_horizon), bool(same_perspective_bootstrap), mode, bool(self.uses_hold))
         if self.graph_gae and self.device.type == "cuda":
@@ -322,6 +332,10 @@ class RolloutBuffer:
             if per_player_gae:
                 self.advantages = pp_adv
                 self.returns_win = pp_ret
+                assert last_side_vp is not None
+                # In place: a graphed _gae_backward writes returns_vp into this storage on its next replay.
+                self.returns_vp.copy_(self._vp_returns_per_player(last_v_vp, last_players, last_side_vp,
+                                                                  slice_turn_boundaries=slice_turn_boundaries))
             if afterstate_node is not None:
                 # P56: the policy's advantage from each side's own chain with the afterstate node; the value
                 # targets (returns_win) stay as computed above.
@@ -677,6 +691,44 @@ class RolloutBuffer:
         a_t = torch.from_numpy(adv).to(dev)
         r_t = torch.from_numpy(ret).to(dev)
         return a_t, r_t, (torch.from_numpy(nadv).to(dev) if node is not None else a_t)
+
+    def _vp_returns_per_player(self, last_v_vp: torch.Tensor, last_players: torch.Tensor,
+                               last_side_vp: torch.Tensor | np.ndarray,
+                               slice_turn_boundaries: bool = False) -> torch.Tensor:
+        """The auxiliary VP head's target under per_player_gae (2026-11-24; P56 plan, T1): the interleaved trace's step
+        (`_gae_backward`: at a done the mover's normalised VP, else 0.1 x it + 0.9 x the next return) taken along the
+        mover's OWN chain of decisions, as `_gae_per_player_both` takes the win return, so no side's VP target ever
+        reads the other side's VP estimate (the interleaved trace bootstraps the rollout's end from the side to move's
+        v_vp, negated for the other side).
+
+        Per side, the next return is: at a done after the decision, the game's final VP in the side's frame (``vps``
+        is the VP after the step; the done row's mover gets it as its own return, as before); past a turn cut under
+        ``slice_turn_boundaries`` nothing (the interleaved trace's non_terminal = 0); past the buffer the side's own VP
+        estimate -- ``last_v_vp`` for the side to move, ``last_side_vp`` (2, N) for the other, its own last captured
+        moment's v_vp. A NaN there reaching a return (no own moment, its chain not cut) is refused, never replaced by
+        the negated value of the side to move. Held rows never reach here (compute_gae refuses uses_hold)."""
+        T, N = self.buffer_size, self.num_envs
+        players = np.ascontiguousarray(self.players[:T].cpu().numpy().astype(np.int8))
+        cuts = np.ascontiguousarray(self.per_player_cuts(slice_turn_boundaries).astype(np.uint8))
+        dones = np.ascontiguousarray((self.dones[:T].cpu().numpy() > 0.5).astype(np.uint8))
+        vps = np.ascontiguousarray(self.vps[:T].cpu().numpy().astype(np.float32))
+        lp = last_players.cpu().numpy()
+        lv = last_v_vp.detach().float().cpu().numpy().astype(np.float32)
+        own = (last_side_vp.detach().float().cpu().numpy() if isinstance(last_side_vp, torch.Tensor)
+               else np.asarray(last_side_vp, dtype=np.float32)).astype(np.float32)
+        if own.shape != (2, N):
+            raise ValueError(f"last_side_vp must be (2, num_envs) = (2, {N}), got {own.shape}")
+        lv_us = np.ascontiguousarray(np.where(lp == 1, lv, own[0]).astype(np.float32))
+        lv_ussr = np.ascontiguousarray(np.where(lp == -1, lv, own[1]).astype(np.float32))
+        ret = np.zeros((T, N), dtype=np.float32)
+        ts.vp_returns_per_player(players, cuts, dones, vps, lv_us, lv_ussr, ret)
+        bad = ~np.isfinite(ret)
+        if bad.any():
+            t_b, e_b = (int(x[0]) for x in np.nonzero(bad))
+            raise ValueError(f"per-player returns_vp: {int(bad.sum())} row(s) reached a side's missing own VP estimate "
+                             f"past the buffer (first: step {t_b}, env {e_b}); refusing the negated bootstrap of the "
+                             "side to move")
+        return torch.from_numpy(ret).to(self.device)
 
     def diagnostics(self) -> Dict[str, float]:
         """Value-head and advantage-distribution health metrics for the current rollout.

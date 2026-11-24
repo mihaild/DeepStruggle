@@ -3,6 +3,16 @@
 **Approved by the owner, 2026-11-21: step 1 built; checks, then pairs of 800M branches from R169 at 2,000M** (the
 section "The approved plan"). The first assessment follows.
 
+> **2026-11-24, the VP head's target under `--per-player-gae`.** The owner's principle for T1 -- no target or
+> advantage combines critic values from different sides -- held for the advantage and the win return, but the
+> auxiliary VP head's target `returns_vp` (weight `vp_coef` 0.05; the categorical head reuses it) was still the
+> interleaved trace's, which bootstraps the rollout's end from the v_vp of the side to move, negated for the other
+> side: with per-side networks (A39) a cross-network leak. It now follows each side's own chain, its own last
+> moment's v_vp past the buffer; `defcon_risk_target`, the one other target the interleaved pass still makes, is
+> built from engine facts and needed nothing. Runs without the flag are bit-identical; T1 (`E9-A39-R169-S45@1600M+R170`,
+> launched before it) still has the old VP target. Details:
+> [`../log/P56_afterstate_advantage_probe.md`](../log/P56_afterstate_advantage_probe.md), the last section.
+
 **Assessment: sound, and worth a short screen of branches rather than one arm,** because it is two changes at
 once -- a much shorter reach, and a split of the step at the afterstate -- and one arm cannot tell which of them
 did what. Measurements: [`../log/P56_afterstate_advantage_probe.md`](../log/P56_afterstate_advantage_probe.md).

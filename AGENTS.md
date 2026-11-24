@@ -118,7 +118,8 @@ graph TD
 │   │                           # restart_pool.py (P48b: restarts from the run's own positions),
 │   │                           # afterstate_critic.py (the critic after a decision / around its rolls;
 │   │                           # under --per-player-gae it captures every decision's walk, each side's
-│   │                           # own last moment being its end-of-rollout bootstrap), training_rng.py
+│   │                           # own last moment being its end-of-rollout bootstrap, v_win and v_vp
+│   │                           # alike), training_rng.py
 │   │                           # (preserves_training_rng: evaluations and the start-pool harvest leave
 │   │                           # the rollout's random streams alone), side_split.py (a side-split
 │   │                           # network's compiled update and rollout CUDA graphs split the batch by

@@ -38,10 +38,11 @@ def _buffer(rewards, players, dones=None, values=None) -> RolloutBuffer:
 
 
 def _gae(buf, lam, **kw):
+    # Under per_player_gae the VP head's return needs each side's own VP estimate past the buffer.
     buf.compute_gae(
         last_v_win=torch.zeros(N), last_v_vp=torch.zeros(N),
         last_players=torch.full((N,), 1, dtype=torch.int8),
-        gamma=1.0, gae_lambda=lam, **kw)
+        gamma=1.0, gae_lambda=lam, last_side_vp=torch.zeros(2, N), **kw)
     return buf.returns_win.clone()
 
 
@@ -91,7 +92,7 @@ def test_it_never_negates_a_value_across_a_change_of_mover() -> None:
     buf.compute_gae(
         last_v_win=torch.full((N,), 0.5), last_v_vp=torch.zeros(N),
         last_players=torch.full((N,), 1, dtype=torch.int8),
-        gamma=1.0, gae_lambda=0.0, per_player_gae=True)
+        gamma=1.0, gae_lambda=0.0, per_player_gae=True, last_side_vp=torch.zeros(2, N))
     adv = buf.advantages.detach().numpy()
 
     # lambda = 0, no reward: delta = V(next own decision) - V(now) = 0.5 - 0.5 for US.

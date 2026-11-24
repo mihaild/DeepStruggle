@@ -227,7 +227,8 @@ are cited from elsewhere; keep them.
   faces on the CPU (2.0 against 1.7 us of capture+faces, 2026-11-22). Without roll faces the first walk is unchanged.
   `get_afterstates_with_faces_into(out)` gathers the rows and the outcomes in one parallel
   call into one (pinned) buffer. `ts.gae_per_player(...)` is the per-player GAE pass (plain and P56 node chains), each
-  env's backward scan in parallel. `gomp_parallel_for` hands indices out from a shared counter (dynamic schedule), so a
+  env's backward scan in parallel; `ts.vp_returns_per_player(...)` the auxiliary VP head's return along each side's own
+  chain under `--per-player-gae` (2026-11-24), the same shape of scan. `gomp_parallel_for` hands indices out from a shared counter (dynamic schedule), so a
   thread holding a few long walks no longer holds up the team; every body writes only its own index. `Config::leaf` chooses whose side a leaf's
   critic is read from: `kMover` (the default and the measured root: the root mover's at every leaf) or
   `kDecider` (the leaf's decider's, the side the critic is trained on, its value negated into the
@@ -477,4 +478,7 @@ PYTHONPATH=.:build/release .venv/bin/python -m pytest -q tests/bindings    # pyt
   keyed chance (S-7).
 * `ts.gae_per_player` takes each side's bootstrap separately (`last_v_us`, `last_v_ussr`) and the afterstate node's
   later-roll terms (`extra`, `ntgt`; training audit T-1 / T-4).
+* `ts.vp_returns_per_player(players, cuts, dones, vps, last_vp_us, last_vp_ussr, ret)` (2026-11-24): the VP head's
+  return per side (`RolloutBuffer._vp_returns_per_player`), so under `--per-player-gae` no side's VP target reads
+  the other side's VP estimate.
 * `GameState.headline_first_owner` / `headline_second_owner` are exposed read-only; `EffectBits.HELD_SCORING_LOSS`.

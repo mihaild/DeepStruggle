@@ -59,7 +59,7 @@ def _outputs(b: RolloutBuffer) -> Dict[str, Any]:
 @pytest.mark.parametrize("kw", [
     {},
     {"same_perspective_bootstrap": True},
-    {"per_player_gae": True},
+    {"per_player_gae": True, "last_side_vp": torch.zeros(2, N)},
     {"slice_turn_boundaries": True, "gae_lambda": 0.95},
 ])
 def test_graphed_gae_is_bitwise_eager_over_several_rollouts(kw: Dict[str, Any]) -> None:

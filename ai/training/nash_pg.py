@@ -35,8 +35,8 @@ from ai.training.card_event_targets import aux_label
 from ai.training.afterstate_critic import KIND_NAMES as AFTERSTATE_KINDS
 from ai.training.afterstate_critic import AfterstateCapture, AfterstateRows
 from ai.training.afterstate_critic import build_targets as build_afterstate_targets
-from ai.training.afterstate_critic import (last_moment_values, missing_last_moments, next_decision_targets,
-                                           node_tensors, read_all_node_values)
+from ai.training.afterstate_critic import (last_moment_values, last_moment_vp_values, missing_last_moments,
+                                           next_decision_targets, node_tensors, read_all_node_values)
 from ai.training.restart_pool import critic_judge
 from ai.rewards.region_reward import RegionTargetedReward
 from tools.lib.openings import FORCED_OPENINGS_US, FORCED_OPENINGS_USSR, NODE_OFFSET as _NODE, OPENINGS
@@ -224,6 +224,13 @@ def _value_only(net: nn.Module, obs: torch.Tensor) -> torch.Tensor:
     """`net`'s v_win for value-only rows: its forward_value (no policy heads) where it has one, else forward()'s."""
     fv = getattr(net, "forward_value", None)
     out = fv(obs) if callable(fv) else net(obs, None)[1]
+    assert isinstance(out, torch.Tensor)
+    return out
+
+
+def _vp_only(net: nn.Module, obs: torch.Tensor) -> torch.Tensor:
+    """`net`'s v_vp (the auxiliary VP head, in the observing side's frame) for value-only rows, from forward()."""
+    out = net(obs, None)[2]
     assert isinstance(out, torch.Tensor)
     return out
 
@@ -2481,6 +2488,7 @@ class BaseNashPGTrainer:
             _lam = torch.from_numpy(np.where(self._selfplay_mask, self.afterstate_lambda_opp, 1.0).astype(np.float32))
             _node = (_u, _post, _lam, _ex, _nt)
         _last_side = None
+        _last_side_vp: Optional[np.ndarray] = None
         if self.per_player_gae:
             # Audit T-4(2): the side not to move at the end bootstraps from its own last captured moment (only those rows
             # are read when --afterstate-advantage has not read them all).
@@ -2499,6 +2507,19 @@ class BaseNashPGTrainer:
                     f"{0 if self.afterstate is None else self.afterstate.mismatched}); refusing the negated "
                     "bootstrap of the side to move")
             _last_side = torch.from_numpy(_ls)
+            # 2026-11-24: the VP head's return too -- each side's own v_vp at its own last moment, through its own
+            # network; never the negated v_vp of the side to move (RolloutBuffer._vp_returns_per_player).
+            _last_side_vp = last_moment_vp_values(self._as_rows, _pl_np, self.num_envs,
+                                                  lambda _o: _vp_only(self.active_net, _o))
+            _miss_vp = missing_last_moments(_last_side_vp, _pl_np,
+                                            self.buffer.per_player_cuts(self.slice_turn_boundaries),
+                                            np.asarray(_last_info["decision_players"]))
+            if _miss_vp.any():
+                _q, _e = np.nonzero(_miss_vp)
+                raise RuntimeError(
+                    f"--per-player-gae: {int(_miss_vp.sum())} side(s) not to move at the rollout's end have no VP "
+                    f"estimate of their own at the last moment of their last decision (first: env {int(_e[0])}, "
+                    f"{'US' if int(_q[0]) == 0 else 'USSR'}); refusing the negated VP bootstrap of the side to move")
         self.buffer.compute_gae(
             last_v_win=last_v_win.squeeze(-1),
             last_v_vp=last_v_vp.squeeze(-1),
@@ -2510,6 +2531,7 @@ class BaseNashPGTrainer:
             per_player_gae=self.per_player_gae,
             afterstate_node=_node,
             last_side_values=_last_side,
+            last_side_vp=_last_side_vp,
         )
         if self.search_value_beta > 0.0:
             self._mix_search_values()

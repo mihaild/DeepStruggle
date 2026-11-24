@@ -37,7 +37,8 @@ def _buffer(seed: int, extra_dones: bool = False) -> RolloutBuffer:
 
 def _gae(buf: RolloutBuffer, per_player: bool, sliced: bool) -> tuple:
     buf.compute_gae(torch.full((N,), 0.3), torch.zeros(N), torch.ones(N, dtype=torch.int8), gamma=1.0,
-                    gae_lambda=0.9, slice_turn_boundaries=sliced, per_player_gae=per_player)
+                    gae_lambda=0.9, slice_turn_boundaries=sliced, per_player_gae=per_player,
+                    last_side_vp=torch.zeros(2, N))
     # normalise_advantages rescales; the returns are the unnormalised advantage + value.
     return buf.returns_win.clone(), buf.advantages.clone()
 

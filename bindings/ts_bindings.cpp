@@ -1798,6 +1798,47 @@ NB_MODULE(ts_engine, m) {
           "buffer in its own frame; u / post / extra / ntgt (T, N) or (0, 0) for no node, lam_opp (N,). Writes adv, ret (plain chain) and nadv (node chain) for every mover row; other rows are "
           "left as given.");
 
+    m.def("vp_returns_per_player", [](nb::ndarray<const int8_t, nb::ndim<2>, nb::c_contig, nb::device::cpu> players,
+                                      nb::ndarray<const uint8_t, nb::ndim<2>, nb::c_contig, nb::device::cpu> cuts,
+                                      nb::ndarray<const uint8_t, nb::ndim<2>, nb::c_contig, nb::device::cpu> dones,
+                                      nb::ndarray<const float, nb::ndim<2>, nb::c_contig, nb::device::cpu> vps,
+                                      nb::ndarray<const float, nb::ndim<1>, nb::c_contig, nb::device::cpu> last_vp_us,
+                                      nb::ndarray<const float, nb::ndim<1>, nb::c_contig, nb::device::cpu> last_vp_ussr,
+                                      nb::ndarray<float, nb::ndim<2>, nb::c_contig, nb::device::cpu> ret) {
+              const int64_t T = static_cast<int64_t>(players.shape(0)), N = static_cast<int64_t>(players.shape(1));
+              const int8_t* P = players.data(); const uint8_t* C = cuts.data(); const uint8_t* D = dones.data();
+              const float* VP = vps.data(); const float* LU = last_vp_us.data(); const float* LR = last_vp_ussr.data();
+              float* RT = ret.data();
+              nb::gil_scoped_release release;
+              gomp_parallel_for(N, [&](int64_t e) {
+                  // Per side q (0: US +1, 1: USSR -1) the VP return at q's next own decision, in q's frame. Past the
+                  // buffer: each side's own VP estimate. At a cut every side's chain stops: a done hands both sides
+                  // the game's final VP (vps is the VP after the step), a turn cut (--slice-turn-boundaries) nothing.
+                  float nxt[2] = {LU[e], LR[e]};
+                  for (int64_t t = T - 1; t >= 0; --t) {
+                      const int64_t i = t * N + e;
+                      if (C[i]) {
+                          if (D[i]) { nxt[0] = VP[i] * 1.0f / 20.0f; nxt[1] = VP[i] * -1.0f / 20.0f; }
+                          else { nxt[0] = nxt[1] = 0.0f; }
+                      }
+                      const int8_t p = P[i];
+                      if (p != 1 && p != -1) continue;
+                      const int q = p == 1 ? 0 : 1;
+                      // The interleaved trace's step (RolloutBuffer._gae_backward), along q's own chain.
+                      const float vpn = VP[i] * static_cast<float>(p) / 20.0f;
+                      const float r = D[i] ? vpn : vpn * 0.1f + 0.9f * nxt[q];
+                      RT[i] = r; nxt[q] = r;
+                  }
+              });
+          }, nb::arg("players"), nb::arg("cuts"), nb::arg("dones"), nb::arg("vps"), nb::arg("last_vp_us"),
+          nb::arg("last_vp_ussr"), nb::arg("ret"),
+          "The auxiliary VP head's return per player under --per-player-gae (RolloutBuffer._vp_returns_per_player), "
+          "each env's backward pass in parallel: returns_vp[t] = vps[t] p / 20 at a done, else 0.1 vps[t] p / 20 + "
+          "0.9 x the return at the mover's next OWN decision (the game's final VP at a done after it, 0 past a turn "
+          "cut, the side's own VP estimate past the buffer). players int8 (T, N), cuts / dones uint8, vps float32 "
+          "(US frame, after the step), last_vp_us / last_vp_ussr (N,) each in its own frame. Writes ret for every "
+          "mover row; other rows are left as given.");
+
     m.def("roll_outcomes", [](const ts::GameState& g, ts::Player side, uint32_t features, bool compound, bool forced) {
               const size_t w = ts::OBS_SIZE_V23 + ts::obs_features::extra_width(features);
               std::vector<float> obs, prob, res;
