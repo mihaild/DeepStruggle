@@ -230,3 +230,49 @@ positions a seat from T = 1 self-play. Scripts and tables: the job's `tmp/side_c
 Not shown: that the coupling causes the dips (lag-0 co-movement could also be both seats receiving one training
 signal). That needs a network with the sides separated -- the next experiment, which postpones P56 (owner,
 2026-11-23).
+
+## 9. S1: per-side heads (`E9-A38-R169-S45`, 2026-11-23/24)
+
+R169 on E9 from scratch with `--ladder-side-heads` (A38: every head after the trunk per side; trunk and inputs
+shared), seed 45, to 1,600M. S2 (`--ladder-side-nets`, A39) was stopped at 112M to give S1 the GPU (owner).
+
+**Seats** stayed balanced throughout (US self-play win rate 0.45-0.48 in every 50M window; the seat watcher never
+fired), so separating the heads did not let one seat run away.
+
+**Standard reads** (greedy SWAs; vs B6 at the matching step 2,000 deals a side, references 1,000):
+
+| step | S1 vs B6 same step | S1 vs J1's best | B6 vs J1's best | S1 vs B6's soup | B6 vs B6's soup |
+|---:|---:|---:|---:|---:|---:|
+| 400M | 53.2 | 17.0 | 19.4 | 14.8 | 14.7 |
+| 800M | 50.9 | 26.8 | 30.1 | 21.8 | 23.0 |
+| 1,200M | 43.5 | 27.2 | 33.4 | 23.5 | 26.9 |
+| 1,600M | 54.2 | 33.5 | 29.7 | 25.9 | 24.9 |
+
+**The coupling** (the section 8 method on S1's 1,070-1,150M and 1,520-1,600M SWAs): about two thirds removed.
+Adam-step transfer US -> USSR Central America 0.07-0.08 (was 0.22-0.27), USSR -> US 0.18-0.23 (0.52-0.65), Europe
+0.09-0.20 (0.35-0.61), the influence play mode 0.23-0.25 (0.45-0.61). What remains goes through the shared trunk,
+unchanged in size (a trunk-only step still transfers 0.12-0.51); lag-0 lockstep weakened to +0.21..+0.58 (B6:
++0.57..+0.73). The side bit is still barely read; the sides are told apart by which head copy runs.
+
+**But S1 still dips** -- earlier, between the 800M and 1,200M reads (census, 400 deals a side, own past = the
+run's SWA 250M earlier, fixed = the E7 R34 soup):
+
+| t (M) | S1 own | S1 fixed | base own | base fixed | B6 own | B6 fixed | R119 own | R119 fixed |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 600 | 65.1 | 34.3 | 61.8 | 35.2 | 65.1 | 32.3 | 66.8 | 30.2 |
+| 700 | 60.9 | 33.1 | 60.4 | 35.2 | 61.0 | 40.9 | 59.2 | 29.9 |
+| 800 | 58.0 | 42.6 | 56.3 | 40.7 | 60.5 | 39.6 | 58.4 | 27.9 |
+| 900 | 47.6 | 34.8 | 54.6 | 44.1 | 53.0 | 39.2 | 52.9 | 28.9 |
+| 1000 | 41.9 | 37.3 | 53.1 | 41.9 | 56.4 | 42.6 | 54.9 | 26.9 |
+| 1100 | 50.7 | 40.2 | 53.9 | 40.7 | 51.1 | 42.6 | 55.1 | 26.9 |
+| 1200 | 55.8 | 41.8 | 39.2 | 36.0 | 53.4 | 45.6 | 55.9 | 33.6 |
+| 1300 | 57.5 | 43.8 | 46.8 | 39.9 | 45.9 | 42.2 | 56.5 | 32.9 |
+| 1400 | 56.4 | 40.6 | 51.6 | 43.4 | 42.6 | 37.7 | 46.7 | 29.1 |
+| 1500 | 54.9 | 46.6 | 56.5 | 46.4 | 45.7 | 43.1 | 45.6 | 34.7 |
+| 1600 | 55.1 | 49.2 | 57.6 | 48.3 | 60.8 | 42.0 | 52.3 | 33.1 |
+
+Every run dips once in 600-1,600M, at different times (S1 ~900-1,000M, the base ~1,200M, B6 ~1,400M, R119
+~1,400-1,500M), 5-8 points against the fixed opponent for 200-300M. Removing the heads' coupling did not remove the
+dips; either the trunk's remaining coupling suffices, or the dips come from self-play co-adaptation itself. S2 (a
+complete network per side: no shared weights, and each seat faces an independent network) separates the two -- it was
+resumed from 110M on 2026-11-24 (owner: choose S1 or S2 when its reads arrive).
