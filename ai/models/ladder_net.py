@@ -30,8 +30,9 @@ reproduces it. The older class is left alone so E3-era MLP checkpoints keep load
 
 from __future__ import annotations
 
+import contextlib
 import copy
-from typing import Any, Callable, Dict, Tuple, cast
+from typing import Any, Callable, Dict, Iterator, Tuple, cast
 
 import torch
 import torch.nn as nn
@@ -800,12 +801,18 @@ class LadderNet(ColdWarNetV2):
         #     The batch is split by side and each half runs through its own network (`_routed`).
         #   Where shapes must be static (`static_routing`: torch.compile, CUDA-graph capture, ONNX export) a split is a
         #   data-dependent shape, so every row runs through both copies instead and keeps its own side's output: the
-        #   same function, at the cost of the copied part twice.
+        #   same function, at the cost of the copied part twice. The compiled update avoids that cost by splitting the
+        #   batch itself, outside the compiled region, and running each side's rows, padded to a bucket size, through
+        #   `side_net(s)` under `fixed_side(s)` (ai/training/side_split.py): one copy per row, the same outputs and
+        #   gradients. The rollout's CUDA graph keeps both copies: it is launch-bound, and a per-side pair was slower.
         if side_heads and side_nets:
             raise ValueError("side_heads and side_nets are alternatives: side_nets already gives each side its own heads")
         self.side_heads = bool(side_heads)
         self.ussr_heads: nn.ModuleDict | None = None
         self.ussr_net: LadderNet | None = None
+        #: Under --ladder-side-heads, the head copy every row goes through regardless of its I_AM_US (`fixed_side`), or
+        #: None to route each row by its side. A plain attribute: torch.compile guards on its value.
+        self._fixed_side: int | None = None
         if self.side_heads:
             copies: Dict[str, nn.Module] = {}
             for name in SIDE_HEAD_MODULES:
@@ -825,6 +832,36 @@ class LadderNet(ColdWarNetV2):
         """(B,) bool: which rows are observed from the US seat (I_AM_US, global 61)."""
         return obs[:, self.GLOBAL_OFFSET + I_AM_US_GLOBAL] > 0.5
 
+    def side_net(self, s: int) -> LadderNet:
+        """The network side `s`'s rows (0 US, 1 USSR) run through: under --ladder-side-nets this one (US) or `ussr_net`,
+        else this one -- whose head copy, under --ladder-side-heads, `fixed_side(s)` chooses."""
+        if s not in (0, 1):
+            raise ValueError(f"side must be 0 (US) or 1 (USSR), got {s!r}")
+        if self.ussr_net is None:
+            return self
+        return self if s == 0 else self.ussr_net
+
+    @contextlib.contextmanager
+    def fixed_side(self, s: int) -> Iterator[None]:
+        """Every row through side `s`'s head copy (--ladder-side-heads) while the context is open, whatever its I_AM_US:
+        for a caller that split the batch by side itself (ai/training/side_split.py). Nothing for any other network."""
+        if s not in (0, 1):
+            raise ValueError(f"side must be 0 (US) or 1 (USSR), got {s!r}")
+        if self.ussr_heads is None:
+            yield
+            return
+        prev, self._fixed_side = self._fixed_side, s
+        try:
+            yield
+        finally:
+            self._fixed_side = prev
+
+    def side_forward(self, s: int, fn: RowFn, obs: torch.Tensor, mask: torch.Tensor | None) -> Any:
+        """`fn` (a one-network implementation, `SIDE_ROW_FNS`) with every row taken as side `s`'s, whatever its I_AM_US:
+        its own side's network or head copy only, so no static-routing double pass. The caller keeps only side `s`'s rows."""
+        with self.fixed_side(s):
+            return fn(self.side_net(s), obs, mask)
+
     def _hd(self, name: str, s: int = 0) -> Any:
         """The head module `name` of side copy `s` (0: the plain module, the US rows' under --ladder-side-heads;
         1: the USSR rows' copy), or None when the network has no such head."""
@@ -842,6 +879,8 @@ class LadderNet(ColdWarNetV2):
         both copies and each row's own side's output kept."""
         if self.ussr_heads is None:
             return one(0, h, tokens, mask)
+        if self._fixed_side is not None:
+            return one(self._fixed_side, h, tokens, mask)
         us = self.is_us(obs)
         if static_routing():
             return select_rows(us, one(0, h, tokens, mask), one(1, h, tokens, mask))
@@ -1381,6 +1420,13 @@ def _defcon_risk_one(net: LadderNet, obs: torch.Tensor, _mask: torch.Tensor | No
     ctx, h, _tokens = net._heads_in(h, None)
     with ctx:
         return net._per_side(obs, lambda s, h_, _t, _m: torch.sigmoid(net._hd("defcon_risk_head", s)(h_)), h)
+
+
+#: The one-network implementation of each forward a side-split network's caller may run per side (`side_forward`), by
+#: the name of the LadderNet method it implements.
+SIDE_ROW_FNS: Dict[str, RowFn] = {"forward": _forward_one, "forward_with_risk": _forward_with_risk_one,
+                                  "forward_with_value_logits": _forward_with_value_logits_one,
+                                  "forward_value": _forward_value_one}
 
 
 #: Slots 0..7 of a card row are the location one-hot; 8..13 are ops, rel_side, era, one_time,

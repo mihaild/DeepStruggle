@@ -27,6 +27,8 @@ import torch.nn.functional as F
 import ts_engine as ts
 
 from ai.models.coldwar_net_v2 import VP_LIMIT, set_on_every_copy
+from ai.models.head_registry import is_side_split
+from ai.models.ladder_net import LadderNet
 from ai.models.hyperspherical import register_sphere_projection
 from ai.search.batched_mcts import BatchedMCTS, BatchedMCTSConfig
 from ai.training.card_event_targets import aux_label
@@ -59,6 +61,7 @@ from .forced_openings import OpeningSeeder  # noqa: E402
 from .head_l2 import head_init_params, head_l2_to_init, head_pairs  # noqa: E402
 from .critic_tracker import CriticTracker
 from .graphed_forward import GraphCache
+from .side_split import SplitForward
 
 # Fixed-probe entropy: number of (observation, mask) pairs frozen at the start of
 # training, and how often (in iterations) the probe is re-evaluated.
@@ -1299,7 +1302,6 @@ class BaseNashPGTrainer:
         self._shift_stats = [0, 0, 0.0]   # rows seen, rows shifted, sum of |shift| over them (P46)
         if self.gain_learned and not getattr(self.active_net, "prior_gain", False):
             raise ValueError("--critic-prior-gain learned needs a network built with the prior-gain head")
-        self._compiled_nets: Dict[int, nn.Module] = {}
         self._compiled_methods: Dict[Tuple[int, str], Tuple[nn.Module, Callable[..., Any]]] = {}
         #: --wolf-seat-weight. Each seat's PPO surrogate is scaled by `wolf_seat_weights`, driven by
         #: an exponential average of the USSR's win share in pure self-play games (both seats the
@@ -1409,27 +1411,33 @@ class BaseNashPGTrainer:
         """--update-bf16: bf16 autocast for an update forward on CUDA; otherwise a context that does nothing."""
         return torch.autocast("cuda", dtype=torch.bfloat16, enabled=self.update_bf16 and self.device.type == "cuda")
 
-    def _update_net(self, net: nn.Module) -> nn.Module:
+    def _update_net(self, net: nn.Module) -> Callable[..., Any]:
         """`net` as the update calls it: compiled under --compile-update, else itself. Compiled
         lazily and keyed by identity, so a network swapped in later is compiled on its own."""
         if self.compile_update == "off":
             return net
-        c = self._compiled_nets.get(id(net))
-        if c is None or getattr(c, "_orig_mod", None) is not net:
-            c = cast(nn.Module, torch.compile(net, mode=COMPILE_UPDATE_MODES[self.compile_update]))
-            self._compiled_nets[id(net)] = c
-        return c
+        return self._update_method(net, "forward")
 
     def _update_method(self, net: nn.Module, name: str) -> Callable[..., Any]:
-        """`net.<name>` (forward_with_risk, forward_with_value_logits) as the update calls it: compiled
-        under --compile-update like `_update_net`'s forward, else the bound method itself. Compiling a
-        module compiles only its forward, so these get their own compile, keyed by identity and name."""
+        """`net.<name>` (forward, forward_with_risk, forward_with_value_logits) as the update calls it:
+        compiled under --compile-update, else the bound method itself, keyed by identity and name.
+
+        A side-split network (A38 / A39) is compiled per side instead (ai/training/side_split.py): compiled
+        whole, it would run every row through both sides' copies (`static_routing`); split outside the
+        compiled region, each row runs through its own side's copy only -- the same outputs and gradients
+        at one copy's cost."""
         fn = cast(Callable[..., Any], getattr(net, name))
         if self.compile_update == "off":
             return fn
         hit = self._compiled_methods.get((id(net), name))
         if hit is None or hit[0] is not net:
-            hit = (net, cast(Callable[..., Any], torch.compile(fn, mode=COMPILE_UPDATE_MODES[self.compile_update])))
+            mode = COMPILE_UPDATE_MODES[self.compile_update]
+            if isinstance(net, LadderNet) and is_side_split(net):
+                hit = (net, SplitForward(net, name, {"mode": mode}))
+            elif name == "forward":
+                hit = (net, cast(Callable[..., Any], torch.compile(net, mode=mode)))
+            else:
+                hit = (net, cast(Callable[..., Any], torch.compile(fn, mode=mode)))
             self._compiled_methods[(id(net), name)] = hit
         return hit[1]
 

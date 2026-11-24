@@ -120,7 +120,9 @@ graph TD
 │   │                           # under --per-player-gae it captures every decision's walk, each side's
 │   │                           # own last moment being its end-of-rollout bootstrap), training_rng.py
 │   │                           # (preserves_training_rng: evaluations and the start-pool harvest leave
-│   │                           # the rollout's random streams alone), ...
+│   │                           # the rollout's random streams alone), side_split.py (a side-split
+│   │                           # network's compiled update and rollout CUDA graphs split the batch by
+│   │                           # side outside the fixed-shape region: one copy per row, not both), ...
 │   ├── rewards/                # reward_calculator.py: perspective-aligned zero-sum reward schemes
 │   ├── search/                 # rollout_root.py, gumbel_root.py, batched_mcts.py, dmcts.py,
 │   │                           # pimcts.py, heuristic_mcts.py
