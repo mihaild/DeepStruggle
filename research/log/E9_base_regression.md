@@ -276,3 +276,33 @@ Every run dips once in 600-1,600M, at different times (S1 ~900-1,000M, the base 
 dips; either the trunk's remaining coupling suffices, or the dips come from self-play co-adaptation itself. S2 (a
 complete network per side: no shared weights, and each seat faces an independent network) separates the two -- it was
 resumed from 110M on 2026-11-24 (owner: choose S1 or S2 when its reads arrive).
+
+## 10. S2: a complete network per side (`E9-A39-R169-S45`, 2026-11-24) -- chosen
+
+`--ladder-side-nets` (A39: two complete A8 networks in one module, each row routed by side; no shared weights, and
+each seat's opponent is an independent network). Resumed from 110M and trained alone to 1,600M. Seats balanced
+throughout (US self-play win rate 0.44-0.50 in every 25M window).
+
+| t (M) | S2 own | S2 fixed | S1 own | S1 fixed | base own | base fixed |
+|---:|---:|---:|---:|---:|---:|---:|
+| 600 | 62.4 | 33.2 | 65.1 | 34.3 | 61.8 | 35.2 |
+| 700 | 59.7 | 36.8 | 60.9 | 33.1 | 60.4 | 35.2 |
+| 800 | 48.4 | 33.9 | 58.0 | 42.6 | 56.3 | 40.7 |
+| 900 | 50.4 | 34.1 | 47.6 | 34.8 | 54.6 | 44.1 |
+| 1000 | 55.2 | 35.8 | 41.9 | 37.3 | 53.1 | 41.9 |
+| 1100 | 56.9 | 40.5 | 50.7 | 40.2 | 53.9 | 40.7 |
+| 1200 | 55.4 | 41.0 | 55.8 | 41.8 | 39.2 | 36.0 |
+| 1300 | 50.2 | 44.9 | 57.5 | 43.8 | 46.8 | 39.9 |
+| 1400 | 56.5 | 42.4 | 56.4 | 40.6 | 51.6 | 43.4 |
+| 1500 | 53.8 | 42.2 | 54.9 | 46.6 | 56.5 | 46.4 |
+| 1600 | 52.1 | 47.2 | 55.1 | 49.2 | 57.6 | 48.3 |
+
+At 1,600M (standard read): S2 vs B6 at 1,600M 55.7%, vs J1's best 32.1%, vs B6's soup 24.7% (S1: 54.2 / 33.5 / 25.9;
+B6 at 1,600M: 29.7 / 24.9); **S2 vs S1 directly 49.5% +- 0.8**.
+
+S2's dips are shallow: its worst point against its own past is 48.4% (S1 41.9, the base 39.2, B6 42.6), its largest
+drop against the fixed opponent ~3 points (S1, the base, B6: ~8). It is slower early (33-36% against the fixed
+opponent through 1,000M) and level with S1 and the base by 1,600M. With no weights shared and each seat facing an
+independent network, the deep co-drift largely disappears -- the owner's shared-preference hypothesis, supported on
+one seed. **S2 chosen** (owner: choose between S1 and S2 at the read) and continued to 4,000M as the control for P56's
+T1 branched from its 1,600M state (`E9-A39-R169-S45@1600M+R170`), both from 2026-11-24 06:15 UTC.
