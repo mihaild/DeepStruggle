@@ -1132,6 +1132,14 @@ def build_parser() -> argparse.ArgumentParser:
                         help="The value loss on the learner's own decisions only (2026-11-20, the both-seat exploiter "
                              "collapse): against a frozen opponent in either seat the board does not say whose seat is "
                              "whose, so a critic fitted on every row blends the two players. Use with --per-player-gae.")
+    parser.add_argument("--update-learner-rows-only", action="store_true", default=False,
+                        help="Against a fixed opponent, the update reads the learner's own rows only (owner, "
+                             "2026-11-26): the opponent's rows enter no loss (policy, KL to pi_ref, entropy, value), "
+                             "pi_ref is not evaluated on them, and the afterstate / pre-deal value rows of a seat the "
+                             "learner does not play are dropped -- a seat-locked exploiter's other seat is not trained "
+                             "and costs no update compute. The minibatch count stays ceil(rows / --batch-size), each "
+                             "taking an even share of the learner's rows. Needs --per-player-gae (no learner target "
+                             "reads a value at an opponent row) and --adv-norm-learner-only.")
     parser.add_argument("--head-l2-init-coef", type=float, default=0.0,
                         help="P44 step 1's arm: add coef * sum ||theta - theta_0||^2 over the policy heads (base, "
                              "per-entity and their trunk context, branch, play-mode, --ladder-head-norm's norms) and the "
@@ -1744,6 +1752,7 @@ def main():
             head_l2_init_coef=args.head_l2_init_coef,
             value_selfplay_only=args.value_selfplay_only,
             value_learner_only=args.value_learner_only,
+            update_learner_rows_only=args.update_learner_rows_only,
             opponent_per_game=args.opponent_per_game,
             critic_prior_window=args.critic_prior_window,
             critic_prior_turn_weight=tuple(args.critic_prior_turn_weight),

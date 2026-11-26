@@ -35,6 +35,7 @@ from ai.training.card_event_targets import aux_label
 from ai.training.afterstate_critic import KIND_NAMES as AFTERSTATE_KINDS
 from ai.training.afterstate_critic import AfterstateCapture, AfterstateRows
 from ai.training.afterstate_critic import build_targets as build_afterstate_targets
+from ai.training.afterstate_critic import learner_seat_rows
 from ai.training.afterstate_critic import (last_moment_values, last_moment_vp_values, missing_last_moments,
                                            next_decision_targets, node_tensors, read_all_node_values)
 from ai.training.restart_pool import critic_judge
@@ -609,6 +610,7 @@ class BaseNashPGTrainer:
         head_l2_init_coef: float = 0.0,  # P44: coef * sum ||theta - theta_0||^2 over the policy and value heads
         value_selfplay_only: bool = False,  # P44 diagnostic: the value loss on self-play games' rows only
         value_learner_only: bool = False,   # 2026-11-20: the value loss on the learner's own decisions only
+        update_learner_rows_only: bool = False,  # 2026-11-26: the update reads the learner's own rows only
         critic_prior: bool = False,  # P46b: the win head shifted by the pool's prior for the game's opponent
         critic_prior_gain: str = "fixed",  # P46: 'fixed' (the turn line) or 'learned' (a critic-only gain g(s))
         critic_prior_gain_init: str = "line",  # P46: a learned gain starts at the turn line or at zero
@@ -1281,6 +1283,34 @@ class BaseNashPGTrainer:
         if self.value_selfplay_only and self.value_learner_only:
             raise ValueError("value_selfplay_only and value_learner_only pick different rows; use one")
         self._value_rows: Optional[torch.Tensor] = None
+        # 2026-11-26 (owner: "why does the US side get any updates on a USSR exploiter? It is waste of compute"): against
+        # a fixed opponent, the opponent's rows leave the update entirely -- no policy, KL, entropy or value term reads
+        # them, pi_ref is not evaluated on them, and the afterstate / pre-deal value rows of a seat the learner does not
+        # play are dropped -- so a seat the learner never plays (a seat-locked run) receives no gradient and, its
+        # gradients left None, no AdamW step or decay either. Only sound where no learner target reads a value at an
+        # opponent row: --per-player-gae (each side's chain bootstraps from its own next decision; the interleaved
+        # chain bootstraps every learner row from the value at the opponent's next decision, which the critic must then
+        # be fitted at). The minibatches keep their number (ceil(rows / --batch-size), as with every row), each taking
+        # an even share of the learner's rows: the optimizer steps per iteration and the learner rows per step are what
+        # they were, the opponent's rows removed from each.
+        self.update_learner_rows_only = bool(update_learner_rows_only)
+        self.buffer.diag_learner_only = self.update_learner_rows_only
+        if self.update_learner_rows_only:
+            if not per_player_gae:
+                raise ValueError("--update-learner-rows-only needs --per-player-gae: without it every learner row's "
+                                 "advantage bootstraps from the critic at the opponent's next decision, so the critic "
+                                 "must be fitted on the opponent's rows")
+            if not adv_norm_learner_only:
+                raise ValueError("--update-learner-rows-only needs --adv-norm-learner-only: the advantages are "
+                                 "normalised over the rows the update reads")
+            if self.value_selfplay_only:
+                raise ValueError("--update-learner-rows-only and --value-selfplay-only pick different rows; use one")
+        #: Per buffer row, the seat the learner plays in that row's env: 0 for both (a self-play env), else +1 / -1.
+        #: Filled only under update_learner_rows_only, for the afterstate and pre-deal rows' seats.
+        self._learner_seat_rows: Optional[np.ndarray] = None
+        #: "us" / "ussr" when the network is one side's of a --ladder-side-nets state, taken out alone
+        #: (tools/scripts/extract_side_net.py; generic_trainer.check_side_only); carried by every resume state.
+        self.side_only: Optional[str] = None
         # P46b (2026-11-14): in a pool game the critic's win probability is shifted in log-odds by the pool's prior
         # for that opponent and seat (OpponentPool.prior_shift: w(turn) * beta, signed by whose decision it is), in
         # the values GAE uses, in the bootstrap and in the value loss alike; self-play rows are unshifted. The
@@ -2366,6 +2396,12 @@ class BaseNashPGTrainer:
                         torch.from_numpy(own_obs).to(self.device, torch.float32), None)
                 next_own_t = own_v.squeeze(-1)
 
+            if self.update_learner_rows_only:
+                if self._learner_seat_rows is None:
+                    self._learner_seat_rows = np.zeros((self.buffer.buffer_size, self.num_envs), dtype=np.int8)
+                _acting = np.asarray(self._info["acting_players"], dtype=np.int8)
+                self._learner_seat_rows[self.buffer.step] = np.where(
+                    self._selfplay_mask, 0, np.where(np.asarray(learner_np, dtype=bool), _acting, -_acting))
             if self.value_selfplay_only or self.value_learner_only:
                 if self._value_rows is None or tuple(self._value_rows.shape) != (self.buffer.buffer_size, self.num_envs):
                     self._value_rows = torch.ones((self.buffer.buffer_size, self.num_envs), dtype=torch.float32,
@@ -3085,6 +3121,12 @@ class NashPGTrainer(BaseNashPGTrainer):
         e = np.concatenate([np.repeat(np.asarray(pd.envs, dtype=np.int64), 2) for pd in rows])
         side = np.tile(np.array([1, -1], dtype=np.int64), len(e) // 2)
         target, keep = next_decision_targets(t, e, side, players, dones, rewards, rets, learner)
+        if self._learner_seat_rows is not None:
+            # --update-learner-rows-only: a seat the learner plays only; and in a game against the opponent, a row
+            # filed at the step its env's game ended belongs to the next game, whose seat the step's record does not
+            # give (a seat drawn per game). A self-play env's rows (seat 0) are all kept, as without the option.
+            _seat = self._learner_seat_rows[t, e]
+            keep = keep & learner_seat_rows(t, e, side, self._learner_seat_rows) & ((_seat == 0) | ~dones[t, e])
         if keep.any():
             obs = torch.cat([torch.stack((pd.us, pd.ussr), dim=1).reshape(-1, pd.us.shape[1]) for pd in rows])
             idx = torch.from_numpy(np.flatnonzero(keep)).to(obs.device)
@@ -3235,11 +3277,29 @@ class NashPGTrainer(BaseNashPGTrainer):
         _all_masks = self.buffer.masks.view(_n_all, self.buffer.action_dim)
         _ref_fwd = self._update_net(self.reference_net)
         _act_fwd = self._update_net(self.active_net)
+        # --update-learner-rows-only: the rows the update reads (the learner's), and the passes over the whole buffer
+        # below evaluated on those rows only (the others are never gathered: no minibatch holds them).
+        _upd_rows: Optional[torch.Tensor] = None
+        _upd_idx: Optional[torch.Tensor] = None
+        if self.update_learner_rows_only:
+            _upd_rows = self.buffer.learner.view(_n_all) > 0.5
+            _upd_idx = torch.nonzero(_upd_rows).squeeze(1)
+
+        def _rows_pass(f: Callable[[Any], torch.Tensor], tail: Tuple[int, ...]) -> torch.Tensor:
+            """`f(sel)` over the buffer in --batch-size chunks (`sel` a slice, or an index tensor of the update's rows),
+            as one (rows, *tail) tensor indexed by buffer row; rows the update does not read stay 0."""
+            if _upd_idx is None:
+                return torch.cat([f(slice(i, i + self.batch_size)) for i in range(0, _n_all, self.batch_size)])
+            full = torch.zeros((_n_all, *tail), device=self.device)
+            n_sel = int(_upd_idx.numel())
+            if n_sel:
+                full.index_copy_(0, _upd_idx, torch.cat([f(_upd_idx[i:i + self.batch_size])
+                                                         for i in range(0, n_sel, self.batch_size)]).float())
+            return full
+
         with torch.no_grad(), self._amp():
-            ref_log_p_all = torch.cat([
-                F.log_softmax(_ref_fwd(_all_obs[i:i + self.batch_size],
-                                                 _all_masks[i:i + self.batch_size])[0].float(), dim=-1)
-                for i in range(0, _n_all, self.batch_size)])
+            ref_log_p_all = _rows_pass(lambda sel: F.log_softmax(
+                _ref_fwd(_all_obs[sel], _all_masks[sel])[0].float(), dim=-1), (self.buffer.action_dim,))
 
         # Audit M-7: under --update-bf16 the new log-probs come from a bf16 forward, so the old ones are taken from the
         # same forward of the same (not yet updated) network, once, rather than from the fp32 rollout: otherwise the
@@ -3256,11 +3316,9 @@ class NashPGTrainer(BaseNashPGTrainer):
             self.active_net.eval()
             try:
                 with torch.no_grad(), self._amp():
-                    old_lp_amp_all = torch.cat([
-                        F.log_softmax(_act_fwd(_all_obs[i:i + self.batch_size],
-                                               _all_masks[i:i + self.batch_size])[0].float(), dim=-1)
-                        .gather(1, _all_acts[i:i + self.batch_size].unsqueeze(1)).squeeze(1)
-                        for i in range(0, _n_all, self.batch_size)])
+                    old_lp_amp_all = _rows_pass(lambda sel: F.log_softmax(
+                        _act_fwd(_all_obs[sel], _all_masks[sel])[0].float(), dim=-1)
+                        .gather(1, _all_acts[sel].unsqueeze(1)).squeeze(1), ())
             finally:
                 self.active_net.train()
 
@@ -3268,10 +3326,8 @@ class NashPGTrainer(BaseNashPGTrainer):
         if self.teacher_net is not None:
             _teach_fwd = self._update_net(self.teacher_net)
             with torch.no_grad():
-                teacher_log_p_all = torch.cat([
-                    F.log_softmax(_teach_fwd(_all_obs[i:i + self.batch_size],
-                                             _all_masks[i:i + self.batch_size])[0], dim=-1)
-                    for i in range(0, _n_all, self.batch_size)])
+                teacher_log_p_all = _rows_pass(lambda sel: F.log_softmax(
+                    _teach_fwd(_all_obs[sel], _all_masks[sel])[0], dim=-1), (self.buffer.action_dim,))
         teacher_kl_t, teacher_rows_t = _z(), _z()
         self._build_predeal_targets()
         pd_loss_t, pd_batches = _z(), 0
@@ -3282,7 +3338,7 @@ class NashPGTrainer(BaseNashPGTrainer):
             self._as_obs, self._as_tgt, self._as_kind = build_afterstate_targets(
                 _rows, self.buffer.players.cpu().numpy(), self.buffer.dones.cpu().numpy() > 0.5,
                 self.buffer.rewards.float().cpu().numpy(), self.buffer.returns_win.float().cpu().numpy(),
-                self.buffer.learner.float().cpu().numpy() > 0.5, self.device)
+                self.buffer.learner.float().cpu().numpy() > 0.5, self.device, self._learner_seat_rows)
         _as_rows_n = 0 if self._as_tgt is None else int(self._as_tgt.shape[0])
         # The rows trained on, by kind (the capture's afterstate/rows_* count what was recorded; under
         # --afterstate-advantage the before-roll rows wait on a die and are never trained on).
@@ -3306,7 +3362,8 @@ class NashPGTrainer(BaseNashPGTrainer):
             for (b_obs, b_mask, b_act, b_old_lp, b_adv, b_ret_win, b_ret_vp,
                  b_defcon_risk, b_learner, b_search_pi, b_has_search,
                  b_players, b_idx) in self.buffer.get_batches(
-                     self.batch_size, self.priority_alpha):
+                     self.batch_size, self.priority_alpha, rows=_upd_rows,
+                     num_batches=None if _upd_rows is None else max(1, -(-_n_all // self.batch_size))):
                 if old_lp_amp_all is not None:
                     b_old_lp = torch.where(b_learner > 0.5, old_lp_amp_all.index_select(0, b_idx).to(b_old_lp.dtype),
                                            b_old_lp)

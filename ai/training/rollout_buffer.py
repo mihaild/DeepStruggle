@@ -162,6 +162,8 @@ class RolloutBuffer:
         #: `uses_hold` is set by a trainer that holds; off, nothing below reads `held`.
         self.held = torch.zeros((buffer_size, num_envs), dtype=torch.bool, device=self.device)
         self.uses_hold = False
+        #: --update-learner-rows-only: `diagnostics` describes the learner's rows only.
+        self.diag_learner_only = False
         self._gae_graph: Optional[Any] = None
         self._gae_graph_key: Optional[Tuple[Any, ...]] = None
         self._gae_static: Dict[str, torch.Tensor] = {}
@@ -737,9 +739,14 @@ class RolloutBuffer:
         normalised advantages that the policy update actually consumes.
         """
         adv = self.advantages.detach().reshape(-1)
+        ret_w, val_w = self.returns_win.reshape(-1), self.values_win.reshape(-1)
+        if self.diag_learner_only:
+            # --update-learner-rows-only: the rows the update reads; the opponent's rows are another network's view.
+            own = self.learner.reshape(-1) > 0.5
+            adv, ret_w, val_w = adv[own], ret_w[own], val_w[own]
         near_zero = (adv.abs() < NEAR_ZERO_ADVANTAGE_EPS).float().mean() if adv.numel() > 0 else torch.zeros(())
         out = {
-            "explained_variance": explained_variance(self.returns_win, self.values_win),
+            "explained_variance": explained_variance(ret_w, val_w),
             "adv_std": float(adv.std()) if adv.numel() > 1 else 0.0,
             "adv_std_raw": self.raw_advantage_std,
             "adv_frac_near_zero": float(near_zero),
@@ -794,7 +801,8 @@ class RolloutBuffer:
         return torch.multinomial(weights, total_steps, replacement=True)
 
     def get_batches(
-        self, batch_size: int, priority_alpha: float = 0.0
+        self, batch_size: int, priority_alpha: float = 0.0, rows: Optional[torch.Tensor] = None,
+        num_batches: Optional[int] = None,
     ) -> Generator[Tuple[torch.Tensor, ...], None, None]:
         """Yields mini-batches for inner-loop SGD updates.
 
@@ -810,12 +818,18 @@ class RolloutBuffer:
         Element 13 is the minibatch's flat indices into the buffer, so a caller can gather
         per-sample quantities it computed once for the whole buffer (the trainer's pi_ref
         log-probabilities).
+
+        ``rows`` (a bool mask over the flat buffer) keeps only those rows (--update-learner-rows-only: the learner's);
+        ``num_batches`` then splits them, shuffled, into that many minibatches of near-equal size instead of
+        ``batch_size``-row ones.
         """
         total_steps = self.buffer_size * self.num_envs
         indices = self.priority_indices(priority_alpha)
         if self.uses_hold:
             # Held rows enter no loss: each repeats the following row of its env.
             indices = indices[~self.held.view(total_steps).index_select(0, indices)]
+        if rows is not None:
+            indices = indices[rows.view(total_steps).index_select(0, indices)]
         n_rows = int(indices.numel())
 
         flat_obs = self.obs.view(total_steps, self.obs_dim)
@@ -831,8 +845,11 @@ class RolloutBuffer:
         flat_has_search = self.has_search.view(total_steps)
         flat_players = self.players.view(total_steps)
 
-        for start_idx in range(0, n_rows, batch_size):
-            batch_idx = indices[start_idx : start_idx + batch_size]
+        parts = (list(torch.tensor_split(indices, max(1, int(num_batches)))) if num_batches is not None
+                 else [indices[i : i + batch_size] for i in range(0, n_rows, batch_size)])
+        for batch_idx in parts:
+            if not batch_idx.numel():
+                continue
             yield (
                 flat_obs[batch_idx],
                 flat_masks[batch_idx],

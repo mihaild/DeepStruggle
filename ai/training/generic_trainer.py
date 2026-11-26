@@ -1472,6 +1472,29 @@ def seed_changes(blob: Dict[str, Any], path: str, seeds: Dict[str, Optional[int]
     return out
 
 
+def check_side_only(side_only: Optional[str], model: nn.Module, opponent_lock_side: Optional[str],
+                    opponent_frac: float, update_learner_rows_only: bool) -> None:
+    """A resume state holding one side's network of a --ladder-side-nets run (tools/scripts/extract_side_net.py; owner,
+    2026-11-26: a seat-locked run trains that side's network alone, the other not even built) plays that seat only:
+    locked to it (--opponent-lock-side), every game against the fixed opponent (--opponent-frac 1.0), and the update on
+    its own rows (--update-learner-rows-only) -- the opponent's rows are the other side's positions, which this network
+    must never be fitted on."""
+    if side_only is None:
+        return
+    if side_only not in ("us", "ussr"):
+        raise ValueError(f"the resume state's side_only is {side_only!r}; expected 'us' or 'ussr'")
+    if is_side_split(model):
+        raise ValueError(f"the resume state is the {side_only} network alone; build the model without "
+                         "--ladder-side-nets / --ladder-side-heads")
+    problems = [p for p, bad in (
+        (f"--opponent-lock-side {side_only}", str(opponent_lock_side) != side_only),
+        ("--opponent-frac 1.0", float(opponent_frac) != 1.0),
+        ("--update-learner-rows-only", not update_learner_rows_only)) if bad]
+    if problems:
+        raise ValueError(f"the resume state is the {side_only} network of a --ladder-side-nets run alone, which plays "
+                         f"that seat only; it needs {', '.join(problems)}")
+
+
 def save_resume_state(path: str, model: nn.Module, trainer: Any, iteration: int,
                       total_env_steps: int, elapsed_seconds: float,
                       seed: Optional[int] = None, ema: Any = None,
@@ -1528,6 +1551,9 @@ def save_resume_state(path: str, model: nn.Module, trainer: Any, iteration: int,
         "adv_std_ema": float(getattr(getattr(trainer, "buffer", None), "adv_std_ema", 0.0)),
         "adv_std_ema_steps": float(getattr(getattr(trainer, "buffer", None), "adv_std_ema_steps", 0.0)),
         "ent_coef_seat": (dict(trainer.ent_coef_seat) if hasattr(trainer, "ent_coef_seat") else None),
+        # A single-side network taken out of a --ladder-side-nets state (tools/scripts/extract_side_net.py): the seat it
+        # is ("us" / "ussr"), carried so every continuation keeps playing it seat-locked; None otherwise.
+        "side_only": getattr(trainer, "side_only", None),
         # --setup-entropy-floor's adaptive coefficient.
         "setup_ent_coef": float(getattr(trainer, "setup_ent_coef", 0.0)),
         # --ema-weights: the average, beside the live weights it averages. None without the flag.
@@ -1916,6 +1942,8 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
         "env_game_rng_state": None if "seed_env" in changes else blob.get("env_game_rng_state"),
         # The opponent pool's draw was reseeded by --seed-pool, not restored from the state.
         "pool_reseeded": "seed_pool" in changes,
+        # "us" / "ussr" for one side's network taken out of a --ladder-side-nets state (extract_side_net.py).
+        "side_only": blob.get("side_only"),
     }
 
 
@@ -2183,6 +2211,7 @@ def train_pipeline(
     head_l2_init_coef: float = 0.0,
     value_selfplay_only: bool = False,
     value_learner_only: bool = False,
+    update_learner_rows_only: bool = False,
     opponent_per_game: bool = False,
     critic_prior_window: int = 0,
     critic_prior_turn_weight: Tuple[float, float] = (0.98, 0.46),
@@ -2689,6 +2718,7 @@ def train_pipeline(
         "head_l2_init_coef": float(head_l2_init_coef),
         "value_selfplay_only": bool(value_selfplay_only),
         "value_learner_only": bool(value_learner_only),
+        "update_learner_rows_only": bool(update_learner_rows_only),
         "opponent_per_game": bool(opponent_per_game),
         "critic_prior_window": int(critic_prior_window),
         "critic_prior_turn_weight": [float(x) for x in critic_prior_turn_weight],
@@ -3150,6 +3180,7 @@ def train_pipeline(
         head_l2_init_coef=head_l2_init_coef,
         value_selfplay_only=value_selfplay_only,
         value_learner_only=value_learner_only,
+        update_learner_rows_only=update_learner_rows_only,
         critic_prior=critic_prior_window > 0,
         critic_prior_gain=critic_prior_gain,
         critic_prior_gain_init=critic_prior_gain_init,
@@ -3643,6 +3674,8 @@ def train_pipeline(
                 env.set_game_rng_state(state["env_game_rng_state"])
             else:
                 env.reseed_games([int(env_base_seed), int(state["total_env_steps"])])
+        check_side_only(state.get("side_only"), model, opponent_lock_side, opponent_frac, update_learner_rows_only)
+        trainer.side_only = state.get("side_only")
         it = state["iteration"]
         resumed_elapsed = state["elapsed_seconds"]
         # Rewind the clock so elapsed keeps counting from where the run stopped rather than from

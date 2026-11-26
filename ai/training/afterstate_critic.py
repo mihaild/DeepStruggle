@@ -781,10 +781,18 @@ def missing_last_moments(last_side: np.ndarray, players: np.ndarray, cuts: np.nd
     return need & ~np.isfinite(last_side)
 
 
+def learner_seat_rows(t: np.ndarray, e: np.ndarray, side: np.ndarray, learner_seat: np.ndarray) -> np.ndarray:
+    """Per row (buffer step t, env e, side +1 / -1): whether `side` is a seat the learner plays in that env at that
+    step -- `learner_seat[t, e]` is 0 where it plays both (self-play), else its one seat (--update-learner-rows-only)."""
+    seat = np.asarray(learner_seat)[t, e]
+    return (seat == 0) | (seat == side)
+
+
 def build_targets(rows: Sequence[AfterstateRows], players: np.ndarray, dones: np.ndarray, rewards: np.ndarray,
-                  rets: np.ndarray, learner: np.ndarray, device: Any
+                  rets: np.ndarray, learner: np.ndarray, device: Any, learner_seat: Optional[np.ndarray] = None
                   ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
-    """(observations, targets, kinds) of the rows that have a target, or Nones."""
+    """(observations, targets, kinds) of the rows that have a target, or Nones. With `learner_seat` (per buffer row,
+    the learner's seat: --update-learner-rows-only), a row of a seat the learner does not play is dropped too."""
     rows = [r for r in rows if len(r.envs)]
     if not rows:
         return None, None, None
@@ -801,6 +809,8 @@ def build_targets(rows: Sequence[AfterstateRows], players: np.ndarray, dones: np
     # Only the walks of learner decisions are trained on: --per-player-gae also captures the others' (a pool
     # member's, a forced move's) for their last moments alone (fix verification V-5, 2026-11-22).
     keep = keep & np.asarray(learner, dtype=bool)[t, e]
+    if learner_seat is not None:
+        keep = keep & learner_seat_rows(t, e, side, learner_seat)
     if not keep.any():
         return None, None, None
     idx = torch.from_numpy(np.flatnonzero(keep)).to(rows[0].obs.device)
