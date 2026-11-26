@@ -999,6 +999,38 @@
     "drop_static": true,
     "ladder_side_nets": true
    }
+  },
+  "A40": {
+   "description": "A39 (per-side networks) reading the 2026-11-26 observation bits uncapped_deficit (board 24/25 without the 2.0 cap), honest_context (ctx 80-82, 86, 87 truthful) and relative_effects (effect bits in the decider's frame) -- owner, 2026-11-26",
+   "first": "E9-A39-R169-S45@1600M+R170@10420M+R180@12700M+A40-R181_20261126_125041",
+   "flags": {
+    "arch": "ladder",
+    "ladder_input_mode": "grouped",
+    "ladder_aggregation": "flatten",
+    "ladder_entity_dim": 16,
+    "ladder_entity_proj_dim": 256,
+    "ladder_card_self_attention": false,
+    "ladder_cross_attention": false,
+    "ladder_head_entities": "country",
+    "ladder_head_center": true,
+    "ladder_hidden_dim": 480,
+    "ladder_res_blocks": 0,
+    "ladder_card_lookup": false,
+    "ladder_card_lookup_heads": 0,
+    "ladder_card_lookup_dim": 0,
+    "ladder_card_lookup_identity_dim": 0,
+    "ladder_branch_head": true,
+    "ladder_play_mode_head": true,
+    "ladder_side_nets": true,
+    "per_entity_heads": 64,
+    "drop_static": true,
+    "obs_features": [
+     "headline_reveal",
+     "uncapped_deficit",
+     "honest_context",
+     "relative_effects"
+    ]
+   }
   }
  },
  "recipes": {
@@ -3684,6 +3716,29 @@
     "no_blunder_window": true,
     "gae_lambda": 0.96
    }
+  },
+  "R181": {
+   "description": "R180 (R170 at lr 1e-4) with --side-independent-update: advantages normalised per seat, every loss a mean over its own side's rows, gradients clipped per network -- the two sides as independent models (owner, 2026-11-26)",
+   "first": "E9-A39-R169-S45@1600M+R170@10420M+R180@12700M+A40-R181_20261126_125041",
+   "flags": {
+    "reward_scheme": "terminal",
+    "per_player_gae": true,
+    "predeal_value_coef": 1.0,
+    "afterstate_value_coef": 1.0,
+    "afterstate_frac": 1.0,
+    "afterstate_advantage": true,
+    "opponent_self_pool": true,
+    "clip_eps": 0.1,
+    "compile_update": "max-autotune",
+    "zero_avoid_coef": 0.01,
+    "side_independent_update": true,
+    "block_lambda": "off",
+    "lr": 0.0001,
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true,
+    "gae_lambda": 0.96
+   }
   }
  },
  "views": {
@@ -4073,7 +4128,8 @@
   "E9-A39-R169-S45@1600M+R170@10420M+R172_20261126_083727": "E9-A39-R169-S45@1600M+R170@10420M+R172",
   "E9-A39-R169-S45@1600M+R170@10420M+R174_20261126_084335": "E9-A39-R169-S45@1600M+R170@10420M+R174",
   "E9-A39-R169-S45@1600M+R170@10420M+R175_20261126_094451": "E9-A39-R169-S45@1600M+R170@10420M+R175",
-  "E9-A39-R169-S45@1600M+R170@10420M+A8-R176_20261126_112257": "E9-A39-R169-S45@1600M+R170@10420M+A8-R176"
+  "E9-A39-R169-S45@1600M+R170@10420M+A8-R176_20261126_112257": "E9-A39-R169-S45@1600M+R170@10420M+A8-R176",
+  "E9-A39-R169-S45@1600M+R170@10420M+R180@12700M+A40-R181_20261126_125041": "E9-A39-R169-S45@1600M+R170@10420M+R180@12700M+A40-R181"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
