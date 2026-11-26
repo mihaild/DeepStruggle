@@ -3629,6 +3629,33 @@
     "batch_size": 16384,
     "no_blunder_window": true
    }
+  },
+  "R175": {
+   "description": "Normal exploiter of T1 (owner, 2026-11-26): from T1 (R170 on per-side networks) at 10,420M, both seats drawn per game, every game T1's 10,320-10,400M SWA greedy (--opponent-frac 1.0); terminal win/loss reward; T1's P56 flags kept; --adv-norm-learner-only --update-learner-rows-only (each side's network trained only on its own seat's rows); lr 3e-4; 800M.",
+   "first": "E9-A39-R169-S45@1600M+R170@10420M+R175_20261126_094451",
+   "flags": {
+    "reward_scheme": "terminal",
+    "per_player_gae": true,
+    "predeal_value_coef": 1.0,
+    "afterstate_value_coef": 1.0,
+    "afterstate_frac": 1.0,
+    "afterstate_advantage": true,
+    "opponent_frac": 1.0,
+    "opponent_checkpoints": [
+     "<parent snapshot at the branch point>"
+    ],
+    "adv_norm_learner_only": true,
+    "opponent_temperature": 0.0,
+    "clip_eps": 0.1,
+    "compile_update": "max-autotune",
+    "zero_avoid_coef": 0.01,
+    "update_learner_rows_only": true,
+    "block_lambda": "off",
+    "mup": true,
+    "batch_size": 16384,
+    "no_blunder_window": true,
+    "gae_lambda": 0.96
+   }
   }
  },
  "views": {
@@ -4016,7 +4043,8 @@
   "E9-A39-R169-S45@1600M+R170@10420M+R180_20261126_010323": "E9-A39-R169-S45@1600M+R170@10420M+R180",
   "E9-A39-R169-S45@1600M+R170@10420M+R173_20261126_010329": "E9-A39-R169-S45@1600M+R170@10420M+R173",
   "E9-A39-R169-S45@1600M+R170@10420M+R172_20261126_083727": "E9-A39-R169-S45@1600M+R170@10420M+R172",
-  "E9-A39-R169-S45@1600M+R170@10420M+R174_20261126_084335": "E9-A39-R169-S45@1600M+R170@10420M+R174"
+  "E9-A39-R169-S45@1600M+R170@10420M+R174_20261126_084335": "E9-A39-R169-S45@1600M+R170@10420M+R174",
+  "E9-A39-R169-S45@1600M+R170@10420M+R175_20261126_094451": "E9-A39-R169-S45@1600M+R170@10420M+R175"
  },
  "models": {
   "_swa_line/E7line_swa_0-80M.pt": "E7-A4-R1-S44@0..80M",
