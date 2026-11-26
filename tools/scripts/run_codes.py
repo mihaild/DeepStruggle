@@ -282,6 +282,13 @@ def load_runs(root: str) -> List[Run]:
             pdir = os.path.basename(os.path.dirname(os.path.realpath(os.path.join(alias, "metadata.json"))))
         parent = by_dir.get(pdir)
         if parent is None:
+            if not os.path.exists(os.path.join(root, pdir)) and not os.path.exists(src_dir):
+                # The parent run was archived or deleted (owner, 2026-11-26: pre-E9 runs cleared from the tree): this
+                # run is read as a lineage root, its recorded start kept; a parent that exists but is no run is still
+                # an error.
+                print(f"run_codes: {os.path.basename(r.dir)} resumed from {src}, which is no longer on disk -- "
+                      "read as a lineage root", file=sys.stderr)
+                continue
             raise ValueError(f"{r.dir} resumed from {src}, which is not a run directory here")
         r.parent = parent
         m = _RESUME_STEP_RE.search(src_file)

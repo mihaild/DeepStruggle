@@ -308,3 +308,11 @@ under 75 names).
 **The 240M round robin** ([`log/E4_round_robin_240M.md`](log/E4_round_robin_240M.md), 42,000 games):
 the unpooled arm's self-play `us_win_rate` read 0.02 at 180M while the same checkpoint scored 23% as
 US against fixed references — side balance in self-play is not a measure of strength.
+
+**2026-11-26: pre-E9 checkpoints cleared (owner).** Every pre-E9 run directory was moved to `data/checkpoints.old/` except
+J1 (`E8-A8-R102-S44_20261030_200841`), B6 and its soup branches (`E8.1-A8-R132-S45_20261115_135518`, `@11160M+S46`,
+`@11160M+S47`) and the E7 R34 soup's branches (`E7-A8-R1-S44@6400M+R34`, `+R34-S45`, `+R34-S46`) with the base run's
+continuation `E7-A8-R1-S44_20261007_162257`; the B6 soup and the E7 R34 7,120-7,200M soup stay in `_models/`. The E7 runs
+in `checkpoints.old` were later deleted (owner), including the E7 base's first leg `E7-33-44_20261007_092825`; its link
+directory `E7-A8-R1-S44_20261007_092825` (and three SWAs it held: 320-400, 720-800, 1,520-1,600M) was removed too, so
+`_162257` is now read as a lineage root (`tools/scripts/run_codes.py`: a parent no longer on disk makes a root, with a note).
