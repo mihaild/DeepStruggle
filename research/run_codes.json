@@ -3576,7 +3576,7 @@
    }
   },
   "R172": {
-   "description": "Europe Control exploiter of T1, US seat locked (owner, 2026-11-25): as R173 with the US seat; stopped at ~10M steps (owner, 2026-11-26: R173's design won without Europe Control).",
+   "description": "Europe Control exploiter of T1, US seat locked (owner, 2026-11-25): as R173 with the US seat; stopped at ~10M steps on a misread of R173 (2026-11-26: the read counted the target's Europe Control wins, not the exploiter's, and reported 0; R173 in fact won 1,603 of its 1,640 USSR wins by Europe Control -- research/log/E9_europe_control_exploiter.md).",
    "first": "E9-A39-R169-S45@1600M+R170@10420M+R172_20261126_083727",
    "flags": {
     "reward_scheme": "terminal",
