@@ -1693,6 +1693,18 @@ NB_MODULE(ts_engine, m) {
     m.attr("OBS_FEATURE_OWN_EVENT_GATED") = static_cast<uint32_t>(ts::obs_features::OWN_EVENT_GATED);
     m.attr("OBS_FEATURE_ALWAYS_ASK_DISCARD") = static_cast<uint32_t>(ts::obs_features::ALWAYS_ASK_DISCARD);
     m.attr("OBS_FEATURE_UNCAPPED_DEFICIT") = static_cast<uint32_t>(ts::obs_features::UNCAPPED_DEFICIT);
+    m.attr("OBS_FEATURE_HONEST_CONTEXT") = static_cast<uint32_t>(ts::obs_features::HONEST_CONTEXT);
+    m.attr("OBS_FEATURE_RELATIVE_EFFECTS") = static_cast<uint32_t>(ts::obs_features::RELATIVE_EFFECTS);
+    {
+        // RELATIVE_EFFECTS' mirrored effect bits, (the US's, the USSR's): global slot 12 + bit. A branch into the bit
+        // swaps the USSR network's input columns of each pair (ai.training.generic_trainer).
+        nb::list pairs;
+        for (const auto& [a, b] : ts::obs_features::RELATIVE_EFFECT_PAIRS) pairs.append(nb::make_tuple(int(a), int(b)));
+        m.attr("OBS_RELATIVE_EFFECT_PAIRS") = pairs;
+        m.attr("OBS_RELATIVE_ATTEMPT_BITS") = nb::make_tuple(int(ts::obs_features::RELATIVE_ATTEMPT_1),
+                                                             int(ts::obs_features::RELATIVE_ATTEMPT_2));
+        m.attr("OBS_GLOBAL_EFFECT_BITS") = static_cast<int>(ts::obs_features::GLOBAL_EFFECT_BITS);
+    }
     m.attr("OBS_FEATURES_RULES") = static_cast<uint32_t>(ts::obs_features::RULES);
     m.attr("OBS_FEATURES_PERSON_RULES") = static_cast<uint32_t>(ts::obs_features::PERSON_RULES);
     m.attr("OBS_FEATURES_ALL") = static_cast<uint32_t>(ts::obs_features::ALL);

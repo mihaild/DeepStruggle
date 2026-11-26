@@ -100,7 +100,7 @@ def test_whole_games_match_the_native_engine() -> None:
 
 #: The feature sets a model can read, each checked as the page builds it for such a model.
 FEATURE_SETS = [int(ts.OBS_FEATURE_OPS_BUDGET), int(ts.OBS_FEATURE_HEADLINE_REVEAL), int(ts.OBS_FEATURE_UNCAPPED_DEFICIT),
-                int(ts.OBS_FEATURES_ALL)]
+                int(ts.OBS_FEATURE_HONEST_CONTEXT), int(ts.OBS_FEATURE_RELATIVE_EFFECTS), int(ts.OBS_FEATURES_ALL)]
 
 
 @pytest.mark.parametrize("seed", [11, 58])

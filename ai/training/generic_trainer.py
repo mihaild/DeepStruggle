@@ -39,6 +39,7 @@ from ai.rewards.reward_calculator import ZeroSumTerminalReward, ShapedZeroSumRew
 from bindings.ts_env import (OBS_LAYOUT_NAME, TsVectorizedEnv, check_obs_width,
                              model_obs_features)
 from ai.training.active_search import ActiveSearch, gate_metrics
+from ai.training.feature_branch import RELATIVE_EFFECTS, branch_resume_blob_, permute_module_
 from ai.training.searched_opponent import SearchedOpponent
 from ai.training.rollout_buffer import RolloutBuffer
 from ai.training.run_name import is_run_name
@@ -1676,7 +1677,10 @@ def add_rule_bits_to(net: nn.Module, bits: int) -> None:
     if bits & ~addable_feature_bits():
         raise ValueError(f"only rule bits and {', '.join(ADDABLE_OBS_FEATURES)} can be added to a trained network, "
                          f"not {bits:#x}")
-    new = int(getattr(net, "obs_feature_bits", 0) or 0) | int(bits)
+    had = int(getattr(net, "obs_feature_bits", 0) or 0)
+    if bits & RELATIVE_EFFECTS and not had & RELATIVE_EFFECTS:
+        permute_module_(net)          # its USSR network computes what it did on the relative view
+    new = had | int(bits)
     # The network and every network inside it (a --ladder-side-nets network's USSR copy records its own set).
     for m in [net] + [m for m in net.modules() if m is not net and hasattr(m, "obs_feature_bits")]:
         object.__setattr__(m, "obs_feature_bits", new)   # a plain int attribute, not a parameter or module
@@ -1781,8 +1785,15 @@ def load_resume_state(path: str, model: nn.Module, trainer: Any,
             sd["obs_features"] = torch.tensor(had | add_rules, dtype=torch.int64)
             if "ussr_net.obs_features" in sd:          # a --ladder-side-nets network's USSR copy records its own
                 sd["ussr_net.obs_features"] = torch.tensor(had | add_rules, dtype=torch.int64)
+        if add_rules & RELATIVE_EFFECTS:
+            # The effect bits move between slots for a USSR observer: its network's input columns move with them, and
+            # the Adam moments with those (ai/training/feature_branch.py), so the branch computes what it did.
+            _keys = branch_resume_blob_(blob)
+            print(f"[resume add features] relative_effects: {', '.join(_keys) or 'no USSR network'} permuted "
+                  f"(network, pi_ref, Adam moments): the same function wherever the information is the same", flush=True)
         print(f"[resume add features] {', '.join(_obs_feature_names(add_rules))}: added to the network, pi_ref and "
-              f"the pool; the weights are unchanged", flush=True)
+              f"the pool; the weights are unchanged{' but for the permutation above' if add_rules & RELATIVE_EFFECTS else ''}",
+              flush=True)
     check_state_obs_features(model, blob["model_state_dict"], f"the resume state {path}")
     if not fresh_optimizer:
         # Audit T-14: every transform below and the load assume the state indexes the parameters in model order.
@@ -1982,13 +1993,16 @@ OBS_FEATURE_BITS: Dict[str, int] = {"ops_budget": 1 << 1, "headline_reveal": 1 <
                                     "opp_event_gated": 1 << 3, "canonical_first": 1 << 4,
                                     "canonical_last": 1 << 5, "canonical_learned": 1 << 6,
                                     "placement_legal": 1 << 7, "placement_order": 1 << 8,
-                                    "uncapped_deficit": 1 << 11}
+                                    "uncapped_deficit": 1 << 11, "honest_context": 1 << 12,
+                                    "relative_effects": 1 << 13}
 #: A new network's set when `--obs-features` is not given: headline_reveal since E8 (owner, 2026-10-20),
-#: plus opp_event_gated since 2026-11-06 (E8.1), plus uncapped_deficit since 2026-11-26 (owner: board slots 24-25,
-#: the influence each side lacks to control a country, without their cap of 10 points). launch_flags.py compares
-#: each run against its own epoch's default (_EPOCH_DEFAULTS) and the code baseline (_CODE_BASELINE: an A code names
-#: uncapped_deficit, so every earlier run keeps its code).
-DEFAULT_OBS_FEATURES: List[str] = ["headline_reveal", "opp_event_gated", "uncapped_deficit"]
+#: plus opp_event_gated since 2026-11-06 (E8.1), plus three view fixes since 2026-11-26 (owner): uncapped_deficit
+#: (board slots 24-25 without their cap of 10 points), honest_context (the decision-context slots 80-82, 86 and 87 say
+#: what the state says) and relative_effects (the persistent-effect bits in the observer's frame). launch_flags.py
+#: compares each run against its own epoch's default (_EPOCH_DEFAULTS) and the code baseline (_CODE_BASELINE: an A
+#: code names the three, so every earlier run keeps its code).
+DEFAULT_OBS_FEATURES: List[str] = ["headline_reveal", "opp_event_gated", "uncapped_deficit", "honest_context",
+                                   "relative_effects"]
 #: The rule bits among them: the engine's minor version (E8.1), reported by launch_flags as `obs_rules`,
 #: outside the A code.
 RULE_FEATURES: List[str] = ["opp_event_gated", "canonical_first", "canonical_last", "canonical_learned"]
@@ -1996,11 +2010,12 @@ RULE_FEATURES: List[str] = ["opp_event_gated", "canonical_first", "canonical_las
 #: game that can be played, so they belong to the run's V code, not to the engine's minor version. launch_flags.py
 #: reports them as `obs_view`, the other rule bits as `obs_rules`.
 VIEW_RULE_FEATURES: List[str] = ["canonical_first", "canonical_last", "canonical_learned"]
-#: Observation bits of no width a trained network can be branched into (--resume-add-features): the weights read the
-#: same floats except where the bit changes a slot's scale or range, which the branch then learns. uncapped_deficit
-#: (owner, 2026-11-26): T1's networks read slots 24-25 uncapped with their own weights and stop the runaway stacking
-#: the cap caused.
-ADDABLE_OBS_FEATURES: List[str] = ["uncapped_deficit"]
+#: Observation bits of no width a trained network can be branched into (--resume-add-features), all 2026-11-26 (owner).
+#: uncapped_deficit and honest_context change some slots' values, which the branch then learns (T1's networks read
+#: slots 24-25 uncapped with their own weights and stop the runaway stacking the cap caused); relative_effects moves
+#: effect bits between slots, and the branch permutes its USSR network's input columns to compute what it did
+#: (ai/training/feature_branch.py).
+ADDABLE_OBS_FEATURES: List[str] = ["uncapped_deficit", "honest_context", "relative_effects"]
 
 
 def _obs_feature_names(bits: int) -> List[str]:

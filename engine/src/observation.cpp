@@ -572,6 +572,46 @@ size_t extract_observation_features(const GameState& state, Player perspective, 
             row[obs_features::BOARD_OPP_DEFICIT] = static_cast<float>(influence_deficit(stab, theirs, mine)) / 5.0f;
         }
     }
+    if (features & obs_features::HONEST_CONTEXT) {
+        const auto& ctx = state.ctx();
+        float* g = out + 84 * V23_BOARD_FEATURES + 110 * card_slots::V23_FEATURES;
+        const DecisionType dt = ctx.decision_type;
+        // A frame spending Ops: begin_op_mode opened it, with a card's (or an event's) Ops and no Event resolving in
+        // it -- its target choices and its coup and realignment dice. Not the choices that pick the card, its use and
+        // its op mode, and not a Space Race roll, which also holds its card in pending_op_card.
+        const bool spending = ctx.pending_op_card != 0 && ctx.resolving_card == 0 &&
+                              (dt == DecisionType::POINT_NODE ||
+                               (dt == DecisionType::ROLL_DIE &&
+                                (ctx.pending_roll == RollType::COUP || ctx.pending_roll == RollType::REALIGNMENT)));
+        for (size_t k = 0; k < 3; ++k) g[ctx_slots::OP_MODE + k] = 0.0f;
+        const size_t om = static_cast<size_t>(ctx.op_mode);
+        if (spending && om < 3) g[ctx_slots::OP_MODE + om] = 1.0f;
+        // The Event owed after these Ops: fire_owed_event's own test, on the Ops' spender -- the decider, or at a coup
+        // or realignment die (decided by no one) the roller, who is the spender there.
+        const Player spender = ctx.decision_player != Player::NONE ? ctx.decision_player : ctx.roll_actor;
+        g[ctx_slots::TIMING_OPS_FIRST] =
+            (spending && spender != Player::NONE && !ctx.suppress_op_card_event &&
+             ctx.timing_branch == static_cast<uint8_t>(TimingBranch::OPS_FIRST) &&
+             CardData::is_opponent_card(ctx.pending_op_card, spender)) ? 1.0f : 0.0f;
+        float stop = 0.0f;
+        if (dt != DecisionType::NONE) {
+            uint8_t mask[FLAT_ACTION_SPACE_SIZE];
+            ActionMask::generate_flat_mask_212(state, mask);
+            stop = mask[flat_slots::CONFIRM_DONE] ? 1.0f : 0.0f;
+        }
+        g[ctx_slots::ALLOW_EARLY_STOP] = stop;
+    }
+    if (features & obs_features::RELATIVE_EFFECTS) {
+        float* g = out + 84 * V23_BOARD_FEATURES + 110 * card_slots::V23_FEATURES + obs_features::GLOBAL_EFFECT_BITS;
+        if (perspective == Player::USSR) {
+            for (const auto& [a, b] : obs_features::RELATIVE_EFFECT_PAIRS) std::swap(g[a], g[b]);
+        }
+        const bool us = perspective == Player::US;
+        g[obs_features::RELATIVE_ATTEMPT_1] =
+            state.has_flag(us ? effect_bits::SPACE_US_ATTEMPT_1 : effect_bits::SPACE_USSR_ATTEMPT_1) ? 1.0f : 0.0f;
+        g[obs_features::RELATIVE_ATTEMPT_2] =
+            state.has_flag(us ? effect_bits::SPACE_US_ATTEMPT_2 : effect_bits::SPACE_USSR_ATTEMPT_2) ? 1.0f : 0.0f;
+    }
     if (features & obs_features::HEADLINE_REVEAL) {
         const uint8_t c = SpaceRace::revealed_headline(state, perspective);
         if (c != 0) {

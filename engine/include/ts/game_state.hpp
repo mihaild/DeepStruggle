@@ -3,6 +3,7 @@
 #include <array>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include "types.hpp"
 #include "constants.hpp"
 #include "invariant_failed.hpp"
@@ -667,6 +668,30 @@ namespace obs_features {
     // back to ~1 at 40-80 influence (runaway stacking). Still >= 0, as before; clear, bit-identical to the
     // capped base. It edits base slots, so only a model trained (or branched) with the bit reads them so.
     constexpr uint32_t UNCAPPED_DEFICIT = 1u << 11;
+    // No width (owner, 2026-11-26): three decision-context slots say what the state says. TIMING_OPS_FIRST (global 87)
+    // reads 1 only while Ops are being spent ops-first on an opponent's card whose Event is still owed (the engine's
+    // own test, fire_owed_event); the base reads the field's default 0 as "ops first" on every fresh frame -- every
+    // card selection and play-mode choice. OP_MODE (80-82) is the one-hot of the op mode only once it is chosen, in a
+    // frame spending a card's or an event's Ops; the base shows INFLUENCE before any choice, at SELECT_PLAY_MODE and
+    // SELECT_OP_MODE, and in an Event's own placements. ALLOW_EARLY_STOP (86) is whether CONFIRM_DONE is offered
+    // (the flat mask); the base keeps a compatibility 1 in every influence Ops play.
+    constexpr uint32_t HONEST_CONTEXT = 1u << 12;
+    // No width (owner, 2026-11-26): the persistent-effect bits (globals 12-56) in the observer's frame. Each pair of
+    // mirrored side-specific effects (RELATIVE_EFFECT_PAIRS: the US's bit, the USSR's) reads mine in the US's slot and
+    // the opponent's in the USSR's, so a USSR observer's pair is swapped; and the two space-attempt slots (bits 43/44,
+    // the US's attempts in the base, which a USSR observer sees and the USSR's own 45/46 never) are the observer's own
+    // first and second attempt this turn. A US observer's view is unchanged.
+    constexpr uint32_t RELATIVE_EFFECTS = 1u << 13;
+    constexpr std::array<std::pair<uint8_t, uint8_t>, 5> RELATIVE_EFFECT_PAIRS{{
+        {6, 18},    // CONTAINMENT_ACTIVE / BREZHNEV_DOCTRINE_ACTIVE: +1 Ops this turn
+        {7, 8},     // PURGE_US_ACTIVE / PURGE_USSR_ACTIVE (Red Scare/Purge): -1 Ops this turn
+        {11, 12},   // CMC_ACTIVE_US / CMC_ACTIVE_USSR: Cuban Missile Crisis played by
+        {14, 15},   // QUAGMIRE_ACTIVE / BEAR_TRAP_ACTIVE: trapped
+        {22, 23},   // DEATH_SQUADS_US / DEATH_SQUADS_USSR: +1 own, -1 opponent's CA/SA coups
+    }};
+    constexpr uint8_t RELATIVE_ATTEMPT_1 = 43;   // the effect bits whose slots read the observer's own attempts
+    constexpr uint8_t RELATIVE_ATTEMPT_2 = 44;
+    constexpr size_t GLOBAL_EFFECT_BITS = 12;    // globals[12 + bit] for bits 0..44
     constexpr size_t BOARD_MY_DEFICIT = 24;
     constexpr size_t BOARD_OPP_DEFICIT = 25;
     constexpr float BOARD_DEFICIT_CAP = 2.0f;
@@ -677,7 +702,8 @@ namespace obs_features {
     // The rule bits a person plays (the page's current rules): game rules, not a model's action order.
     constexpr uint32_t PERSON_RULES = OPP_EVENT_GATED | OWN_EVENT_GATED | ALWAYS_ASK_DISCARD;
     constexpr uint32_t ALL         = OPS_BUDGET | HEADLINE_REVEAL | OPP_EVENT_GATED | CANONICAL | PLACEMENT_LEGAL |
-                                     PLACEMENT_ORDER | OWN_EVENT_GATED | ALWAYS_ASK_DISCARD | UNCAPPED_DEFICIT;
+                                     PLACEMENT_ORDER | OWN_EVENT_GATED | ALWAYS_ASK_DISCARD | UNCAPPED_DEFICIT |
+                                     HONEST_CONTEXT | RELATIVE_EFFECTS;
 
     constexpr size_t OPS_BUDGET_WIDTH = 3;
 

@@ -429,9 +429,12 @@ def build_parser() -> argparse.ArgumentParser:
                              "also be in --obs-features.")
     parser.add_argument("--resume-add-features", nargs="+", default=None, metavar="FEATURE",
                         help="With --resume: zero-width observation bits the branch reads that its resume state was "
-                             "not trained with (uncapped_deficit, owner 2026-11-26: board slots 24-25 without their "
-                             "cap). The weights are unchanged: the bits are added to the network, pi_ref and the "
-                             "restored pool, which then read the new view. They must also be in --obs-features.")
+                             "not trained with (owner 2026-11-26: uncapped_deficit, honest_context, relative_effects). "
+                             "The bits are added to the network, pi_ref and the restored pool, which then read the new "
+                             "view; the weights are unchanged, except that relative_effects permutes the USSR "
+                             "network's global input columns (and their Adam moments) so it computes what it did -- "
+                             "for a --ladder-side-nets state or one side's network only. They must also be in "
+                             "--obs-features.")
     parser.add_argument("--resume-grow-tokens", action="store_true", default=False,
                         help="With --resume: the model has --ladder-token-layers the state lacks. The token path "
                              "starts fresh and the fusion layer and per-entity heads read it through zero weights, "
@@ -1081,9 +1084,14 @@ def build_parser() -> argparse.ArgumentParser:
                              "order blocks now read 0.5 (0 no access, 1 access). uncapped_deficit (no "
                              "width, owner 2026-11-26): board slots 24 and 25, the influence each side lacks "
                              "to control a country / 5, without their cap of 2.0 (10 points), so a margin "
-                             "past 10 keeps growing instead of freezing. The list replaces the default, "
-                             "headline_reveal opp_event_gated uncapped_deficit (since 2026-11-26; an earlier "
-                             "E9 / E8.1 run is headline_reveal opp_event_gated, an E8 run headline_reveal "
+                             "past 10 keeps growing instead of freezing. honest_context (no width, "
+                             "2026-11-26): the op-mode one-hot (80-82) only once a mode is chosen, ALLOW_EARLY_STOP "
+                             "(86) the mask's CONFIRM_DONE, TIMING_OPS_FIRST (87) only while an ops-first opponent "
+                             "Event is owed. relative_effects (no width, 2026-11-26): the effect bits (globals "
+                             "12-56) in the observer's frame, mirrored pairs swapped for the USSR and the space-"
+                             "attempt slots the observer's own. The list replaces the default, headline_reveal "
+                             "opp_event_gated uncapped_deficit honest_context relative_effects (since 2026-11-26; an "
+                             "earlier E9 / E8.1 run is headline_reveal opp_event_gated, an E8 run headline_reveal "
                              "alone): name them all to have them all, and give the flag with no names for none "
                              "(what every run before E8 read). Recorded in the run's metadata and in the weights; "
                              "every evaluator then builds this view for the model. Ladder only.")

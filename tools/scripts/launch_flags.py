@@ -80,9 +80,10 @@ def _split_rules(flags: dict) -> dict:
 #: --ladder-side-nets run and off for any other, records it only when on, and every run before it ran the pooled update
 #: -- so a run's code names it only when it was on, and a relaunch names it only where the run differs from what an
 #: unnamed launch would do (`launch_settings`).
-#: uncapped_deficit joined the default --obs-features on 2026-11-26 (owner) in E9, with no new epoch: every run before it
-#: read the capped slots, so the observation half of the default (rule bits apart) is read as E8's headline_reveal and a
-#: run reading uncapped_deficit names it in its A code (_EPOCH_DEFAULTS still gives [] before E8).
+#: uncapped_deficit, honest_context and relative_effects joined the default --obs-features on 2026-11-26 (owner) in E9,
+#: with no new epoch: every run before read the base slots, so the observation half of the default (rule bits apart) is
+#: read as E8's headline_reveal and a run reading any of the three names it in its A code (_EPOCH_DEFAULTS still gives
+#: [] before E8).
 _CODE_BASELINE = {"reward_scheme": "blunder_aware", "no_blunder_window": False, "side_independent_update": False,
                   "obs_features": ["headline_reveal"]}
 

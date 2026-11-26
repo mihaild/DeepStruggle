@@ -343,13 +343,18 @@ rule bits a person plays and no network does (no training name): no Event offere
 / Latin American Debt Crisis always ask the US, Missile Envy its giver (`engine/AGENTS.md` §22). A seat plays the rule bits of the feature set it is observed in, a
 search both sides of its tree under its own network's, and a person in the web page every rule bit; an
 unseated side plays the rule from before every bit, so the unseated engine is E8's.
-`UNCAPPED_DEFICIT` (bit 11, `uncapped_deficit`, owner 2026-11-26) is an observation bit of no width: board slots 24-25
-(the influence each side lacks to control a country, / 5) without their cap of 2.0, whose freeze past a 10-point margin
-let every network's placement probability climb back to ~1 at 40-80 influence (runaway stacking). **It is in the default
-`--obs-features` of every new run since 2026-11-26** (`headline_reveal opp_event_gated uncapped_deficit`); an A code names
-it, so earlier runs keep their codes, and continuing an earlier E9 run without it needs
-`--obs-features headline_reveal opp_event_gated`. A trained state is branched into it with
-`--resume-add-features uncapped_deficit` (the weights unchanged; the network, pi_ref and the restored pool gain the bit).
+Three observation bits of no width fix the base view (owner, 2026-11-26): `UNCAPPED_DEFICIT` (bit 11,
+`uncapped_deficit`: board slots 24-25 without their cap of 2.0, whose freeze past a 10-point margin let every network's
+placement probability climb back to ~1 at 40-80 influence), `HONEST_CONTEXT` (bit 12, `honest_context`: op mode 80-82
+only once chosen, ALLOW_EARLY_STOP 86 the mask's CONFIRM_DONE, TIMING_OPS_FIRST 87 only while an ops-first opponent Event
+is owed) and `RELATIVE_EFFECTS` (bit 13, `relative_effects`: the effect bits 12-56 in the observer's frame, mirrored
+pairs swapped for the USSR, the space-attempt slots the observer's own). **They are in the default `--obs-features` of
+every new run since 2026-11-26** (`headline_reveal opp_event_gated uncapped_deficit honest_context relative_effects`);
+an A code names them, so earlier runs keep their codes, and continuing an earlier E9 run needs
+`--obs-features headline_reveal opp_event_gated`. A trained state is branched into them with
+`--resume-add-features uncapped_deficit honest_context relative_effects`: the network, pi_ref and the restored pool
+gain the bits, and for relative_effects an A39 state's USSR network's global input columns (and Adam moments) are
+permuted so it computes what it did (`ai/training/feature_branch.py`; refused for a network reading both sides).
 Adding a block still needs the owner.
 
 **AI (`ai/`):** the current lineage is LadderNet (`models/ladder_net.py`, `--arch ladder`), the

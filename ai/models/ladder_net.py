@@ -111,7 +111,9 @@ OBS_FEATURE_WIDTHS: Dict[int, int] = {1 << 1: 3, 1 << 2: 0,   # OPS_BUDGET, HEAD
                                       1 << 8: 0,             # PLACEMENT_ORDER (edits base slot 19, no width)
                                       1 << 9: 0,             # OWN_EVENT_GATED (a person's rule bit, no width)
                                       1 << 10: 0,            # ALWAYS_ASK_DISCARD (a person's rule bit, no width)
-                                      1 << 11: 0}            # UNCAPPED_DEFICIT (base slots 24-25 uncapped, no width)
+                                      1 << 11: 0,            # UNCAPPED_DEFICIT (base slots 24-25 uncapped, no width)
+                                      1 << 12: 0,            # HONEST_CONTEXT (base globals 80-82, 86, 87; no width)
+                                      1 << 13: 0}            # RELATIVE_EFFECTS (base globals 12-56; no width)
 
 
 def _obs_extra(features: int) -> int:
