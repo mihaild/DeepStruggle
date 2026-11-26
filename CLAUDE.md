@@ -343,6 +343,13 @@ rule bits a person plays and no network does (no training name): no Event offere
 / Latin American Debt Crisis always ask the US, Missile Envy its giver (`engine/AGENTS.md` §22). A seat plays the rule bits of the feature set it is observed in, a
 search both sides of its tree under its own network's, and a person in the web page every rule bit; an
 unseated side plays the rule from before every bit, so the unseated engine is E8's.
+`UNCAPPED_DEFICIT` (bit 11, `uncapped_deficit`, owner 2026-11-26) is an observation bit of no width: board slots 24-25
+(the influence each side lacks to control a country, / 5) without their cap of 2.0, whose freeze past a 10-point margin
+let every network's placement probability climb back to ~1 at 40-80 influence (runaway stacking). **It is in the default
+`--obs-features` of every new run since 2026-11-26** (`headline_reveal opp_event_gated uncapped_deficit`); an A code names
+it, so earlier runs keep their codes, and continuing an earlier E9 run without it needs
+`--obs-features headline_reveal opp_event_gated`. A trained state is branched into it with
+`--resume-add-features uncapped_deficit` (the weights unchanged; the network, pi_ref and the restored pool gain the bit).
 Adding a block still needs the owner.
 
 **AI (`ai/`):** the current lineage is LadderNet (`models/ladder_net.py`, `--arch ladder`), the

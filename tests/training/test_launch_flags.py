@@ -147,12 +147,27 @@ def test_a_rule_bit_is_the_minor_version_not_a_code() -> None:
     assert lf.recorded(e81)["obs_features"] == ["headline_reveal"]
 
 
+def test_uncapped_deficit_is_named_by_the_runs_that_read_it() -> None:
+    """uncapped_deficit joined the default on 2026-11-26 in E9, with no new epoch: an E9 run from before it keeps its
+    code (its obs_features are headline_reveal, as the code baseline reads them), a run reading the bit names it in
+    its A code, and relaunching the earlier run names its set, since today's default is no longer it."""
+    lf = _lf()
+    old = _run({"run_name": "E9-A8-R169-S45", "obs_features": ["headline_reveal", "opp_event_gated"]})
+    new = _run({"run_name": "E9-A8-R169-S46",
+                "obs_features": ["headline_reveal", "opp_event_gated", "uncapped_deficit"]})
+    assert "obs_features" not in lf.non_default(old)
+    assert lf.non_default(new)["obs_features"] == ["headline_reveal", "uncapped_deficit"]
+    assert "obs_rules" not in lf.non_default(new)
+    assert lf.launch_settings(old)["obs_features"] == ["headline_reveal", "opp_event_gated"]
+    assert "obs_features" not in lf.launch_settings(new)
+
+
 def test_obs_features_default_and_opt_out_on_the_cli() -> None:
     """A new network reads headline_reveal (since E8) and plays opp_event_gated (E8.1, since
     2026-11-06); the list replaces the default, and the flag with no names is none -- E7's view,
     which continuing an E7 run needs, as continuing an E8 run needs headline_reveal alone."""
     p = build_parser()
-    assert p.parse_args([]).obs_features == ["headline_reveal", "opp_event_gated"]
+    assert p.parse_args([]).obs_features == ["headline_reveal", "opp_event_gated", "uncapped_deficit"]
     assert p.parse_args(["--obs-features"]).obs_features == []
     assert p.parse_args(["--obs-features", "ops_budget"]).obs_features == ["ops_budget"]
 

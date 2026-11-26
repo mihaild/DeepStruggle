@@ -89,6 +89,10 @@ are cited from elsewhere; keep them.
     person plays: `OBS_FEATURES_PERSON_RULES`, every rule bit but the canonical orders
     (`OBS_FEATURE_OPP_EVENT_GATED`, and `OBS_FEATURE_OWN_EVENT_GATED` / `OBS_FEATURE_ALWAYS_ASK_DISCARD`,
     a person's rules with no training name, [`engine/AGENTS.md`](../engine/AGENTS.md) §22).
+    `OBS_FEATURE_UNCAPPED_DEFICIT` (bit 11, 2026-11-26) is an observation bit of no width, not a rule: base board
+    slots 24-25 without their cap of 2.0 ([`engine/AGENTS.md`](../engine/AGENTS.md) §6a). The runner and the
+    wasm page observe each seat in its own model's set, so a model with it plays one without it; a training pool
+    still refuses an opponent whose observation bits differ from the learner's (`OpponentPool`).
   - **For pages that mirror a game played elsewhere** (Twilight Struggle /ai, the analysis board): the wasm
     build also exports `ts_step_dice` (a click with both dice of an opposed roll forced), `ts_first_headline_json`
     (a copy of the game stopped between the two headlines), `ts_card_location` / `ts_set_card_location` and

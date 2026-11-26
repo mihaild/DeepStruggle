@@ -89,6 +89,13 @@ int16_t compute_net_realign_mod(const GameState& state, Player p, uint8_t countr
     return my_mod - opp_mod;
 }
 
+// Influence `mine` lacks to control a country of `stability` against `theirs`: the stability itself, or
+// the margin over the other side, whichever is more; 0 once controlled. Board slots 24 and 25 read it / 5,
+// capped at obs_features::BOARD_DEFICIT_CAP unless the model reads obs_features::UNCAPPED_DEFICIT.
+int influence_deficit(int stability, int mine, int theirs) noexcept {
+    return std::max({0, stability - mine, theirs + stability - mine});
+}
+
 // The observation written straight to its three blocks, wherever the caller keeps them.
 void extract_into(const GameState& state, Player perspective, float* board, float* cards,
                   float* globals) noexcept {
@@ -183,17 +190,14 @@ void extract_into(const GameState& state, Player perspective, float* board, floa
 
         board[offset + 23] = static_cast<float>(state.ctx().node_count(i)) / 5.0f;
 
-        // Influence deficit to my control: how many Ops it would take to reach control.
-        const int my_def_stab = std::max(0, static_cast<int>(c_info.stability) - static_cast<int>(my_inf));
-        const int my_def_margin = std::max(0, static_cast<int>(opp_inf) + static_cast<int>(c_info.stability) - static_cast<int>(my_inf));
-        const int my_deficit = std::max(my_def_stab, my_def_margin);
-        board[offset + 24] = std::min(static_cast<float>(my_deficit) / 5.0f, 2.0f);
-
-        // Influence deficit to opponent control.
-        const int opp_def_stab = std::max(0, static_cast<int>(c_info.stability) - static_cast<int>(opp_inf));
-        const int opp_def_margin = std::max(0, static_cast<int>(my_inf) + static_cast<int>(c_info.stability) - static_cast<int>(opp_inf));
-        const int opp_deficit = std::max(opp_def_stab, opp_def_margin);
-        board[offset + 25] = std::min(static_cast<float>(opp_deficit) / 5.0f, 2.0f);
+        // Influence deficit to my control (how many Ops it would take to reach control), and to the opponent's.
+        const int stab = static_cast<int>(c_info.stability);
+        board[offset + obs_features::BOARD_MY_DEFICIT] = std::min(
+            static_cast<float>(influence_deficit(stab, static_cast<int>(my_inf), static_cast<int>(opp_inf))) / 5.0f,
+            obs_features::BOARD_DEFICIT_CAP);
+        board[offset + obs_features::BOARD_OPP_DEFICIT] = std::min(
+            static_cast<float>(influence_deficit(stab, static_cast<int>(opp_inf), static_cast<int>(my_inf))) / 5.0f,
+            obs_features::BOARD_DEFICIT_CAP);
     }
 
     // The card and global blocks are written sparsely, so they start from zero.
@@ -554,6 +558,18 @@ size_t extract_observation_features(const GameState& state, Player perspective, 
                     if (slot > 0.0f && canonical::rank_in(state, order, i) < floor) slot = obs_features::BOARD_BLOCKED_BY_ORDER;
                 }
             }
+        }
+    }
+    if (features & obs_features::UNCAPPED_DEFICIT) {
+        // Slots 24 and 25 as the base writes them, without the cap.
+        const bool us = perspective == Player::US;
+        for (uint8_t i = 0; i < 84; ++i) {
+            const int stab = static_cast<int>(MapData::get_country(i).stability);
+            const int mine = us ? state.countries[i].us_influence : state.countries[i].ussr_influence;
+            const int theirs = us ? state.countries[i].ussr_influence : state.countries[i].us_influence;
+            float* row = out + static_cast<size_t>(i) * V23_BOARD_FEATURES;
+            row[obs_features::BOARD_MY_DEFICIT] = static_cast<float>(influence_deficit(stab, mine, theirs)) / 5.0f;
+            row[obs_features::BOARD_OPP_DEFICIT] = static_cast<float>(influence_deficit(stab, theirs, mine)) / 5.0f;
         }
     }
     if (features & obs_features::HEADLINE_REVEAL) {

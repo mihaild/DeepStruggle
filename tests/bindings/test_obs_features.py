@@ -223,3 +223,61 @@ def test_a_reveal_model_plays_a_model_without_it_each_in_its_own_view() -> None:
     assert model_obs_features(a.model) == R and check_obs_width(a.model) == BASE
     res = BatchMatchRunner.play_parallel_matchup(a, b, games_per_side=4, batch_chunk_size=8, device="cpu")
     assert res is not None
+
+
+
+U = int(ts.OBS_FEATURE_UNCAPPED_DEFICIT)
+MY_DEFICIT, OPP_DEFICIT = 24, 25
+WG = int(ts.MapData.get_country_by_name("West Germany"))     # stability 4
+
+
+def _stacked() -> "ts.GameState":
+    """A mid-game position with the USSR's 40 influence in West Germany against none."""
+    st = _positions(1, seed=7)[0][0]
+    st.set_country(WG, 0, 40)
+    return st
+
+
+def test_uncapped_deficit_writes_slots_24_and_25_past_the_cap_at_no_width() -> None:
+    """Base slots 24-25 cap the influence a side lacks to control a country at 10 points (2.0); under
+    UNCAPPED_DEFICIT they keep growing. Nothing else moves, and below the cap the two views agree."""
+    assert ts.obs_size_for(U) == BASE and ts.obs_size_for(U | F) == BASE + OBS_FEATURE_WIDTHS[F]
+    st = _stacked()
+    for p, k in ((ts.Player.USSR, OPP_DEFICIT), (ts.Player.US, MY_DEFICIT)):
+        capped = np.asarray(ts.extract_observation_features(st, p, 0))
+        un = np.asarray(ts.extract_observation_features(st, p, U))
+        assert capped[WG * 26 + k] == pytest.approx(2.0)
+        assert un[WG * 26 + k] == pytest.approx(44 / 5)          # 40 + stability 4, / 5
+    for s, p in [(st, ts.Player.USSR)] + _positions(300):
+        base = np.asarray(ts.extract_observation_features(s, p, F))
+        un = np.asarray(ts.extract_observation_features(s, p, F | U))
+        assert np.array_equal(base[84 * 26:], un[84 * 26:])
+        board_b, board_u = base[:84 * 26].reshape(84, 26), un[:84 * 26].reshape(84, 26)
+        keep = [k for k in range(26) if k not in (MY_DEFICIT, OPP_DEFICIT)]
+        assert np.array_equal(board_b[:, keep], board_u[:, keep])
+        d_b, d_u = board_b[:, [MY_DEFICIT, OPP_DEFICIT]], board_u[:, [MY_DEFICIT, OPP_DEFICIT]]
+        under = d_b < 2.0
+        assert np.array_equal(d_b[under], d_u[under]) and (d_u[~under] >= 2.0).all()
+
+
+def test_an_uncapped_model_plays_a_model_without_it_each_in_its_own_view() -> None:
+    """A network branched into UNCAPPED_DEFICIT against one that is not (a tournament, the leaderboard, a fixed
+    opponent in an evaluation): in one batch each seat is observed in its own set, and a whole match plays out."""
+    st = _stacked()
+    r = ts.VectorizedBatchRunner(2, 11)
+    r.set_state(0, st)
+    r.set_state(1, st)
+    p = st.ctx().decision_player
+    us_first = p == ts.Player.US
+    r.set_obs_features([U, 0] if us_first else [0, 0], [0, 0] if us_first else [U, 0])
+    r.refresh_all()
+    obs = np.asarray(r.get_observations())
+    assert np.array_equal(obs[0], np.asarray(ts.extract_observation_features(st, p, U)))
+    assert np.array_equal(obs[1], np.asarray(ts.extract_observation_features(st, p, 0)))
+    assert not np.array_equal(obs[0], obs[1])
+    torch.manual_seed(0)
+    a = NeuralAgent(model=create_ladder_net("cpu", **{**M2D, "obs_features": U}), name="uncapped", device="cpu")
+    b = NeuralAgent(model=create_ladder_net("cpu", **M2D), name="capped", device="cpu")
+    assert model_obs_features(a.model) == U and check_obs_width(a.model) == BASE
+    res = BatchMatchRunner.play_parallel_matchup(a, b, games_per_side=4, batch_chunk_size=8, device="cpu")
+    assert res is not None

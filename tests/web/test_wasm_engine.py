@@ -25,7 +25,7 @@ import torch
 
 import ts_engine as ts
 from ai.search.belief import _hypothesis_obs
-from tests.bindings.test_obs_features import _box4_headline
+from tests.bindings.test_obs_features import _box4_headline, _stacked
 from tools.lib.engine_fingerprint import fingerprint
 from tools.lib.game_step import drain_chance
 
@@ -72,6 +72,23 @@ def test_the_page_shows_a_reveal_model_the_box4_headline_as_python_does(tmp_path
     assert wasm["unknown_width"] == 0
 
 
+def test_the_page_shows_an_uncapped_model_the_margin_past_ten_as_python_does(tmp_path) -> None:
+    """UNCAPPED_DEFICIT (2026-11-26) edits base slots 24-25 at no width: with the USSR's 40 influence in West Germany
+    the page's observation under it is Python's, byte for byte, and differs from the capped base."""
+    state = _stacked()
+    path = tmp_path / "obs.json"
+    un = int(ts.OBS_FEATURE_UNCAPPED_DEFICIT)
+    path.write_text(json.dumps({"save": state.to_save_json(), "features": [0, un]}))
+    wasm = _node("obs", str(path))
+    assert "error" not in wasm, wasm.get("error")
+    for f in (0, un):
+        for p, side in ((1, ts.Player.US), (-1, ts.Player.USSR)):
+            want = hashlib.sha256(np.asarray(ts.extract_observation_features(state, side, f),
+                                             dtype=np.float32).tobytes()).hexdigest()
+            assert wasm["obs"][f"{f}:{p}"] == want, f"features {f}, side {p}"
+    assert wasm["obs"][f"{un}:1"] != wasm["obs"]["0:1"] and wasm["obs"][f"{un}:-1"] != wasm["obs"]["0:-1"]
+
+
 def test_whole_games_match_the_native_engine() -> None:
     native_digest, native_steps = ts.selftest_digest(200)
     wasm = _node("selftest", "200")
@@ -82,7 +99,8 @@ def test_whole_games_match_the_native_engine() -> None:
 
 
 #: The feature sets a model can read, each checked as the page builds it for such a model.
-FEATURE_SETS = [int(ts.OBS_FEATURE_OPS_BUDGET), int(ts.OBS_FEATURE_HEADLINE_REVEAL), int(ts.OBS_FEATURES_ALL)]
+FEATURE_SETS = [int(ts.OBS_FEATURE_OPS_BUDGET), int(ts.OBS_FEATURE_HEADLINE_REVEAL), int(ts.OBS_FEATURE_UNCAPPED_DEFICIT),
+                int(ts.OBS_FEATURES_ALL)]
 
 
 @pytest.mark.parametrize("seed", [11, 58])

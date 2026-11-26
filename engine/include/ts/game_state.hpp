@@ -660,6 +660,16 @@ namespace obs_features {
     // With auto-advance the game is the same as without it -- one forced decision more; clear, the
     // event resolves at once.
     constexpr uint32_t ALWAYS_ASK_DISCARD = 1u << 10;
+    // No width (owner, 2026-11-26): board slots 24 and 25 -- the influence each side lacks to control the
+    // country, / 5 -- are written without their cap of 2.0 (10 points), so "overcontrolled by a lot" keeps
+    // growing with the margin instead of freezing at 10. Under the cap the margin stopped moving the slot
+    // while the raw influence slot (0, / 10) kept rising, and every network's placement probability climbed
+    // back to ~1 at 40-80 influence (runaway stacking). Still >= 0, as before; clear, bit-identical to the
+    // capped base. It edits base slots, so only a model trained (or branched) with the bit reads them so.
+    constexpr uint32_t UNCAPPED_DEFICIT = 1u << 11;
+    constexpr size_t BOARD_MY_DEFICIT = 24;
+    constexpr size_t BOARD_OPP_DEFICIT = 25;
+    constexpr float BOARD_DEFICIT_CAP = 2.0f;
     constexpr float BOARD_BLOCKED_BY_ORDER = 0.5f;
     constexpr size_t BOARD_MY_PLACEABLE = 19;
     // The bits that change the rules a seat plays (GameState::seat_rules), not its observation.
@@ -667,7 +677,7 @@ namespace obs_features {
     // The rule bits a person plays (the page's current rules): game rules, not a model's action order.
     constexpr uint32_t PERSON_RULES = OPP_EVENT_GATED | OWN_EVENT_GATED | ALWAYS_ASK_DISCARD;
     constexpr uint32_t ALL         = OPS_BUDGET | HEADLINE_REVEAL | OPP_EVENT_GATED | CANONICAL | PLACEMENT_LEGAL |
-                                     PLACEMENT_ORDER | OWN_EVENT_GATED | ALWAYS_ASK_DISCARD;
+                                     PLACEMENT_ORDER | OWN_EVENT_GATED | ALWAYS_ASK_DISCARD | UNCAPPED_DEFICIT;
 
     constexpr size_t OPS_BUDGET_WIDTH = 3;
 
