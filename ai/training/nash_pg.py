@@ -611,6 +611,7 @@ class BaseNashPGTrainer:
         value_selfplay_only: bool = False,  # P44 diagnostic: the value loss on self-play games' rows only
         value_learner_only: bool = False,   # 2026-11-20: the value loss on the learner's own decisions only
         update_learner_rows_only: bool = False,  # 2026-11-26: the update reads the learner's own rows only
+        side_independent_update: bool = False,  # 2026-11-26: A39's two networks updated as two independent models
         critic_prior: bool = False,  # P46b: the win head shifted by the pool's prior for the game's opponent
         critic_prior_gain: str = "fixed",  # P46: 'fixed' (the turn line) or 'learned' (a critic-only gain g(s))
         critic_prior_gain_init: str = "line",  # P46: a learned gain starts at the turn line or at zero
@@ -1364,6 +1365,24 @@ class BaseNashPGTrainer:
         #: "shift" (default, E4-41) or "jump": see wolf_seat_weights.
         self.wolf_dead_zone_mode = str(wolf_dead_zone_mode)
         wolf_seat_weights(0.5, 1.0, 0.0, self.wolf_dead_zone_mode)   # validates the mode
+        # 2026-11-26 (owner: "nothing should mix signals for different sides. Critics from different sides should not
+        # be compared, gradient normalizations should be independent, etc. It should always be effectively two
+        # completely independent models"): under --side-independent-update an A39 (--ladder-side-nets) network's two
+        # networks are updated as two separate models trained on their own rows. Per side s: the advantages are
+        # normalised with side s's statistics alone; every loss term is a mean over side s's rows alone and the loss
+        # differentiated is the sum of the two sides' losses, so side s's gradient is the one a model trained on its
+        # rows alone would get (the other side's row count, values and gradients never enter it); and each side's
+        # gradient is clipped to max_grad_norm on its own. What can only be one scalar decided from both sides, or a
+        # step taken on both networks' pooled rows outside the PPO update, is refused (`_check_side_independent`).
+        self.side_independent_update = bool(side_independent_update)
+        #: Under side_independent_update: (the US network's parameters, the USSR network's), for per-side clipping.
+        self._side_params: Optional[Tuple[List[nn.Parameter], List[nn.Parameter]]] = None
+        if self.side_independent_update:
+            self._side_params = side_parameters(self.active_net)
+            self._check_side_independent(per_player_gae=bool(per_player_gae), adv_norm_floor=float(adv_norm_floor))
+            # Per-seat normalisation, each seat from its own rows only, never the batch-wide statistics.
+            self.buffer.per_seat_adv_norm = True
+            self.buffer.side_independent = True
         #: Rollout forwards replayed as CUDA graphs (ai/training/graphed_forward.py): bitwise the
         #: same kernels as eager, one launch instead of ~317. The learner's and the pool
         #: opponent's graphs replay one after the other on the current stream -- see
@@ -1414,6 +1433,55 @@ class BaseNashPGTrainer:
         # Frozen entropy probe, filled from the very first rollout and never resampled.
         self.entropy_probe = FixedEntropyProbe(size=ENTROPY_PROBE_SIZE)
         self.entropy_probe_interval = ENTROPY_PROBE_INTERVAL
+
+    def _check_side_independent(self, per_player_gae: bool, adv_norm_floor: float) -> None:
+        """--side-independent-update: refuse every option that would decide one quantity from both sides' rows, or step
+        the optimiser on both networks outside the PPO update's per-side losses."""
+        if not per_player_gae:
+            raise ValueError("--side-independent-update needs --per-player-gae: the interleaved chain bootstraps each "
+                             "side's advantage from the other side's critic, negated -- two sides' critics compared")
+        refused = [name for name, on in (
+            ("--wolf-seat-weight (per-seat weights from the USSR's self-play win share)", self.wolf_seat_weight),
+            ("--adv-norm-floor (one floored divisor)", adv_norm_floor > 0.0),
+            ("--setup-entropy-floor (one coefficient from both sides' setup entropy)", self.setup_entropy_floor > 0.0),
+            ("--setup-mc-credit (its own step on both sides' placements)", self.setup_mc_credit),
+            ("--aux-ownership / --aux-vp-margin (their own step on pooled rows)", self.aux_targets),
+            ("--aux-card-events (its own step on pooled rows)", self.aux_card_coef > 0.0),
+            ("--aux-opp-legality (its own step on pooled rows)", self.aux_opp_legality > 0.0),
+            ("--turn-credit-coef (its own step on pooled rows)", self.turn_credit is not None),
+            ("--critic-prior-window (a pool prior read across seats)", self.critic_prior),
+        ) if on]
+        if refused:
+            raise ValueError("--side-independent-update trains the two side networks as independent models; not "
+                             "defined with " + "; ".join(refused))
+
+    def _side_rows(self, obs: torch.Tensor) -> Optional[Tuple[torch.Tensor, torch.Tensor]]:
+        """Under --side-independent-update, (US, USSR) float masks of the rows of `obs` each side's network reads (its
+        I_AM_US, as the network routes them); None otherwise."""
+        if not self.side_independent_update:
+            return None
+        us = cast(LadderNet, self.active_net).is_us(obs)
+        return us.float(), (~us).float()
+
+    def _clip_grads(self) -> None:
+        """clip_grad_norm_ to max_grad_norm: over the whole network, or under --side-independent-update over each side's
+        network on its own, so one side's gradient norm never scales the other's step."""
+        if self._side_params is None:
+            nn.utils.clip_grad_norm_(self.active_net.parameters(), max_norm=self.max_grad_norm)
+            return
+        for params in self._side_params:
+            nn.utils.clip_grad_norm_(params, max_norm=self.max_grad_norm)
+
+    def _check_side_rows(self) -> None:
+        """--side-independent-update normalises the advantages by the buffer's acting seat and splits the losses by the
+        network a row is routed through (its I_AM_US): refuse a buffer in which the two disagree on any row."""
+        n = self.buffer.buffer_size * self.num_envs
+        us = cast(LadderNet, self.active_net).is_us(self.buffer.obs.view(n, self.buffer.obs_dim))
+        p = self.buffer.players.view(n)
+        bad = (us != (p == 1)) | (~us != (p == -1))
+        if bool(bad.any()):
+            raise RuntimeError(f"--side-independent-update: {int(bad.sum())} buffer row(s) whose acting seat is not the "
+                               "side their observation is routed to")
 
     def set_head_init(self, init: Dict[str, torch.Tensor]) -> None:
         """Pull the heads toward a resumed run's own initial weights instead of this process's construction (the
@@ -3009,6 +3077,31 @@ class BaseNashPGTrainer:
         return combined
 
 
+def side_parameters(net: nn.Module) -> Tuple[List[nn.Parameter], List[nn.Parameter]]:
+    """(the US network's parameters, the USSR network's) of an A39 (--ladder-side-nets) network: the USSR network is
+    `ussr_net`, the US network everything else. Refuses any other network, where the two sides share parameters."""
+    if not isinstance(net, LadderNet) or net.ussr_net is None:
+        raise ValueError("--side-independent-update needs --ladder-side-nets (A39): two networks sharing no parameter "
+                         "(--ladder-side-heads shares the trunk; a plain network shares everything)")
+    ussr = list(net.ussr_net.parameters())
+    ids = {id(q) for q in ussr}
+    us = [q for q in net.parameters() if id(q) not in ids]
+    return us, ussr
+
+
+def side_mean(x: torch.Tensor, w: torch.Tensor, sides: Optional[Tuple[torch.Tensor, torch.Tensor]]) -> torch.Tensor:
+    """The `w`-weighted mean of `x` over the rows, sum(x w) / max(1, sum w) -- or, given `sides` (per-row float masks
+    of the two side networks' rows: --side-independent-update), the sum over the sides of that mean over each side's
+    rows alone: each side's term, and so its gradient, is its own rows' mean, whatever the other side's rows are."""
+    if sides is None:
+        return (x * w).sum() / w.sum().clamp(min=1.0)
+    total = x.new_zeros(())
+    for f in sides:
+        wf = w * f.to(w.dtype)
+        total = total + (x * wf).sum() / wf.sum().clamp(min=1.0)
+    return total
+
+
 def prior_apply(v_win: torch.Tensor, shift: torch.Tensor, active: Optional[torch.Tensor] = None) -> torch.Tensor:
     """P46b: the win value v in [-1, 1] read as a probability (v + 1) / 2, shifted in log-odds by `shift`, and
     mapped back, on the rows `active` marks (default: the rows with a nonzero shift); the rest are returned
@@ -3179,6 +3272,22 @@ class NashPGTrainer(BaseNashPGTrainer):
         return ((rows * (cur_v_win - b_ret_win) ** 2).sum()
                 + self.vp_coef * (rows * (cur_v_vp - b_ret_vp) ** 2).sum()) / n
 
+    def _value_loss_sides(self, cur_v_win: torch.Tensor, cur_v_vp: torch.Tensor, b_ret_win: torch.Tensor,
+                          b_ret_vp: torch.Tensor, value_logits: Optional[torch.Tensor], rows: Optional[torch.Tensor],
+                          sides: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
+        """--side-independent-update: `_value_loss` (or `_value_loss_rows` over the rows `rows` marks) as the sum over the
+        two sides of each side's own mean."""
+        if value_logits is not None and rows is not None:
+            raise ValueError("--value-selfplay-only is built for the scalar value heads, not --categorical-value")
+        w = torch.ones_like(cur_v_win) if rows is None else rows.to(cur_v_win.dtype)
+        se_win = (cur_v_win - b_ret_win) ** 2
+        if value_logits is None:
+            return side_mean(se_win + self.vp_coef * (cur_v_vp - b_ret_vp) ** 2, w, sides)
+        two_hot = getattr(self.active_net, "two_hot")
+        target = two_hot(b_ret_vp.detach() * float(VP_LIMIT))
+        cross_entropy = -(target * F.log_softmax(value_logits, dim=-1)).sum(dim=-1)
+        return side_mean(se_win + self.value_dist_coef * cross_entropy, w, sides)
+
     def train_step(self) -> Dict[str, float]:
         self.active_net.train()
         if self.bf16_fp32_heads:
@@ -3277,6 +3386,8 @@ class NashPGTrainer(BaseNashPGTrainer):
         _all_masks = self.buffer.masks.view(_n_all, self.buffer.action_dim)
         _ref_fwd = self._update_net(self.reference_net)
         _act_fwd = self._update_net(self.active_net)
+        if self.side_independent_update:
+            self._check_side_rows()
         # --update-learner-rows-only: the rows the update reads (the learner's), and the passes over the whole buffer
         # below evaluated on those rows only (the others are never gathered: no minibatch holds them).
         _upd_rows: Optional[torch.Tensor] = None
@@ -3391,6 +3502,8 @@ class NashPGTrainer(BaseNashPGTrainer):
                     cur_risk = None if cur_risk is None else cur_risk.float()
                     cur_value_logits = None if cur_value_logits is None else cur_value_logits.float()
                 cur_v_win = cur_v_win.squeeze(-1)
+                # --side-independent-update: (US, USSR) row masks; every loss below is then each side's own mean.
+                _sides = self._side_rows(b_obs)
                 if self.gain_learned and self._prior_beta_rows is not None:
                     _b = self._prior_beta_rows.view(-1).index_select(0, b_idx)
                     _g = self._prior_base_rows.view(-1).index_select(0, b_idx) \
@@ -3476,7 +3589,18 @@ class NashPGTrainer(BaseNashPGTrainer):
                     # Setup placements take their credit from the game result instead
                     # (_setup_mc_update); the lambda-return reaching them is the critic's.
                     keep = keep & (b_obs[:, setup_phase_slot()] >= (0.5 / 6.0))
-                if self.adv_filter_quantile > 0.0 and surrogate.numel() > 1:
+                if self.adv_filter_quantile > 0.0 and surrogate.numel() > 1 and _sides is not None:
+                    # Each side's threshold from its own kept rows only.
+                    _kept = torch.zeros_like(keep)
+                    for _f in _sides:
+                        _ks = keep & (_f > 0.5)
+                        own_adv = b_adv.abs()[_ks]
+                        if own_adv.numel() > 1:
+                            thresh = torch.quantile(own_adv.float(), self.adv_filter_quantile)
+                            _ks = _ks & ((b_adv.abs() >= thresh) | (b_has_search > 0.5))
+                        _kept = _kept | _ks
+                    keep = _kept
+                elif self.adv_filter_quantile > 0.0 and surrogate.numel() > 1:
                     # Keep the samples the policy can actually learn from. The threshold is a
                     # quantile of this minibatch rather than a fixed |A|, so it adapts as the
                     # advantage scale shrinks over training instead of silently dropping
@@ -3492,7 +3616,12 @@ class NashPGTrainer(BaseNashPGTrainer):
                 # Mean over the kept samples as sum / count, which needs no host round trip; with
                 # nothing kept it is 0, as before.
                 _keep_f = keep.to(surrogate.dtype)
-                if self.target_kl > 0.0:
+                if _sides is not None:
+                    _surr = surrogate
+                    if self.target_kl > 0.0:
+                        _surr = surrogate * torch.where(b_players == 1, seat_act[1], seat_act[-1]).to(surrogate.dtype)
+                    ppo_loss = side_mean(_surr, _keep_f, _sides)
+                elif self.target_kl > 0.0:
                     # A stopped seat's samples leave the numerator only: the denominator stays the
                     # full count, so stopping one seat does not speed up the other.
                     _seat_w = torch.where(b_players == 1, seat_act[1], seat_act[-1]).to(surrogate.dtype)
@@ -3545,7 +3674,11 @@ class NashPGTrainer(BaseNashPGTrainer):
                 search_ce = cur_logits.sum() * 0.0
                 if self.search_ce_coef > 0.0 and bool((b_has_search > 0.5).any()):
                     sel = b_has_search > 0.5
-                    search_ce = -(b_search_pi[sel] * cur_log_p[sel]).sum(dim=-1).mean()
+                    if _sides is not None:
+                        # Rows without a target hold an all-zero one, so they add exactly 0 before the weights.
+                        search_ce = side_mean(-(b_search_pi * cur_log_p).sum(dim=-1), sel.to(cur_log_p.dtype), _sides)
+                    else:
+                        search_ce = -(b_search_pi[sel] * cur_log_p[sel]).sum(dim=-1).mean()
                     with torch.no_grad():
                         # Entropy of the TARGET, which is the one quantity that separates two
                         # readings of the decline. Its signature is policy entropy RISING while
@@ -3597,29 +3730,51 @@ class NashPGTrainer(BaseNashPGTrainer):
                     # placements only, normalised per learner decision like the ordinary bonus.
                     _setup_f = (b_obs[:, _setup_slot_u] < (0.5 / 6.0)).to(cur_entropy.dtype) * _own_f
                     ent_loss = ent_loss + setup_c * (cur_entropy * _setup_f).sum() / _own_n
+                if _sides is not None:
+                    # The same terms, each a mean over one side's rows (KL to pi_ref over all of them, the bonuses
+                    # over its learner rows), summed over the sides. A stopped seat (--target-kl) weighs 0.
+                    _sa = (torch.where(b_players == 1, seat_act[1], seat_act[-1]).to(kl_per.dtype)
+                           if self.target_kl > 0.0 else torch.ones_like(kl_per))
+                    kl_term = side_mean(kl_per * _sa, torch.ones_like(kl_per), _sides)
+                    _c = (torch.where(b_players == 1, ent_c_us, ent_c_ussr).to(cur_entropy.dtype)
+                          if self.entropy_ceiling > 0.0 else self.ent_coef)
+                    ent_loss = side_mean(ent_b * _c * _sa, _own_f, _sides)
+                    if setup_c > 0.0:
+                        _setup_fs = (b_obs[:, _setup_slot_u] < (0.5 / 6.0)).to(cur_entropy.dtype)
+                        ent_loss = ent_loss + setup_c * side_mean(cur_entropy * _setup_fs, _own_f, _sides)
                 policy_loss = (ppo_loss + self.eta * kl_term - ent_loss
                                + self.search_ce_coef * search_ce)
                 if teacher_log_p_all is not None:
                     _t_rows = b_learner > 0.5
                     if self.teacher_seat != 0:
                         _t_rows = _t_rows & (b_players == self.teacher_seat)
-                    _t_kl, _t_n = teacher_kl(cur_log_p, teacher_log_p_all.index_select(0, b_idx),
-                                             _t_rows)
+                    if _sides is not None:
+                        _t_parts = [teacher_kl(cur_log_p, teacher_log_p_all.index_select(0, b_idx), _t_rows & (_f > 0.5))
+                                    for _f in _sides]
+                        _t_kl, _t_n = _t_parts[0][0] + _t_parts[1][0], _t_parts[0][1] + _t_parts[1][1]
+                    else:
+                        _t_kl, _t_n = teacher_kl(cur_log_p, teacher_log_p_all.index_select(0, b_idx),
+                                                 _t_rows)
                     policy_loss = policy_loss + self.teacher_coef * _t_kl
                     teacher_kl_t += _t_kl.detach().double()
                     teacher_rows_t += _t_n.detach().double()
                 if self._cf_has is not None and self._cf_adv is not None and self.mode_cf_coef > 0.0:
                     # P31 1c: the all-options term, -c * sum_a pi(a) * (Q(a) - Q(taken)), on the
                     # minibatch's priced rows only (no host sync: an empty selection adds zero).
-                    _cf_loss = mode_cf_loss(cur_logits, self._cf_adv.index_select(0, b_idx),
-                                            self._cf_has.index_select(0, b_idx))
+                    _cf_a, _cf_h = self._cf_adv.index_select(0, b_idx), self._cf_has.index_select(0, b_idx)
+                    if _sides is not None:
+                        _cf_loss = sum((mode_cf_loss(cur_logits, _cf_a, _cf_h * _f.to(_cf_h.dtype)) for _f in _sides),
+                                       cur_logits.new_zeros(()))
+                    else:
+                        _cf_loss = mode_cf_loss(cur_logits, _cf_a, _cf_h)
                     policy_loss = policy_loss + self.mode_cf_coef * _cf_loss
                     cf_loss_t += _cf_loss.detach()
                 # The log-normaliser over the legal actions (masked logits are -1e9, so they add
                 # exactly nothing): the level the z-loss holds down.
                 lse = torch.logsumexp(cur_logits.float(), dim=-1)
                 if self.z_loss_coef > 0.0:
-                    z_loss = self.z_loss_coef * (lse * lse).mean()
+                    z_loss = self.z_loss_coef * ((lse * lse).mean() if _sides is None
+                                                 else side_mean(lse * lse, torch.ones_like(lse), _sides))
                     policy_loss = policy_loss + z_loss
                     z_loss_t += z_loss.detach()
                 if self.logit_gap_coef > 0.0:
@@ -3629,7 +3784,9 @@ class NashPGTrainer(BaseNashPGTrainer):
                     _top = torch.where(torch.isfinite(_top), _top, torch.zeros_like(_top))
                     _excess = torch.relu((_top - _z_f) - self.logit_gap) * _legal.to(_z_f.dtype)
                     _n_legal = _legal.sum(dim=-1).clamp(min=1).to(_z_f.dtype)
-                    _gap_loss = ((_excess * _excess).sum(dim=-1) / _n_legal).mean()
+                    _gap_row = (_excess * _excess).sum(dim=-1) / _n_legal
+                    _gap_loss = _gap_row.mean() if _sides is None else side_mean(_gap_row, torch.ones_like(_gap_row),
+                                                                                 _sides)
                     policy_loss = policy_loss + self.logit_gap_coef * _gap_loss
                     with torch.no_grad():
                         gap_loss_t += _gap_loss.detach().double()
@@ -3638,14 +3795,25 @@ class NashPGTrainer(BaseNashPGTrainer):
                 if self.zero_avoid_coef > 0.0:
                     # Over the learner's own rows, as the entropy bonus: the opponent's choices are the
                     # environment. Masked logits are -1e9, so their log-probabilities are zeroed out, not summed.
-                    _za_loss = zero_avoid_loss(cur_logits, b_mask, _own_f, b_obs, self.zero_avoid_scope)
+                    if _sides is not None:
+                        _za_loss = sum((zero_avoid_loss(cur_logits, b_mask, _own_f * _f.to(_own_f.dtype), b_obs,
+                                                        self.zero_avoid_scope) for _f in _sides),
+                                       cur_logits.new_zeros((), dtype=torch.float32))
+                    else:
+                        _za_loss = zero_avoid_loss(cur_logits, b_mask, _own_f, b_obs, self.zero_avoid_scope)
                     policy_loss = policy_loss + self.zero_avoid_coef * _za_loss
                     with torch.no_grad():
                         za_loss_t += _za_loss.detach().double()
                 with torch.no_grad():
                     lse_sum_t += lse.mean().double()
                     lse_absmax_t = torch.maximum(lse_absmax_t, lse.abs().max().double())
-                if (self.value_selfplay_only or self.value_learner_only) and self._value_rows is not None:
+                if _sides is not None:
+                    _vrows = (self._value_rows.view(-1).index_select(0, b_idx)
+                              if (self.value_selfplay_only or self.value_learner_only) and self._value_rows is not None
+                              else None)
+                    val_loss = self._value_loss_sides(cur_v_win, cur_v_vp, b_ret_win, b_ret_vp, cur_value_logits,
+                                                      _vrows, _sides)
+                elif (self.value_selfplay_only or self.value_learner_only) and self._value_rows is not None:
                     val_loss = self._value_loss_rows(cur_v_win, cur_v_vp, b_ret_win, b_ret_vp, cur_value_logits,
                                                      self._value_rows.view(-1).index_select(0, b_idx))
                 else:
@@ -3661,7 +3829,19 @@ class NashPGTrainer(BaseNashPGTrainer):
                 # Auxiliary DEFCON-risk objective. Positives are rare (a few percent of
                 # steps), so the loss is weighted towards them rather than letting the
                 # constant-zero solution dominate.
-                if cur_risk is not None:
+                if cur_risk is not None and _sides is not None:
+                    # Each side's positive weight from its own rows, and its own mean.
+                    risk_loss = cur_risk.new_zeros(())
+                    for _f in _sides:
+                        _fr = _f.to(b_defcon_risk.dtype)
+                        _pos = (b_defcon_risk * _fr).sum()
+                        _pw = ((_fr.sum() - _pos) / _pos.clamp(min=1.0)).clamp(1.0, 100.0)
+                        _bce = F.binary_cross_entropy_with_logits(cur_risk, b_defcon_risk, pos_weight=_pw,
+                                                                  reduction="none")
+                        risk_loss = risk_loss + (_bce * _fr).sum() / _fr.sum().clamp(min=1.0)
+                    loss = loss + self.defcon_coef * risk_loss
+                    risk_loss_t += risk_loss.detach()
+                elif cur_risk is not None:
                     pos = b_defcon_risk.sum()
                     pos_weight = ((b_defcon_risk.numel() - pos) / pos.clamp(min=1.0)).clamp(1.0, 100.0)
                     risk_loss = F.binary_cross_entropy_with_logits(
@@ -3675,7 +3855,12 @@ class NashPGTrainer(BaseNashPGTrainer):
                     _sel = _pd_chunks[_mb]
                     with self._amp():
                         _pd_v = _value_only(self.active_net, self._pd_obs.index_select(0, _sel)).squeeze(-1).float()
-                    _pd_loss = F.mse_loss(_pd_v.float(), self._pd_tgt.index_select(0, _sel))
+                    if _sides is not None:
+                        _pd_o = self._pd_obs.index_select(0, _sel)
+                        _pd_se = (_pd_v.float() - self._pd_tgt.index_select(0, _sel)) ** 2
+                        _pd_loss = side_mean(_pd_se, torch.ones_like(_pd_se), self._side_rows(_pd_o))
+                    else:
+                        _pd_loss = F.mse_loss(_pd_v.float(), self._pd_tgt.index_select(0, _sel))
                     loss = loss + self.vf_coef * self.predeal_value_coef * _pd_loss
                     pd_loss_t += _pd_loss.detach()
                     pd_batches += 1
@@ -3685,7 +3870,9 @@ class NashPGTrainer(BaseNashPGTrainer):
                     with self._amp():
                         _as_v = _value_only(self.active_net, self._as_obs.index_select(0, _sel)).squeeze(-1).float()
                     _as_se = (_as_v - self._as_tgt.index_select(0, _sel)) ** 2
-                    loss = loss + self.vf_coef * self.afterstate_value_coef * _as_se.mean()
+                    _as_l = (_as_se.mean() if _sides is None else
+                             side_mean(_as_se, torch.ones_like(_as_se), self._side_rows(self._as_obs.index_select(0, _sel))))
+                    loss = loss + self.vf_coef * self.afterstate_value_coef * _as_l
                     _k = self._as_kind.index_select(0, _sel)
                     as_se_kind.index_add_(0, _k, _as_se.detach())
                     as_n_kind.index_add_(0, _k, torch.ones_like(_as_se))
@@ -3694,7 +3881,12 @@ class NashPGTrainer(BaseNashPGTrainer):
                     _si = torch.randint(self._sg_size, (self.searched_value_batch,))
                     with self._amp():   # the update's precision, as the other value passes (audit M-7)
                         _sv = self.active_net(self._sg_obs[_si].to(self.device, torch.float32), None)[1].squeeze(-1)
-                    _sl = F.mse_loss(_sv.float(), self._sg_tgt[_si].to(self.device))
+                    if _sides is not None:
+                        _sg_se = (_sv.float() - self._sg_tgt[_si].to(self.device)) ** 2
+                        _sl = side_mean(_sg_se, torch.ones_like(_sg_se),
+                                        self._side_rows(self._sg_obs[_si].to(self.device, torch.float32)))
+                    else:
+                        _sl = F.mse_loss(_sv.float(), self._sg_tgt[_si].to(self.device))
                     loss = loss + self.vf_coef * self.searched_value_coef * _sl
                     sg_loss_t += _sl.detach()
                     sg_batches += 1
@@ -3732,7 +3924,7 @@ class NashPGTrainer(BaseNashPGTrainer):
                     # terms are growing past it. Logging both norms separates those in one look.
                     ce_norm_accum += float(ce_norm)
                     total_norm_accum += float(total_norm)
-                nn.utils.clip_grad_norm_(self.active_net.parameters(), max_norm=self.max_grad_norm)
+                self._clip_grads()
                 self.optimizer.step()
 
                 loss_t += loss.detach()

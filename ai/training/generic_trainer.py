@@ -1495,6 +1495,18 @@ def check_side_only(side_only: Optional[str], model: nn.Module, opponent_lock_si
                          f"that seat only; it needs {', '.join(problems)}")
 
 
+def resolve_side_independent_update(given: Optional[bool], side_nets: bool, resume_file: Optional[str]) -> bool:
+    """--side-independent-update as a launch takes it: as given (--side-independent-update / --no-...); else, resuming,
+    what the resume state recorded (False for a state written before the option: such a run keeps its pooled update);
+    else on for a new --ladder-side-nets (A39) run and off for any other (owner, 2026-11-26)."""
+    if given is not None:
+        return bool(given)
+    if resume_file is not None:
+        blob = torch.load(resume_file, map_location="cpu", weights_only=False)
+        return bool(blob.get("side_independent_update", False))
+    return bool(side_nets)
+
+
 def save_resume_state(path: str, model: nn.Module, trainer: Any, iteration: int,
                       total_env_steps: int, elapsed_seconds: float,
                       seed: Optional[int] = None, ema: Any = None,
@@ -1556,6 +1568,8 @@ def save_resume_state(path: str, model: nn.Module, trainer: Any, iteration: int,
         "side_only": getattr(trainer, "side_only", None),
         # --setup-entropy-floor's adaptive coefficient.
         "setup_ent_coef": float(getattr(trainer, "setup_ent_coef", 0.0)),
+        # --side-independent-update, so a resume that does not name it keeps the run's own update (owner, 2026-11-26).
+        "side_independent_update": bool(getattr(trainer, "side_independent_update", False)),
         # --ema-weights: the average, beside the live weights it averages. None without the flag.
         "ema_state_dict": None if ema is None else ema.state_dict(),
         # P36's gated active search: when its gate opened and the checks so far.
@@ -2212,6 +2226,7 @@ def train_pipeline(
     value_selfplay_only: bool = False,
     value_learner_only: bool = False,
     update_learner_rows_only: bool = False,
+    side_independent_update: Optional[bool] = None,
     opponent_per_game: bool = False,
     critic_prior_window: int = 0,
     critic_prior_turn_weight: Tuple[float, float] = (0.98, 0.46),
@@ -2463,6 +2478,11 @@ def train_pipeline(
                 grow_macro = True
     if resume_weights and macro_influence:
         raise ValueError("--resume-weights into the macro view is not supported; branch with --resume")
+    # Owner 2026-11-26: a new A39 run updates its two networks as independent models; a resumed run keeps what its
+    # state recorded (off for every state written before the option), whatever the default.
+    side_independent_update = resolve_side_independent_update(
+        side_independent_update, bool(ladder_config and ladder_config.get("side_nets")),
+        resolve_resume(resume) if resume else None)
 
     metadata_path = os.path.join(out_dir, "metadata.json")
     metadata_info = {
@@ -2719,6 +2739,8 @@ def train_pipeline(
         "value_selfplay_only": bool(value_selfplay_only),
         "value_learner_only": bool(value_learner_only),
         "update_learner_rows_only": bool(update_learner_rows_only),
+        # Recorded only when on: every run before it (and every A8 run) did the pooled update.
+        **({"side_independent_update": True} if side_independent_update else {}),
         "opponent_per_game": bool(opponent_per_game),
         "critic_prior_window": int(critic_prior_window),
         "critic_prior_turn_weight": [float(x) for x in critic_prior_turn_weight],
@@ -3181,6 +3203,7 @@ def train_pipeline(
         value_selfplay_only=value_selfplay_only,
         value_learner_only=value_learner_only,
         update_learner_rows_only=update_learner_rows_only,
+        side_independent_update=bool(side_independent_update),
         critic_prior=critic_prior_window > 0,
         critic_prior_gain=critic_prior_gain,
         critic_prior_gain_init=critic_prior_gain_init,
@@ -3513,7 +3536,11 @@ def train_pipeline(
               f"elsewhere; envs {int(trainer.searched_opp.envs[0])}-{int(trainer.searched_opp.envs[-1])} of "
               f"{num_envs} (share {searched_opponent_share:g}); games held until {searched_opponent_batch} wait "
               f"or one has waited {searched_opponent_max_wait} steps", flush=True)
-    if per_seat_adv_norm:
+    if side_independent_update:
+        print("[side-independent update] the two side networks as independent models: advantages normalised per "
+              "seat, every loss a mean over its own side's rows, gradients clipped per network "
+              "(--side-independent-update)", flush=True)
+    elif per_seat_adv_norm:
         print("[advantages] normalised per seat (--per-seat-adv-norm)", flush=True)
     if adv_norm_learner_only:
         print("[advantages] mean and spread from the learner's own transitions "
@@ -3960,6 +3987,9 @@ def train_pipeline(
         # not be answered from any run's log.
         for _sk in ("adv_mean_us", "adv_mean_ussr", "adv_std_us", "adv_std_ussr",
                     "adv_n_us", "adv_n_ussr", "entropy_us", "entropy_ussr",
+                    # each seat's learner rows alone, before and after normalisation (2026-11-26, R175)
+                    *(f"adv_learner_{_q}_{_t}" for _q in ("mean", "std", "n", "mean_norm", "std_norm")
+                      for _t in ("us", "ussr")),
                     "wolf_sp_ussr", "wolf_w_us", "wolf_w_ussr",
                     # P25 3j-3l. approx_kl_* is always present; the rest only with their lever.
                     "approx_kl_us", "approx_kl_ussr", "kl_stop_frac_us", "kl_stop_frac_ussr",

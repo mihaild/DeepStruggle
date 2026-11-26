@@ -29,6 +29,9 @@ _CARRIED = ("total_env_steps", "total_iterations", "iteration", "elapsed_seconds
 #: The entries split by side.
 _WEIGHTS = ("model_state_dict", "reference_state_dict", "optimizer_state_dict", "optimizer_param_names", "side_only",
             "extracted_from")
+#: Entries that describe the pair of networks and mean nothing for one alone: left out (--side-independent-update: a
+#: single network's update has no other side to keep apart).
+_DROPPED = ("side_independent_update",)
 #: Entries a single-side branch cannot carry: refused rather than dropped when present.
 _REFUSED = ("opponent_pool", "ema_state_dict", "active_search", "searched_opponent", "head_init_state")
 
@@ -77,7 +80,7 @@ def extract(blob: Mapping[str, Any], side: str, source: str = "") -> Dict[str, A
     """`side`'s network out of an A39 checkpoint (a state dict) or resume state (see the module docstring)."""
     if "model_state_dict" not in blob:
         return side_state(blob, side)
-    unknown = sorted(set(blob) - set(_CARRIED) - set(_REFUSED) - set(_WEIGHTS))
+    unknown = sorted(set(blob) - set(_CARRIED) - set(_REFUSED) - set(_WEIGHTS) - set(_DROPPED))
     if unknown:
         raise ValueError(f"the resume state has entries extract does not know how to split: {unknown}")
     bad = [k for k in _REFUSED if blob.get(k) is not None]

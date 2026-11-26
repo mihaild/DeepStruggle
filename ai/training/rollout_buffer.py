@@ -64,6 +64,10 @@ class RolloutBuffer:
         #: Take the normalisation's mean and spread over the learner's own transitions only
         #: (--adv-norm-learner-only). Off by default; set by the trainer after construction.
         self.adv_norm_learner_only: bool = False
+        #: --side-independent-update (set by the trainer, with per_seat_adv_norm): no seat's advantages are ever
+        #: normalised with statistics that include the other seat's rows -- a seat with too few rows of its own for
+        #: the learner-only statistics takes its own rows' statistics, never the batch-wide ones.
+        self.side_independent: bool = False
 
         # Storage buffers allocated on device for fast GPU tensor operations
         self.obs = torch.zeros((buffer_size, num_envs, self.obs_dim), dtype=torch.float32, device=self.device)
@@ -118,6 +122,9 @@ class RolloutBuffer:
         #: Pre-normalisation advantage statistics split by acting side (US = +1, USSR = -1),
         #: filled by compute_gae. Empty until then.
         self.side_advantage: Dict[str, Dict[str, float]] = {}
+        #: The same over each side's LEARNER rows only (held rows excluded), before ("mean", "std") and after
+        #: ("mean_norm", "std_norm") normalisation: what the update's policy terms actually read, per seat.
+        self.side_advantage_learner: Dict[str, Dict[str, float]] = {}
         # Standard deviation of the advantages before per-rollout normalisation, kept
         # for diagnostics (post-normalisation std is ~1.0 by construction).
         self.raw_advantage_std = 0.0
@@ -538,7 +545,31 @@ class RolloutBuffer:
                 "mean": float(sel.mean()) if sel.numel() else 0.0,
                 "std": float(sel.std()) if sel.numel() > 1 else 0.0,
             }
+        # The learner's own rows per seat (R175's question: is each seat's own signal centred?), read before the
+        # normalisation below replaces the tensor, and again after it.
+        _learner_rows = self.learner.view(-1) > 0.5
+        if self.uses_hold:
+            _learner_rows = _learner_rows & ~self.held.view(-1)
+        _raw_learner = {code: flat_adv[_learner_rows & (flat_players == code)] for code in (1, -1)}
 
+        self._normalise(own, mean_adv, std_adv)
+
+        flat_norm = self.advantages.reshape(-1)
+        for tag, code in (("us", 1), ("ussr", -1)):
+            raw = _raw_learner[code]
+            norm = flat_norm[_learner_rows & (flat_players == code)]
+            n = int(raw.numel())
+            self.side_advantage_learner[tag] = {
+                "n": n,
+                "mean": float(raw.mean()) if n else 0.0,
+                "std": float(raw.std()) if n > 1 else 0.0,
+                "mean_norm": float(norm.mean()) if n else 0.0,
+                "std_norm": float(norm.std()) if n > 1 else 0.0,
+            }
+
+    def _normalise(self, own: Optional[torch.Tensor], mean_adv: torch.Tensor, std_adv: torch.Tensor) -> None:
+        """normalise_advantages' rescaling: `own` the rows the statistics come from (None: every row), `mean_adv` and
+        `std_adv` the statistics over them."""
         if self.adv_norm_floor > 0.0:
             # Only on this path, so a run with the floor off divides by the tensor exactly as
             # before and stays bitwise the run it was.
@@ -563,10 +594,17 @@ class RolloutBuffer:
                 if int(st_sel.sum()) > 1:
                     s = flat[st_sel]
                     normed[sel] = (flat[sel] - s.mean()) / (s.std() + 1e-8)
+                elif self.side_independent and int(sel.sum()) > 1:
+                    # Never the other seat's statistics: this seat's own rows'. (With no learner row of its own no
+                    # policy term reads them; only --priority-alpha's sampling order does.)
+                    s = flat[sel]
+                    normed[sel] = (flat[sel] - s.mean()) / (s.std() + 1e-8)
+                elif self.side_independent:
+                    pass                                    # one row or none: centred on itself, 0
                 elif bool(sel.any()):
                     normed[sel] = (flat[sel] - mean_adv) / std_adv
             other = (fp != 1) & (fp != -1)
-            if bool(other.any()):
+            if bool(other.any()) and not self.side_independent:
                 normed[other] = (flat[other] - mean_adv) / std_adv
             self.advantages = normed.view_as(self.advantages)
         else:
@@ -765,6 +803,16 @@ class RolloutBuffer:
             out[f"adv_mean_{tag}"] = side["mean"]
             out[f"adv_std_{tag}"] = side["std"]
             out[f"adv_n_{tag}"] = float(side["n"])
+        # The learner's own rows per seat, before and after normalisation.
+        for tag in ("us", "ussr"):
+            lside = self.side_advantage_learner.get(tag)
+            if lside is None:
+                continue
+            out[f"adv_learner_mean_{tag}"] = lside["mean"]
+            out[f"adv_learner_std_{tag}"] = lside["std"]
+            out[f"adv_learner_n_{tag}"] = float(lside["n"])
+            out[f"adv_learner_mean_norm_{tag}"] = lside["mean_norm"]
+            out[f"adv_learner_std_norm_{tag}"] = lside["std_norm"]
         return out
 
     def priority_indices(self, alpha: float) -> torch.Tensor:

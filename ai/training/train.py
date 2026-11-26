@@ -1140,6 +1140,17 @@ def build_parser() -> argparse.ArgumentParser:
                              "and costs no update compute. The minibatch count stays ceil(rows / --batch-size), each "
                              "taking an even share of the learner's rows. Needs --per-player-gae (no learner target "
                              "reads a value at an opponent row) and --adv-norm-learner-only.")
+    parser.add_argument("--side-independent-update", action=argparse.BooleanOptionalAction, default=None,
+                        help="--ladder-side-nets (A39) only: update the two side networks as two independent models "
+                             "(owner, 2026-11-26: nothing mixes the two sides' signals). Each side's advantages are "
+                             "normalised with its own rows' statistics (it implies --per-seat-adv-norm), every loss "
+                             "term (PPO, KL to pi_ref, entropy, zero-avoid, value, afterstate / pre-deal value, z-loss, "
+                             "...) is a mean over that side's rows alone and the two sides' losses are summed, and each "
+                             "network's gradient is clipped to --max-grad-norm on its own. Needs --per-player-gae; "
+                             "refuses the options that decide one quantity from both sides or step on pooled rows "
+                             "(WoLF, --adv-norm-floor, --setup-entropy-floor, --setup-mc-credit, the aux heads, "
+                             "--turn-credit-coef, the critic prior). Default: on for a new --ladder-side-nets run; a "
+                             "resume keeps what its state recorded (off for every state written before it).")
     parser.add_argument("--head-l2-init-coef", type=float, default=0.0,
                         help="P44 step 1's arm: add coef * sum ||theta - theta_0||^2 over the policy heads (base, "
                              "per-entity and their trunk context, branch, play-mode, --ladder-head-norm's norms) and the "
@@ -1489,6 +1500,9 @@ def main():
                      "side its own heads")
     if (args.ladder_side_heads or args.ladder_side_nets) and args.arch != "ladder":
         parser.error("--ladder-side-heads / --ladder-side-nets are LadderNet options; they need --arch ladder")
+    if args.side_independent_update and not args.ladder_side_nets:
+        parser.error("--side-independent-update separates the two networks of --ladder-side-nets (A39); without it "
+                     "the sides share parameters")
     if getattr(args, "ladder_token_layers", 0) and not args.no_cuda_graphs:
         # The token path runs in bf16 under autocast, whose GEMMs take a cuBLASLt workspace; inside the first graph
         # capture it lands in that graph's private pool and later captures reuse its address, so the pool's first
@@ -1753,6 +1767,7 @@ def main():
             value_selfplay_only=args.value_selfplay_only,
             value_learner_only=args.value_learner_only,
             update_learner_rows_only=args.update_learner_rows_only,
+            side_independent_update=args.side_independent_update,
             opponent_per_game=args.opponent_per_game,
             critic_prior_window=args.critic_prior_window,
             critic_prior_turn_weight=tuple(args.critic_prior_turn_weight),

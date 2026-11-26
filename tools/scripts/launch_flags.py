@@ -76,7 +76,11 @@ def _split_rules(flags: dict) -> dict:
 #: Both were removed on 2026-11-22 (blunder_aware is no longer a --reward-scheme choice; --no-blunder-window and
 #: --no-held-scoring-blunder are accepted with no effect, and the trainer records them at today's values), so the
 #: baseline stays what every earlier run is read against.
-_CODE_BASELINE = {"reward_scheme": "blunder_aware", "no_blunder_window": False}
+#: --side-independent-update (owner, 2026-11-26) has no CLI default of its own (None): the trainer takes it on for a new
+#: --ladder-side-nets run and off for any other, records it only when on, and every run before it ran the pooled update
+#: -- so a run's code names it only when it was on, and a relaunch names it only where the run differs from what an
+#: unnamed launch would do (`launch_settings`).
+_CODE_BASELINE = {"reward_scheme": "blunder_aware", "no_blunder_window": False, "side_independent_update": False}
 
 
 def _defaults() -> dict:
@@ -176,6 +180,8 @@ _BEFORE_RECORDED = {
     # P24: no league before it existed
     "league_pool_size": lambda meta: 4,
     "adv_norm_learner_only": lambda meta: False,
+    # recorded only when on (2026-11-26): a run without it updated its two side networks together
+    "side_independent_update": lambda meta: False,
     # no setup entropy floor before it existed (2026-09-27)
     "setup_entropy_floor": lambda meta: 0.0,
     "setup_entropy_lr": lambda meta: 0.01,
@@ -417,7 +423,12 @@ def launch_settings(run_dir: str) -> Dict[str, Any]:
     """{dest: value} today's `train.py` must be given, beyond its own defaults, to relaunch the run as its metadata
     records it (settings outside an RL run's training, `UNCHECKED_BY_DESIGN`, and no-effect retired flags excluded)."""
     dflt, acts = parser_defaults(), _actions(build_parser())
-    return {k: v for k, v in recorded(run_dir, split=False).items()
+    rec = recorded(run_dir, split=False)
+    # What an unnamed --side-independent-update resolves to for a new launch of this run's shape (generic_trainer.
+    # resolve_side_independent_update): on for --ladder-side-nets, so an A39 run that ran without it relaunches with
+    # --no-side-independent-update.
+    dflt["side_independent_update"] = bool(rec.get("ladder_side_nets", False))
+    return {k: v for k, v in rec.items()
             if k in dflt and k not in UNCHECKED_BY_DESIGN | _RETIRED_NO_EFFECT
             and not _equivalent(v, dflt[k], acts.get(k, []))}
 

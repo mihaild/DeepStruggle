@@ -55,6 +55,9 @@ _SAME: Dict[str, Callable[[Any], Any]] = {
     "setup_script_openings": lambda v: () if v is None else _seq(v),
     "seed_scenarios": lambda v: () if v is None else _seq(v),
     "force_applicable_events": lambda v: () if v is None else _seq(v),
+    # generic_trainer.resolve_side_independent_update: None is off for a new run without --ladder-side-nets (the
+    # defaults' network) and for a resumed state that did not record it; on only for a new A39 run.
+    "side_independent_update": lambda v: False if v is None else v,
 }
 
 #: (where, name) -> why it is left as it is. Found by this test on 2026-10-28 and reported, not
